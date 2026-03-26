@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from 'next';
+import Script from 'next/script';
 import '@/styles/globals.css';
 
 export const metadata: Metadata = {
@@ -36,7 +37,7 @@ export default function RootLayout({
   return (
     <html lang="en" data-theme="alfred-dark">
       <head>
-        {/* DaisyUI v5 — exact same as Tasklet instant app */}
+        {/* DaisyUI v5 CSS — exact same CDN as Tasklet instant app */}
         <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@5" type="text/css" />
 
         {/* Custom neevv themes — exact copy from Tasklet index.html */}
@@ -116,16 +117,26 @@ export default function RootLayout({
             body { background: white; }
           }
         ` }} />
+      </head>
+      <body className="bg-base-100 text-base-content">
+        {/* Tailwind v4 browser CDN — exact same as Tasklet instant app */}
+        <Script
+          src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"
+          strategy="beforeInteractive"
+        />
 
-        {/* Tailwind v4 CDN — exact same as Tasklet instant app */}
-        <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4" />
+        {/* Three.js for 3D rendering — exact same CDN as Tasklet */}
+        <Script
+          src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"
+          strategy="beforeInteractive"
+        />
+        <Script
+          src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"
+          strategy="beforeInteractive"
+        />
 
-        {/* Three.js for 3D rendering — exact same as Tasklet instant app */}
-        <script crossOrigin="anonymous" src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js" />
-        <script crossOrigin="anonymous" src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js" />
-
-        {/* Auto-detect system theme */}
-        <script dangerouslySetInnerHTML={{ __html: `
+        {/* Auto-detect system theme — exact same as Tasklet */}
+        <Script id="theme-detect" strategy="beforeInteractive">{`
           (function() {
             var theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'alfred-dark' : 'alfred-light';
             document.documentElement.setAttribute('data-theme', theme);
@@ -133,9 +144,8 @@ export default function RootLayout({
               document.documentElement.setAttribute('data-theme', e.matches ? 'alfred-dark' : 'alfred-light');
             });
           })();
-        ` }} />
-      </head>
-      <body className="bg-base-100 text-base-content">
+        `}</Script>
+
         {children}
       </body>
     </html>
