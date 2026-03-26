@@ -1,24 +1,2 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
-/* Custom scrollbar */
-::-webkit-scrollbar {
-  width: 6px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: rgba(128,128,128,0.4);
-  border-radius: 9999px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(128,128,128,0.6);
-}
-
-/* Print styles for PDF export */
-@media print {
-  .no-print { display: none !important; }
-  body { background: white; }
-}
+/* All styles handled by CDN (Tailwind v4 + DaisyUI v5) — matching Tasklet exactly */
+/* DO NOT add @tailwind directives — they are for Tailwind v3 PostCSS and conflict with CDN */

@@ -25,7 +25,7 @@ export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
   maximumScale: 5,
-  themeColor: '#2D3436',
+  themeColor: '#121215',
 };
 
 export default function RootLayout({
@@ -34,13 +34,14 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" data-theme="dark">
+    <html lang="en" data-theme="alfred-dark">
       <head>
-        {/* DaisyUI v5 — exact same version as Tasklet instant app */}
+        {/* DaisyUI v5 — exact same as Tasklet instant app */}
         <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@5" type="text/css" />
-        {/* Custom neevv themes — copied from Tasklet index.html */}
+
+        {/* Custom neevv themes — exact copy from Tasklet index.html */}
         <style dangerouslySetInnerHTML={{ __html: `
-          [data-theme='light'] {
+          [data-theme='alfred-light'] {
             color-scheme: light;
             --radius-selector: 0rem;
             --radius-field: 0.25rem;
@@ -71,7 +72,7 @@ export default function RootLayout({
             --color-error: #9e3d32;
             --color-error-content: #f4f4f5;
           }
-          [data-theme='dark'] {
+          [data-theme='alfred-dark'] {
             color-scheme: dark;
             --radius-selector: 0rem;
             --radius-field: 0.25rem;
@@ -102,6 +103,36 @@ export default function RootLayout({
             --color-error: #9e3d32;
             --color-error-content: #f4f4f5;
           }
+
+          /* Custom scrollbar */
+          ::-webkit-scrollbar { width: 6px; }
+          ::-webkit-scrollbar-track { background: transparent; }
+          ::-webkit-scrollbar-thumb { background: rgba(128,128,128,0.4); border-radius: 9999px; }
+          ::-webkit-scrollbar-thumb:hover { background: rgba(128,128,128,0.6); }
+
+          /* Print styles */
+          @media print {
+            .no-print { display: none !important; }
+            body { background: white; }
+          }
+        ` }} />
+
+        {/* Tailwind v4 CDN — exact same as Tasklet instant app */}
+        <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4" />
+
+        {/* Three.js for 3D rendering — exact same as Tasklet instant app */}
+        <script crossOrigin="anonymous" src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js" />
+        <script crossOrigin="anonymous" src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js" />
+
+        {/* Auto-detect system theme */}
+        <script dangerouslySetInnerHTML={{ __html: `
+          (function() {
+            var theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'alfred-dark' : 'alfred-light';
+            document.documentElement.setAttribute('data-theme', theme);
+            window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function(e) {
+              document.documentElement.setAttribute('data-theme', e.matches ? 'alfred-dark' : 'alfred-light');
+            });
+          })();
         ` }} />
       </head>
       <body className="bg-base-100 text-base-content">
