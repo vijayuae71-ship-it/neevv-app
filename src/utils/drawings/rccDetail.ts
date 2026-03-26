@@ -1,5 +1,5 @@
 import { Layout } from '../../types';
-import { C, MARGIN, SC, dimChain, drawingBorder, northArrow, legend, gridLabels, crossHatch } from '../drawingHelpers';
+import { C, MARGIN, SC, dimChain, drawingBorder, northArrow, legend, gridLabels } from '../drawingHelpers';
 
 export function renderRCCDetail(layout: Layout, numFloors: number): string {
   const floor = layout.floors[0];

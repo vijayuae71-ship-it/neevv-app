@@ -1,3 +1,4 @@
+'use client';
 import React from 'react';
 import { AppStep } from '../types';
 import { ClipboardList, LayoutGrid, PenTool, Box, Ruler, Package, Palette } from 'lucide-react';

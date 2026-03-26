@@ -53,7 +53,7 @@ export function renderTiling(layout: Layout, numFloors: number): string {
     kitchen: { fill: '#eaf2f8', tileSize: 5, gridColor: '#5dade2', label: 'Ceramic Anti-skid 300×300', dado: '600mm', skirting: false },
     toilet: { fill: '#e8f8f5', tileSize: 4, gridColor: '#48c9b0', label: 'Ceramic Anti-skid 300×300', dado: '1200mm (full ht: 2100mm)', skirting: false },
     bathroom: { fill: '#e8f8f5', tileSize: 4, gridColor: '#48c9b0', label: 'Ceramic Anti-skid 300×300', dado: '2100mm (full)', skirting: false },
-    pooja: { fill: '#fdedec', tileSize: 6, gridColor: '#e6b0aa', label: 'Marble / Vitrified 600×600', dado: '', skirting: true },
+    puja: { fill: '#fdedec', tileSize: 6, gridColor: '#e6b0aa', label: 'Marble / Vitrified 600×600', dado: '', skirting: true },
     passage: { fill: '#f4f6f7', tileSize: 6, gridColor: '#aab7b8', label: 'Vitrified 600×600', dado: '', skirting: true },
     store: { fill: '#f4f6f7', tileSize: 6, gridColor: '#aab7b8', label: 'Ceramic 300×300', dado: '', skirting: true },
   };
