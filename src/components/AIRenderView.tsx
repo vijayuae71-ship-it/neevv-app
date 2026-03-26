@@ -212,25 +212,27 @@ export const AIRenderView: React.FC<Props> = ({ layout, requirements }) => {
     <div className="flex flex-col h-full">
       {/* Toolbar */}
       <div className="flex items-center gap-2 p-2 bg-base-200 rounded-lg mb-2 flex-wrap">
-        <Sparkles size={16} className="text-warning" />
-        <span className="text-sm font-semibold text-base-content/70">AI Render</span>
+        <Sparkles size={16} className="text-warning flex-shrink-0" />
+        <span className="text-sm font-semibold text-base-content/70 flex-shrink-0">AI Render</span>
         
-        <div className="divider divider-horizontal mx-1" />
+        <div className="hidden sm:block divider divider-horizontal mx-1" />
         
         {/* View angle selector */}
-        <span className="text-xs text-base-content/60">View:</span>
-        {VIEW_ANGLES.map(v => (
-          <button
-            key={v.id}
-            className={`btn btn-xs ${selectedView === v.id ? 'btn-primary' : 'btn-ghost'}`}
-            onClick={() => setSelectedView(v.id)}
-            disabled={loading}
-          >
-            {v.icon} {v.label}
-          </button>
-        ))}
+        <div className="flex items-center gap-1 flex-wrap">
+          <span className="text-xs text-base-content/60">View:</span>
+          {VIEW_ANGLES.map(v => (
+            <button
+              key={v.id}
+              className={`btn btn-xs ${selectedView === v.id ? 'btn-primary' : 'btn-ghost'}`}
+              onClick={() => setSelectedView(v.id)}
+              disabled={loading}
+            >
+              <span className="hidden sm:inline">{v.icon}</span> {v.label}
+            </button>
+          ))}
+        </div>
 
-        <div className="divider divider-horizontal mx-1" />
+        <div className="hidden sm:block divider divider-horizontal mx-1" />
 
         {/* Model selector */}
         <select

@@ -293,15 +293,15 @@ const InteriorAIDrawings: React.FC<Props> = ({ layout, interiorSelections, moodB
   }
 
   return (
-    <div className="flex h-[700px] border border-base-300 rounded-xl overflow-hidden bg-base-100">
-      {/* ==================== LEFT SIDEBAR ==================== */}
-      <aside className="w-52 flex-shrink-0 border-r border-base-300 bg-base-200/60 flex flex-col">
+    <div className="flex flex-col md:flex-row h-auto md:h-[700px] border border-base-300 rounded-xl overflow-hidden bg-base-100">
+      {/* ==================== LEFT SIDEBAR (horizontal on mobile, vertical on desktop) ==================== */}
+      <aside className="md:w-52 flex-shrink-0 border-b md:border-b-0 md:border-r border-base-300 bg-base-200/60 flex flex-col">
         <div className="px-3 py-2 border-b border-base-300">
           <h3 className="font-semibold text-sm flex items-center gap-1.5">
             <Eye size={14} /> Rooms
           </h3>
         </div>
-        <div className="flex-1 overflow-y-auto p-2 space-y-1">
+        <div className="flex-1 overflow-x-auto md:overflow-y-auto p-2 flex md:flex-col gap-1 md:space-y-0">
           {rooms.map(room => {
             const count = roomRenderCount(room.id);
             const active = room.id === selectedRoomId;
@@ -309,7 +309,7 @@ const InteriorAIDrawings: React.FC<Props> = ({ layout, interiorSelections, moodB
               <button
                 key={room.id}
                 onClick={() => { setSelectedRoomId(room.id); setError(null); }}
-                className={`btn btn-sm w-full justify-start gap-2 ${active ? 'btn-primary' : 'btn-ghost'}`}
+                className={`btn btn-sm flex-shrink-0 md:w-full justify-start gap-2 ${active ? 'btn-primary' : 'btn-ghost'}`}
               >
                 <span className="truncate flex-1 text-left">{roomLabel(room)}</span>
                 {count > 0 && (
@@ -321,8 +321,8 @@ const InteriorAIDrawings: React.FC<Props> = ({ layout, interiorSelections, moodB
             );
           })}
         </div>
-        {/* render progress summary */}
-        <div className="border-t border-base-300 px-3 py-2">
+        {/* render progress summary — hidden on mobile */}
+        <div className="hidden md:block border-t border-base-300 px-3 py-2">
           <p className="text-xs text-base-content/50 mb-1">Render Coverage</p>
           {rooms.map(room => {
             const has = (t: RenderTypeKey) => (renderCache[cacheKey(room.id, t)]?.length || 0) > 0;

@@ -16,7 +16,7 @@ import { calculateBOQ } from '@/utils/boqCalculator';
 import { BRAND_LOGO_BASE64 } from '@/utils/brand';
 import { useAuth } from '@/hooks/useAuth';
 import { useProject } from '@/hooks/useProject';
-import { Home, Palette, ArrowRight } from 'lucide-react';
+import { Home, Palette, ArrowRight, Building2, Ruler, PenTool, FileSpreadsheet, Sofa } from 'lucide-react';
 
 type AppMode = 'landing' | 'new_build' | 'interior_only';
 
@@ -96,92 +96,130 @@ export default function HomePage() {
     }
   };
 
-  const isLightTheme = mode === 'landing' || (mode === 'new_build' && step === 'requirements') || mode === 'interior_only' && step !== 'interior';
+  /* ============ NAVBAR (shared) ============ */
+  const Navbar = ({ showBack = false }: { showBack?: boolean }) => (
+    <div className="bg-base-200 border-b border-base-300 px-4 py-3 flex items-center justify-between shrink-0">
+      <div className="flex items-center gap-3">
+        <img
+          src={BRAND_LOGO_BASE64}
+          alt="neevv"
+          className="h-8"
+          onClick={showBack ? handleBackToLanding : undefined}
+          style={showBack ? { cursor: 'pointer' } : undefined}
+          title={showBack ? 'Back to Home' : undefined}
+        />
+        <div className="h-6 w-px bg-base-300" />
+        <span className="text-xs opacity-50 tracking-wide uppercase">
+          {mode === 'interior_only' ? 'Interior Design Studio' : 'Residential Design Studio'}
+        </span>
+      </div>
+      <div className="flex items-center gap-3">
+        {user && (
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="text-sm bg-primary/20 text-primary px-3 py-1.5 rounded-lg hover:bg-primary/30 transition-colors disabled:opacity-50"
+          >
+            {saving ? 'Saving...' : '💾 Save'}
+          </button>
+        )}
+        {authLoading ? null : user ? (
+          <button onClick={signOut} className="text-sm opacity-40 hover:opacity-80 transition-opacity">Sign Out</button>
+        ) : (
+          <button onClick={signInWithGoogle} className="btn btn-sm btn-outline text-sm">Sign In</button>
+        )}
+      </div>
+    </div>
+  );
 
   /* ============ LANDING PAGE ============ */
   if (mode === 'landing') {
     return (
-      <div className="flex flex-col h-screen" data-theme="light">
-        <div className="bg-base-200 border-b border-base-300 px-4 py-3 mb-2 flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-3">
-            <img src={BRAND_LOGO_BASE64} alt="neevv" className="h-8" />
-            <div className="h-6 w-px bg-base-300" />
-            <span className="text-xs text-base-content/50 tracking-wide uppercase">Residential Design Studio</span>
-          </div>
-          <div>
-            {authLoading ? null : user ? (
-              <div className="flex items-center gap-3">
-                <span className="text-sm text-base-content/50 hidden sm:inline">{user.displayName}</span>
-                <button onClick={signOut} className="text-sm text-base-content/40 hover:text-base-content/60">Sign Out</button>
-              </div>
-            ) : (
-              <button onClick={signInWithGoogle} className="btn btn-sm btn-outline text-sm">
-                Sign In
-              </button>
-            )}
-          </div>
-        </div>
-        <div className="flex-1 flex items-center justify-center p-6">
-          <div className="max-w-3xl w-full space-y-8">
-            <div className="text-center space-y-2">
-              <h1 className="text-3xl font-bold text-base-content">Welcome to neevv</h1>
-              <p className="text-base-content/60 text-lg">Sapno Ka Nirman — Building Dreams</p>
-              <p className="text-base-content/50 text-sm mt-2">Choose how you'd like to get started</p>
+      <div className="flex flex-col h-screen bg-base-100">
+        <Navbar />
+        <div className="flex-1 flex items-center justify-center p-6 overflow-y-auto">
+          <div className="max-w-3xl w-full space-y-10">
+            {/* Hero */}
+            <div className="text-center space-y-3">
+              <h1 className="text-4xl font-bold">
+                Welcome to <span className="text-primary">neevv</span>
+              </h1>
+              <p className="text-lg opacity-60">Sapno Ka Nirman — Building Dreams</p>
+              <p className="text-sm opacity-40">AI-powered residential design for Indian homes</p>
             </div>
+
+            {/* Entry Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* New Build Card */}
+              {/* Build a New Home */}
               <button
-                className="card bg-base-100 border-2 border-base-300 hover:border-primary hover:shadow-lg transition-all duration-200 cursor-pointer text-left group"
+                className="neevv-card text-left group"
                 onClick={() => setMode('new_build')}
               >
-                <div className="card-body p-6 space-y-4">
-                  <div className="w-14 h-14 rounded-xl bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
+                <div className="space-y-4">
+                  <div className="w-14 h-14 rounded-xl bg-primary/15 flex items-center justify-center group-hover:bg-primary/25 transition-colors">
                     <Home size={28} className="text-primary" />
                   </div>
                   <div>
-                    <h2 className="text-xl font-semibold text-base-content">Build a New Home</h2>
-                    <p className="text-sm text-base-content/60 mt-1">
-                      Complete architectural workflow — from plot requirements to construction drawings, BOQ, 3D views, and interior design.
+                    <h2 className="text-xl font-semibold">Build a New Home</h2>
+                    <p className="text-sm opacity-60 mt-2 leading-relaxed">
+                      Complete architectural workflow — plot requirements, floor plans, 3D views, construction drawings, BOQ, and interior design.
                     </p>
                   </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {['Floor Plans', '3D Views', 'Working Drawings', 'BOQ', 'Interior Design'].map(tag => (
-                      <span key={tag} className="badge badge-sm badge-ghost">{tag}</span>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      { icon: Building2, label: 'Floor Plans' },
+                      { icon: Eye, label: '3D Views' },
+                      { icon: PenTool, label: 'Drawings' },
+                      { icon: FileSpreadsheet, label: 'BOQ' },
+                      { icon: Sofa, label: 'Interiors' },
+                    ].map(({ icon: Icon, label }) => (
+                      <span key={label} className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded bg-base-300/50 opacity-70">
+                        <Icon size={12} /> {label}
+                      </span>
                     ))}
                   </div>
-                  <div className="flex items-center gap-1 text-primary text-sm font-medium">
+                  <div className="flex items-center gap-1 text-primary text-sm font-medium pt-2">
                     Get Started <ArrowRight size={14} />
                   </div>
                 </div>
               </button>
 
-              {/* Interior Only Card */}
+              {/* Interior Design Only */}
               <button
-                className="card bg-base-100 border-2 border-base-300 hover:border-secondary hover:shadow-lg transition-all duration-200 cursor-pointer text-left group"
+                className="neevv-card text-left group"
                 onClick={() => setMode('interior_only')}
               >
-                <div className="card-body p-6 space-y-4">
-                  <div className="w-14 h-14 rounded-xl bg-secondary/10 flex items-center justify-center group-hover:bg-secondary/20 transition-colors">
+                <div className="space-y-4">
+                  <div className="w-14 h-14 rounded-xl bg-secondary/15 flex items-center justify-center group-hover:bg-secondary/25 transition-colors">
                     <Palette size={28} className="text-secondary" />
                   </div>
                   <div>
-                    <h2 className="text-xl font-semibold text-base-content">Interior Design Only</h2>
-                    <p className="text-sm text-base-content/60 mt-1">
-                      Already have an apartment or flat? Enter your room details and jump straight into mood boards, interior drawings, and cost estimation.
+                    <h2 className="text-xl font-semibold">Interior Design Only</h2>
+                    <p className="text-sm opacity-60 mt-2 leading-relaxed">
+                      Already have an apartment or flat? Enter room details and get mood boards, interior drawings, and cost estimation.
                     </p>
                   </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {['Mood Boards', 'Interior Drawings', 'Execution Plan', 'Cost Estimation'].map(tag => (
-                      <span key={tag} className="badge badge-sm badge-ghost">{tag}</span>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      { icon: Palette, label: 'Mood Boards' },
+                      { icon: PenTool, label: 'Drawings' },
+                      { icon: Ruler, label: 'Execution' },
+                      { icon: FileSpreadsheet, label: 'Costing' },
+                    ].map(({ icon: Icon, label }) => (
+                      <span key={label} className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded bg-base-300/50 opacity-70">
+                        <Icon size={12} /> {label}
+                      </span>
                     ))}
                   </div>
-                  <div className="flex items-center gap-1 text-secondary text-sm font-medium">
+                  <div className="flex items-center gap-1 text-secondary text-sm font-medium pt-2">
                     Get Started <ArrowRight size={14} />
                   </div>
                 </div>
               </button>
             </div>
-            <p className="text-center text-xs text-base-content/40">
+
+            {/* Footer */}
+            <p className="text-center text-xs opacity-30">
               NBC 2016 compliant · Vastu intelligence · Indian residential standards
             </p>
           </div>
@@ -192,42 +230,10 @@ export default function HomePage() {
 
   /* ============ MAIN APP ============ */
   return (
-    <div className="flex flex-col h-screen" data-theme={isLightTheme ? 'light' : undefined}>
-      <div className="bg-base-200 border-b border-base-300 px-4 py-3 mb-2 flex items-center justify-between shrink-0">
-        <div className="flex items-center gap-3">
-          <img
-            src={BRAND_LOGO_BASE64}
-            alt="neevv"
-            className="h-8 cursor-pointer"
-            onClick={handleBackToLanding}
-            title="Back to Home"
-          />
-          <div className="h-6 w-px bg-base-300" />
-          {mode === 'interior_only' ? (
-            <span className="text-xs text-base-content/50 tracking-wide uppercase">Interior Design Studio</span>
-          ) : (
-            <span className="text-xs text-base-content/50 tracking-wide uppercase">Residential Design Studio</span>
-          )}
-        </div>
-        <div className="flex items-center gap-3">
-          {user && (
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className="text-sm bg-primary/20 text-primary px-3 py-1.5 rounded-lg hover:bg-primary/30 transition-colors disabled:opacity-50"
-            >
-              {saving ? 'Saving...' : '💾 Save Project'}
-            </button>
-          )}
-          {user ? (
-            <button onClick={signOut} className="text-sm text-base-content/40 hover:text-base-content">Sign Out</button>
-          ) : (
-            <button onClick={signInWithGoogle} className="text-sm text-base-content/40 hover:text-base-content">Sign In</button>
-          )}
-        </div>
-      </div>
+    <div className="flex flex-col h-screen bg-base-100">
+      <Navbar showBack />
 
-      {/* Step indicator - only show for new_build mode */}
+      {/* Step indicator - only for new_build mode */}
       {mode === 'new_build' && (
         <StepIndicator current={step} onNavigate={setStep} canNavigate={canNavigate} />
       )}
