@@ -190,8 +190,8 @@ export async function exportToPDF(
 
   // Also notify the agent for chat link as backup
   report('PDF ready!');
-  if (window.tasklet?.sendMessageToAgent) {
-    await window.tasklet!.sendMessageToAgent(`PDF export complete. File saved at: ${outputPath}`);
+  if (window.tasklet && window.tasklet.sendMessageToAgent) {
+    await window.tasklet.sendMessageToAgent(`PDF export complete. File saved at: ${outputPath}`);
   }
 
   return outputPath;
