@@ -124,7 +124,7 @@ export const AIRenderView: React.FC<Props> = ({ layout, requirements }) => {
       if (httpStatus !== 200) {
         try {
           const errContent = await window.tasklet?.readFileFromDisk(outputFile);
-          const errJson = JSON.parse(errContent);
+          const errJson = JSON.parse(errContent || '{}');
           setError(`API Error (${httpStatus}): ${errJson?.error?.message || 'Unknown error'}`);
         } catch {
           setError(`API Error: HTTP ${httpStatus}`);

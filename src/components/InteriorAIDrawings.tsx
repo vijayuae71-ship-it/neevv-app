@@ -101,7 +101,7 @@ const InteriorAIDrawings: React.FC<Props> = ({ layout, interiorSelections, moodB
   useEffect(() => {
     (async () => {
       try {
-        const raw = await window.tasklet.readFileFromDisk(INDEX_FILE);
+        const raw = await window.tasklet!.readFileFromDisk(INDEX_FILE);
         if (raw) {
           const parsed: RenderCache = JSON.parse(raw);
           setRenderCache(parsed);
@@ -115,8 +115,8 @@ const InteriorAIDrawings: React.FC<Props> = ({ layout, interiorSelections, moodB
   /* ---------- persist index ---------- */
   const persistIndex = useCallback(async (cache: RenderCache) => {
     try {
-      await window.tasklet.runCommand(`mkdir -p ${APP_RENDERS}`);
-      await window.tasklet.writeFileToDisk(INDEX_FILE, JSON.stringify(cache, null, 2));
+      await window.tasklet!.runCommand(`mkdir -p ${APP_RENDERS}`);
+      await window.tasklet!.writeFileToDisk(INDEX_FILE, JSON.stringify(cache, null, 2));
     } catch (e) {
       console.error('Failed to persist interior index', e);
     }
@@ -149,7 +149,7 @@ const InteriorAIDrawings: React.FC<Props> = ({ layout, interiorSelections, moodB
         },
       };
 
-      await window.tasklet.writeFileToDisk(reqPath, JSON.stringify(requestBody));
+      await window.tasklet!.writeFileToDisk(reqPath, JSON.stringify(requestBody));
 
       /* 3 — call Gemini via curl (save response to file) */
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
@@ -162,7 +162,7 @@ const InteriorAIDrawings: React.FC<Props> = ({ layout, interiorSelections, moodB
         `-w "\\n__HTTP_STATUS__%{http_code}"`,
       ].join(' ');
 
-      const curlResult = await window.tasklet.runTool('run_command', { command: curlCmd, timeout: 150 });
+      const curlResult = await window.tasklet!.runTool('run_command', { command: curlCmd, timeout: 150 });
       const curlOut = typeof curlResult === "object" && curlResult !== null ? (curlResult as any).log || "" : String(curlResult);
 
       /* parse status */
@@ -176,7 +176,7 @@ const InteriorAIDrawings: React.FC<Props> = ({ layout, interiorSelections, moodB
         // try to extract error message
         let detail = `HTTP ${httpStatus}`;
         try {
-          const errRaw = await window.tasklet.readFileFromDisk(respPath);
+          const errRaw = await window.tasklet!.readFileFromDisk(respPath);
           const errJson = JSON.parse(errRaw);
           detail = errJson?.error?.message || detail;
         } catch { /* ignore */ }
@@ -184,9 +184,9 @@ const InteriorAIDrawings: React.FC<Props> = ({ layout, interiorSelections, moodB
       }
 
       /* 4 — extract PNG via python */
-      await window.tasklet.runCommand(`mkdir -p ${APP_RENDERS}`);
+      await window.tasklet!.runCommand(`mkdir -p ${APP_RENDERS}`);
       const pyCmd = `python3 ${EXTRACT_SCRIPT} ${respPath} ${pngPath}`;
-      const pyResult = await window.tasklet.runCommand(pyCmd);
+      const pyResult = await window.tasklet!.runCommand(pyCmd);
       const pyOut = typeof pyResult === "object" && pyResult !== null ? (pyResult as any).log || "" : String(pyResult);
 
       if (pyOut.toLowerCase().includes('error')) {
@@ -194,7 +194,7 @@ const InteriorAIDrawings: React.FC<Props> = ({ layout, interiorSelections, moodB
       }
 
       /* 5 — also copy to exports dir */
-      await window.tasklet.runCommand(`mkdir -p ${RENDER_DIR} && cp ${pngPath} ${RENDER_DIR}/${pngName}`);
+      await window.tasklet!.runCommand(`mkdir -p ${RENDER_DIR} && cp ${pngPath} ${RENDER_DIR}/${pngName}`);
 
       const entry: RenderEntry = {
         roomId,
