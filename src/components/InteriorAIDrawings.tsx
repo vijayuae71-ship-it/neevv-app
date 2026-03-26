@@ -405,8 +405,8 @@ const InteriorAIDrawings: React.FC<Props> = ({ layout, interiorSelections, moodB
           {selectedRoom && (
             <span className="ml-2 text-base-content/70 font-medium">
               — {roomLabel(selectedRoom)}
-              {selectedRoom.width && selectedRoom.height
-                ? ` (${selectedRoom.width}′ × ${selectedRoom.height}′)`
+              {selectedRoom.width && selectedRoom.depth
+                ? ` (${selectedRoom.width}′ × ${selectedRoom.depth}′)`
                 : ''}
             </span>
           )}
