@@ -32,7 +32,7 @@ async function writeLargeFile(filePath: string, content: string): Promise<void> 
   }
   const MAX_DIRECT = 80000; // 80KB - safe for writeFileToDisk
   if (content.length <= MAX_DIRECT) {
-    await window.tasklet.writeFileToDisk(filePath, content);
+    await window.tasklet!.writeFileToDisk(filePath, content);
     return;
   }
   // Split into chunks and write each as a separate temp file
@@ -43,10 +43,10 @@ async function writeLargeFile(filePath: string, content: string): Promise<void> 
     const chunk = content.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
     const partPath = `${filePath}.part${i}`;
     partFiles.push(partPath);
-    await window.tasklet.writeFileToDisk(partPath, chunk);
+    await window.tasklet!.writeFileToDisk(partPath, chunk);
   }
   // Concatenate all parts into the final file
-  await window.tasklet.runCommand(`cat ${partFiles.map(p => `'${p}'`).join(' ')} > '${filePath}' && rm -f ${partFiles.map(p => `'${p}'`).join(' ')}`);
+  await window.tasklet!.runCommand(`cat ${partFiles.map(p => `'${p}'`).join(' ')} > '${filePath}' && rm -f ${partFiles.map(p => `'${p}'`).join(' ')}`);
 }
 
 /**
@@ -82,7 +82,7 @@ export async function exportToPDF(
 
   // Clean up temp directory
   report('Preparing export...');
-  await window.tasklet.runCommand('rm -rf /tmp/drawings && mkdir -p /tmp/drawings');
+  await window.tasklet!.runCommand('rm -rf /tmp/drawings && mkdir -p /tmp/drawings');
 
   const drawings: { key: string; svg: string }[] = [];
 
@@ -123,7 +123,7 @@ export async function exportToPDF(
   }
 
   // Copy logo file for Python to overlay on PDF pages
-  await window.tasklet.runCommand(`cp /agent/home/apps/architect-engineer/neevv-logo.png /tmp/drawings/neevv-logo.png 2>/dev/null || true`);
+  await window.tasklet!.runCommand(`cp /agent/home/apps/architect-engineer/neevv-logo.png /tmp/drawings/neevv-logo.png 2>/dev/null || true`);
 
   // Strip embedded base64 logo images from SVGs to reduce size (logo added by Python in PDF)
   // This removes <image> tags with data:image/png;base64 hrefs
@@ -147,18 +147,18 @@ export async function exportToPDF(
   };
 
   // Write project info to a file to avoid command length issues
-  await window.tasklet.writeFileToDisk('/tmp/drawings/project-info.json', JSON.stringify(projectInfo));
+  await window.tasklet!.writeFileToDisk('/tmp/drawings/project-info.json', JSON.stringify(projectInfo));
 
   // Write BOQ data for the BOQ summary page in the PDF
   if (boq) {
-    await window.tasklet.writeFileToDisk('/tmp/drawings/boq-data.json', JSON.stringify(boq));
+    await window.tasklet!.writeFileToDisk('/tmp/drawings/boq-data.json', JSON.stringify(boq));
   }
 
   const outputPath = `/agent/home/exports/construction-docs-${Date.now()}.pdf`;
 
   // Run the Python conversion script with file-based info (no inline JSON)
   report('Generating PDF package...');
-  const result = await window.tasklet.runCommand(
+  const result = await window.tasklet!.runCommand(
     `mkdir -p /agent/home/exports && uv run --with cairosvg,pypdf,reportlab python3 /agent/home/scripts/svg_to_pdf.py /tmp/drawings '${outputPath}' /tmp/drawings/project-info.json`
   );
 
@@ -170,7 +170,7 @@ export async function exportToPDF(
   // Trigger browser download
   report('Preparing download...');
   try {
-    const pdfBase64 = await window.tasklet.readFileFromDisk(outputPath);
+    const pdfBase64 = await window.tasklet!.readFileFromDisk(outputPath);
     // Check if it's already base64 or raw text
     const isBase64 = !pdfBase64.startsWith('%PDF');
     const blob = isBase64
@@ -191,7 +191,7 @@ export async function exportToPDF(
   // Also notify the agent for chat link as backup
   report('PDF ready!');
   if (window.tasklet?.sendMessageToAgent) {
-    await window.tasklet.sendMessageToAgent(`PDF export complete. File saved at: ${outputPath}`);
+    await window.tasklet!.sendMessageToAgent(`PDF export complete. File saved at: ${outputPath}`);
   }
 
   return outputPath;
