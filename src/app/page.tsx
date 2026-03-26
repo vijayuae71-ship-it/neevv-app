@@ -86,7 +86,7 @@ export default function HomePage() {
     }
     if (requirements || selectedLayout) {
       await saveProject({
-        name: requirements ? `${requirements.plotWidth}x${requirements.plotDepth} ${requirements.facing}-Facing` : 'Interior Project',
+        name: requirements ? `${requirements.plotWidthFt}x${requirements.plotDepthFt} ${requirements.facing}-Facing` : 'Interior Project',
         requirements,
         selectedLayout,
         interiorConfig: null,
