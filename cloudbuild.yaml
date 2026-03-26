@@ -1,10 +1,25 @@
 # neevv — Cloud Build CI/CD Pipeline
 # Triggered automatically on push to main branch
+# Sends build errors to webhook for automated debugging
 
 steps:
-  # Step 1: Build the Docker image
+  # Step 1: Build the Docker image (with error capture)
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['build', '-t', 'gcr.io/$PROJECT_ID/neevv-app:$COMMIT_SHA', '-t', 'gcr.io/$PROJECT_ID/neevv-app:latest', '.']
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        docker build -t gcr.io/$PROJECT_ID/neevv-app:$COMMIT_SHA -t gcr.io/$PROJECT_ID/neevv-app:latest . 2>&1 | tee /workspace/build.log
+        BUILD_EXIT=$${PIPESTATUS[0]}
+        if [ $$BUILD_EXIT -ne 0 ]; then
+          echo "=== BUILD FAILED — sending logs to webhook ==="
+          LOGS=$$(tail -80 /workspace/build.log | sed 's/"/\\"/g' | awk '{printf "%s\\n", $$0}')
+          curl -s -X POST "https://webhooks.tasklet.ai/v1/public/webhook?token=d6ee42e51865b00c3525c667177f2345" \
+            -H "Content-Type: application/json" \
+            -d "{\"status\": \"FAILED\", \"step\": \"docker_build\", \"build_id\": \"$BUILD_ID\", \"commit\": \"$COMMIT_SHA\", \"logs\": \"$$LOGS\"}"
+          exit 1
+        fi
+        echo "=== BUILD SUCCESS ==="
 
   # Step 2: Push to Container Registry
   - name: 'gcr.io/cloud-builders/docker'
@@ -39,6 +54,18 @@ steps:
       - '8080'
       - '--set-env-vars'
       - 'NODE_ENV=production,GEMINI_API_KEY=${_GEMINI_API_KEY}'
+
+  # Step 4: Notify success
+  - name: 'gcr.io/cloud-builders/curl'
+    args:
+      - '-s'
+      - '-X'
+      - 'POST'
+      - 'https://webhooks.tasklet.ai/v1/public/webhook?token=d6ee42e51865b00c3525c667177f2345'
+      - '-H'
+      - 'Content-Type: application/json'
+      - '-d'
+      - '{"status": "SUCCESS", "step": "deploy", "build_id": "$BUILD_ID", "commit": "$COMMIT_SHA"}'
 
 substitutions:
   _GEMINI_API_KEY: ''
