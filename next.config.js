@@ -5,7 +5,7 @@ const nextConfig = {
     remotePatterns: [{ protocol: 'https', hostname: 'storage.googleapis.com' }],
     unoptimized: true,
   },
-  serverExternalPackages: ['sharp']
+  experimental: { serverComponentsExternalPackages: ['sharp'] }
 };
 
 module.exports = nextConfig;
