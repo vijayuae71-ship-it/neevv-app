@@ -1,23 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { adminDb, adminAuth } from '@/lib/firebase-admin';
+import { getAdminDb, getAdminAuth } from '@/lib/firebase-admin';
+
+export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
   try {
-    // Verify auth token
     const authHeader = request.headers.get('Authorization');
     if (!authHeader?.startsWith('Bearer ')) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const token = authHeader.split('Bearer ')[1];
-    const decodedToken = await adminAuth.verifyIdToken(token);
+    const decodedToken = await getAdminAuth().verifyIdToken(token);
     const userId = decodedToken.uid;
 
     const { projectData, projectId } = await request.json();
 
+    const db = getAdminDb();
     const projectRef = projectId
-      ? adminDb.collection('projects').doc(projectId)
-      : adminDb.collection('projects').doc();
+      ? db.collection('projects').doc(projectId)
+      : db.collection('projects').doc();
 
     await projectRef.set({
       ...projectData,
@@ -47,10 +49,11 @@ export async function GET(request: NextRequest) {
     }
 
     const token = authHeader.split('Bearer ')[1];
-    const decodedToken = await adminAuth.verifyIdToken(token);
+    const decodedToken = await getAdminAuth().verifyIdToken(token);
     const userId = decodedToken.uid;
 
-    const snapshot = await adminDb
+    const db = getAdminDb();
+    const snapshot = await db
       .collection('projects')
       .where('userId', '==', userId)
       .orderBy('updatedAt', 'desc')

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Storage } from '@google-cloud/storage';
 
+export const dynamic = 'force-dynamic';
+
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY!;
 const GCS_BUCKET = process.env.GCS_BUCKET_NAME || 'neevv-renders';
 
