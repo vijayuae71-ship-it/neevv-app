@@ -1,165 +1,244 @@
-import { Layout } from '../../types';
-import { C, MARGIN, SC, drawingBorder, northArrow, legend, gridLabels } from '../drawingHelpers';
+import { C, MARGIN, SC, drawingBorder, northArrow, drawTable } from '../drawingHelpers';
+import { Layout, Room, ProjectRequirements } from '../../types';
 
-function tilePattern(x: number, y: number, w: number, h: number, tileSize: number, color: string): string {
-  const lines: string[] = [];
-  // Horizontal tile lines
-  for (let ty = y; ty <= y + h; ty += tileSize) {
-    lines.push(`<line x1="${x}" y1="${ty}" x2="${x + w}" y2="${ty}" stroke="${color}" stroke-width="0.3"/>`);
-  }
-  // Vertical tile lines
-  for (let tx = x; tx <= x + w; tx += tileSize) {
-    lines.push(`<line x1="${tx}" y1="${y}" x2="${tx}" y2="${y + h}" stroke="${color}" stroke-width="0.3"/>`);
-  }
-  return lines.join('');
+interface TileSpec {
+  size: string;
+  type: string;
+  fill: string;
+  gridSpacingMM: number;
+  pattern: 'grid' | 'diagonal' | 'irregular' | 'steps';
 }
 
-function dadoMark(x: number, y: number, h: number, label: string): string {
-  return `<g>
-    <line x1="${x}" y1="${y}" x2="${x}" y2="${y - 15}" stroke="#8e44ad" stroke-width="0.8" stroke-dasharray="2,2"/>
-    <line x1="${x - 4}" y1="${y - 15}" x2="${x + 4}" y2="${y - 15}" stroke="#8e44ad" stroke-width="0.8"/>
-    <text x="${x}" y="${y - 18}" text-anchor="middle" font-size="5.5" fill="#8e44ad">DADO ${label}</text>
-  </g>`;
+function getTileSpec(roomType: string): TileSpec {
+  switch (roomType) {
+    case 'hall':
+    case 'dining':
+      return { size: '600×600', type: 'VITRIFIED', fill: '#F5F0E0', gridSpacingMM: 600, pattern: 'grid' };
+    case 'bedroom':
+    case 'master_bedroom':
+      return { size: '600×600', type: 'VITRIFIED (MATT)', fill: '#F0ECD8', gridSpacingMM: 600, pattern: 'grid' };
+    case 'kitchen':
+      return { size: '400×400', type: 'CERAMIC ANTI-SKID', fill: '#F0E0C0', gridSpacingMM: 400, pattern: 'grid' };
+    case 'toilet':
+      return { size: '300×300', type: 'ANTI-SKID', fill: '#D8E0E8', gridSpacingMM: 300, pattern: 'diagonal' };
+    case 'balcony':
+      return { size: '300×300', type: 'EXTERIOR CERAMIC', fill: '#E0E8D8', gridSpacingMM: 300, pattern: 'grid' };
+    case 'parking':
+      return { size: '—', type: 'KOTA STONE / VDF', fill: '#E0D8C8', gridSpacingMM: 0, pattern: 'irregular' };
+    case 'staircase':
+      return { size: '—', type: 'GRANITE TREAD+RISER', fill: '#D8D0C8', gridSpacingMM: 0, pattern: 'steps' };
+    case 'puja':
+      return { size: '600×600', type: 'ITALIAN MARBLE', fill: '#F8F4F0', gridSpacingMM: 600, pattern: 'grid' };
+    default:
+      return { size: '600×600', type: 'VITRIFIED', fill: '#F2EEE0', gridSpacingMM: 600, pattern: 'grid' };
+  }
 }
 
-export function renderTiling(layout: Layout, numFloors: number): string {
-  const floor = layout.floors[0];
+function drawTilePattern(rx: number, ry: number, rw: number, rd: number, spec: TileSpec): string {
+  let s = '';
+  // Clip path for this room
+  const clipId = `clip_${Math.round(rx)}_${Math.round(ry)}`;
+  s += `<defs><clipPath id="${clipId}"><rect x="${rx}" y="${ry}" width="${rw}" height="${rd}"/></clipPath></defs>`;
+
+  s += `<rect x="${rx}" y="${ry}" width="${rw}" height="${rd}" fill="${spec.fill}"/>`;
+
+  if (spec.pattern === 'grid' && spec.gridSpacingMM > 0) {
+    const spacingPx = (spec.gridSpacingMM / 1000) * SC;
+    s += `<g clip-path="url(#${clipId})" opacity="0.3">`;
+    // Vertical lines
+    for (let x = rx + spacingPx; x < rx + rw; x += spacingPx) {
+      s += `<line x1="${x}" y1="${ry}" x2="${x}" y2="${ry + rd}" stroke="${C.dim}" stroke-width="0.4"/>`;
+    }
+    // Horizontal lines
+    for (let y = ry + spacingPx; y < ry + rd; y += spacingPx) {
+      s += `<line x1="${rx}" y1="${y}" x2="${rx + rw}" y2="${y}" stroke="${C.dim}" stroke-width="0.4"/>`;
+    }
+    s += `</g>`;
+  } else if (spec.pattern === 'diagonal') {
+    const spacingPx = (spec.gridSpacingMM / 1000) * SC;
+    const diagSpacing = spacingPx * Math.SQRT2;
+    s += `<g clip-path="url(#${clipId})" opacity="0.25">`;
+    for (let d = -rw - rd; d < rw + rd; d += diagSpacing) {
+      s += `<line x1="${rx + d}" y1="${ry}" x2="${rx + d + rd}" y2="${ry + rd}" stroke="${C.dim}" stroke-width="0.4"/>`;
+      s += `<line x1="${rx + d + rd}" y1="${ry}" x2="${rx + d}" y2="${ry + rd}" stroke="${C.dim}" stroke-width="0.4"/>`;
+    }
+    s += `</g>`;
+  } else if (spec.pattern === 'irregular') {
+    // Kota stone: random-ish lines
+    s += `<g clip-path="url(#${clipId})" opacity="0.2">`;
+    const step = rw / 5;
+    for (let i = 1; i < 5; i++) {
+      const xOff = (i % 2 === 0) ? 3 : -3;
+      s += `<line x1="${rx + i * step + xOff}" y1="${ry}" x2="${rx + i * step - xOff}" y2="${ry + rd}" stroke="${C.dim}" stroke-width="0.5"/>`;
+    }
+    const stepY = rd / 4;
+    for (let i = 1; i < 4; i++) {
+      const yOff = (i % 2 === 0) ? 4 : -4;
+      s += `<line x1="${rx}" y1="${ry + i * stepY + yOff}" x2="${rx + rw}" y2="${ry + i * stepY - yOff}" stroke="${C.dim}" stroke-width="0.5"/>`;
+    }
+    s += `</g>`;
+  } else if (spec.pattern === 'steps') {
+    // Horizontal lines for stair treads
+    const treadH = rd / 12;
+    s += `<g clip-path="url(#${clipId})" opacity="0.3">`;
+    for (let y = ry + treadH; y < ry + rd; y += treadH) {
+      s += `<line x1="${rx}" y1="${y}" x2="${rx + rw}" y2="${y}" stroke="${C.dim}" stroke-width="0.6"/>`;
+    }
+    // Arrow showing direction
+    s += `<line x1="${rx + rw / 2}" y1="${ry + rd - 5}" x2="${rx + rw / 2}" y2="${ry + 5}" stroke="${C.dim}" stroke-width="1"/>`;
+    s += `<polygon points="${rx + rw / 2},${ry + 5} ${rx + rw / 2 - 4},${ry + 12} ${rx + rw / 2 + 4},${ry + 12}" fill="${C.dim}"/>`;
+    s += `<text x="${rx + rw / 2 + 8}" y="${ry + rd / 2}" font-size="5" fill="${C.dim}">UP</text>`;
+    s += `</g>`;
+  }
+
+  return s;
+}
+
+export function renderTiling(layout: Layout, requirements: ProjectRequirements): string {
   const plotW = layout.plotWidthM;
   const plotD = layout.plotDepthM;
-  const sb = layout.setbacks;
-  const bx0 = sb.left;
-  const by0 = sb.front;
-  const bw = plotW - sb.left - sb.right;
-  const bd = plotD - sb.front - sb.rear;
-  const svgW = Math.max(700, MARGIN * 2 + plotW * SC + 120);
-  const svgH = Math.max(500, MARGIN * 2 + plotD * SC + 120);
-  const tx = (m: number) => MARGIN + m * SC;
-  const ty = (m: number) => MARGIN + m * SC;
-  const p: string[] = [];
+  const svgW = Math.round((plotW + 5) * SC);
+  const svgH = Math.round((plotD + 7) * SC);
+  const ox = MARGIN + 1.5 * SC;
+  const oy = MARGIN + 1.5 * SC;
 
-  p.push(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${svgW} ${svgH}" width="${svgW}" height="${svgH}">`);
-  p.push(drawingBorder(svgW, svgH, 'TILING LAYOUT', `Ground Floor | ${numFloors}-Storey Residential`));
-  p.push(northArrow(svgW - 40, 70));
+  const rooms = layout.floors[0]?.rooms || [];
 
-  // Plot and building outlines
-  p.push(`<rect x="${tx(0)}" y="${ty(0)}" width="${plotW * SC}" height="${plotD * SC}" fill="none" stroke="${C.plot}" stroke-width="1" stroke-dasharray="10,5"/>`);
-  p.push(`<rect x="${tx(bx0)}" y="${ty(by0)}" width="${bw * SC}" height="${bd * SC}" fill="none" stroke="${C.wall}" stroke-width="2"/>`);
+  let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${svgW} ${svgH}" width="100%" preserveAspectRatio="xMidYMin meet" font-family="'Courier New',monospace">`;
+  svg += `<rect width="${svgW}" height="${svgH}" fill="${C.bg}"/>`;
+  svg += drawingBorder(svgW, svgH, 'TILING / FLOORING LAYOUT', `Plot: ${plotW}m × ${plotD}m | Ground Floor`);
+  svg += northArrow(svgW - MARGIN - 30, MARGIN + 40);
 
-  // Tile type configs
-  const tileConfig: Record<string, { fill: string; tileSize: number; gridColor: string; label: string; dado: string; skirting: boolean }> = {
-    bedroom: { fill: '#fdf2e9', tileSize: 8, gridColor: '#d4a574', label: 'Vitrified 600×600', dado: '', skirting: true },
-    living: { fill: '#fef9e7', tileSize: 8, gridColor: '#c9b037', label: 'Vitrified 800×800', dado: '', skirting: true },
-    hall: { fill: '#fef9e7', tileSize: 8, gridColor: '#c9b037', label: 'Vitrified 800×800', dado: '', skirting: true },
-    kitchen: { fill: '#eaf2f8', tileSize: 5, gridColor: '#5dade2', label: 'Ceramic Anti-skid 300×300', dado: '600mm', skirting: false },
-    toilet: { fill: '#e8f8f5', tileSize: 4, gridColor: '#48c9b0', label: 'Ceramic Anti-skid 300×300', dado: '1200mm (full ht: 2100mm)', skirting: false },
-    bathroom: { fill: '#e8f8f5', tileSize: 4, gridColor: '#48c9b0', label: 'Ceramic Anti-skid 300×300', dado: '2100mm (full)', skirting: false },
-    puja: { fill: '#fdedec', tileSize: 6, gridColor: '#e6b0aa', label: 'Marble / Vitrified 600×600', dado: '', skirting: true },
-    passage: { fill: '#f4f6f7', tileSize: 6, gridColor: '#aab7b8', label: 'Vitrified 600×600', dado: '', skirting: true },
-    store: { fill: '#f4f6f7', tileSize: 6, gridColor: '#aab7b8', label: 'Ceramic 300×300', dado: '', skirting: true },
-  };
-  const defaultTile = { fill: '#f8f9fa', tileSize: 6, gridColor: '#bdc3c7', label: 'Vitrified 600×600', dado: '', skirting: true };
+  // Plot outline
+  const pw = plotW * SC;
+  const pd = plotD * SC;
+  svg += `<rect x="${ox}" y="${oy}" width="${pw}" height="${pd}" fill="none" stroke="${C.grid}" stroke-width="0.5" stroke-dasharray="6,3"/>`;
 
-  // Material schedule data
-  const schedule: Array<{ room: string; type: string; area: number; finish: string }> = [];
+  // Building footprint
+  const bx = ox + layout.setbacks.left * SC;
+  const by = oy + layout.setbacks.front * SC;
+  const bw = layout.buildableWidthM * SC;
+  const bd = layout.buildableDepthM * SC;
+  svg += `<rect x="${bx}" y="${by}" width="${bw}" height="${bd}" fill="#FAFAFA" stroke="${C.wall}" stroke-width="1.5"/>`;
 
-  floor.rooms.forEach((r) => {
-    const rx = bx0 + r.x;
-    const ry = by0 + r.y;
-    const rw = r.width;
-    const rd = r.depth;
-    const conf = tileConfig[r.type] || defaultTile;
+  // Draw tile patterns for each room
+  const materialRows: string[][] = [];
 
-    // Fill room with tile color
-    p.push(`<rect x="${tx(rx)}" y="${ty(ry)}" width="${rw * SC}" height="${rd * SC}" fill="${conf.fill}" stroke="${C.dim}" stroke-width="0.8"/>`);
+  for (const room of rooms) {
+    const rx = ox + room.x * SC;
+    const ry = oy + room.y * SC;
+    const rw = room.width * SC;
+    const rd = room.depth * SC;
+    const spec = getTileSpec(room.type);
 
-    // Tile grid pattern
-    p.push(tilePattern(tx(rx), ty(ry), rw * SC, rd * SC, conf.tileSize, conf.gridColor));
+    // Tile pattern fill
+    svg += drawTilePattern(rx + 2, ry + 2, rw - 4, rd - 4, spec);
 
-    // Skirting lines (inner border)
-    if (conf.skirting) {
-      const sk = 2; // px offset for skirting
-      p.push(`<rect x="${tx(rx) + sk}" y="${ty(ry) + sk}" width="${rw * SC - sk * 2}" height="${rd * SC - sk * 2}" fill="none" stroke="#7f8c8d" stroke-width="1" stroke-dasharray="1,2"/>`);
+    // Double-line walls
+    const wallT = 3;
+    svg += `<rect x="${rx}" y="${ry}" width="${rw}" height="${rd}" fill="none" stroke="${C.wall}" stroke-width="2"/>`;
+    svg += `<rect x="${rx + wallT}" y="${ry + wallT}" width="${rw - wallT * 2}" height="${rd - wallT * 2}" fill="none" stroke="${C.wall}" stroke-width="0.5"/>`;
+
+    // Room label and tile spec
+    svg += `<text x="${rx + rw / 2}" y="${ry + rd / 2 - 5}" text-anchor="middle" font-size="7" fill="${C.text}" font-weight="bold">${room.name}</text>`;
+    svg += `<text x="${rx + rw / 2}" y="${ry + rd / 2 + 5}" text-anchor="middle" font-size="5" fill="${C.text}" opacity="0.7">${spec.size} ${spec.type}</text>`;
+
+    // Skirting indication - thin line inside walls
+    svg += `<rect x="${rx + wallT + 2}" y="${ry + wallT + 2}" width="${rw - wallT * 2 - 4}" height="${rd - wallT * 2 - 4}" fill="none" stroke="${C.tile}" stroke-width="0.5" stroke-dasharray="2,3"/>`;
+
+    // Wall tiles for toilet (full height)
+    if (room.type === 'toilet') {
+      svg += `<rect x="${rx + wallT}" y="${ry + wallT}" width="${rw - wallT * 2}" height="${rd - wallT * 2}" fill="none" stroke="${C.tileBlue}" stroke-width="1.5" stroke-dasharray="3,1"/>`;
+      svg += `<text x="${rx + rw / 2}" y="${ry + rd / 2 + 14}" text-anchor="middle" font-size="4" fill="${C.tileBlue}">WALL TILES FULL HT 2100mm</text>`;
     }
 
-    // Room label
-    const cx = tx(rx + rw / 2);
-    const cy = ty(ry + rd / 2);
-    // Background for readability
-    p.push(`<rect x="${cx - 40}" y="${cy - 18}" width="80" height="36" rx="3" fill="white" fill-opacity="0.85" stroke="none"/>`);
-    p.push(`<text x="${cx}" y="${cy - 6}" text-anchor="middle" font-size="8" font-weight="bold" fill="${C.text}">${r.name.toUpperCase()}</text>`);
-    p.push(`<text x="${cx}" y="${cy + 5}" text-anchor="middle" font-size="6" fill="${conf.gridColor}">${conf.label}</text>`);
-    if (conf.dado) {
-      p.push(`<text x="${cx}" y="${cy + 15}" text-anchor="middle" font-size="5.5" fill="#8e44ad">Dado: ${conf.dado}</text>`);
-      // Dado mark
-      p.push(dadoMark(tx(rx + rw) - 5, ty(ry + rd) - 5, 1200, conf.dado));
-    }
-    if (conf.skirting) {
-      p.push(`<text x="${cx}" y="${cy + 15}" text-anchor="middle" font-size="5" fill="#7f8c8d">Skirting: 100mm</text>`);
+    // Kitchen dado tiles
+    if (room.type === 'kitchen') {
+      // Hatched strip along top wall (cooking wall)
+      const dadoH = 8;
+      svg += `<rect x="${rx + wallT}" y="${ry + wallT}" width="${rw - wallT * 2}" height="${dadoH}" fill="${C.tileGreen}" opacity="0.25" stroke="${C.tileGreen}" stroke-width="0.5"/>`;
+      for (let dx = rx + wallT; dx < rx + rw - wallT; dx += 4) {
+        svg += `<line x1="${dx}" y1="${ry + wallT}" x2="${dx + dadoH}" y2="${ry + wallT + dadoH}" stroke="${C.tileGreen}" stroke-width="0.3" opacity="0.4"/>`;
+      }
+      svg += `<text x="${rx + rw / 2}" y="${ry + wallT + dadoH + 8}" text-anchor="middle" font-size="4" fill="${C.tileGreen}">DADO TILES UP TO 600mm</text>`;
     }
 
-    // Anti-skid note for wet areas
-    if (r.type === 'toilet' || r.type === 'bathroom' || r.type === 'kitchen') {
-      p.push(`<text x="${cx}" y="${cy + 24}" text-anchor="middle" font-size="5" fill="#c0392b" font-weight="bold">⚠ ANTI-SKID</text>`);
-    }
+    // Threshold at approximate door position (bottom wall center)
+    const thW = 12;
+    const thH = 4;
+    const thX = rx + rw / 2 - thW / 2;
+    const thY = ry + rd - wallT - thH / 2;
+    svg += `<rect x="${thX}" y="${thY}" width="${thW}" height="${thH}" fill="none" stroke="${C.dim}" stroke-width="0.8"/>`;
+    // Cross hatch for threshold
+    svg += `<line x1="${thX}" y1="${thY}" x2="${thX + thW}" y2="${thY + thH}" stroke="${C.dim}" stroke-width="0.4"/>`;
+    svg += `<line x1="${thX + thW}" y1="${thY}" x2="${thX}" y2="${thY + thH}" stroke="${C.dim}" stroke-width="0.4"/>`;
 
-    schedule.push({
-      room: r.name,
-      type: r.type,
-      area: +(rw * rd).toFixed(1),
-      finish: conf.label,
-    });
-  });
+    // Material schedule row
+    const areaSqM = (room.width * room.depth).toFixed(1);
+    const qty = (room.width * room.depth * 1.1).toFixed(1);
+    materialRows.push([room.name, spec.size, spec.type, areaSqM, qty]);
+  }
 
-  p.push(gridLabels(tx, ty, bx0, by0, bw, bd, floor.rooms));
+  // Skirting note
+  svg += `<text x="${bx + bw / 2}" y="${by + bd + 18}" text-anchor="middle" font-size="6" fill="${C.text}" opacity="0.7">NOTE: 100mm SKIRTING IN ALL ROOMS MATCHING FLOOR TILE</text>`;
+
+  // Joint spec note
+  svg += `<text x="${bx + bw / 2}" y="${by + bd + 28}" text-anchor="middle" font-size="5" fill="${C.text}" opacity="0.6">JOINTS: 2mm SPACER, EPOXY GROUT IN WET AREAS, CEMENT GROUT IN DRY AREAS</text>`;
 
   // Material schedule table
-  const tblX = tx(0) + 10;
-  const tblY = ty(plotD) + 35;
-  const colW = [100, 120, 60, 150];
-  const tblHeaders = ['Room', 'Finish Type', 'Area (m²)', 'Dado / Skirting'];
-  const totalW = colW.reduce((a, b) => a + b, 0);
-  const rowH = 16;
+  const tableX = svgW - MARGIN - 260;
+  const tableY = svgH - MARGIN - 30 - materialRows.length * 14;
+  svg += `<text x="${tableX}" y="${tableY - 6}" font-size="7" fill="${C.text}" font-weight="bold">MATERIAL SCHEDULE</text>`;
+  svg += drawTable(tableX, tableY,
+    ['Room', 'Tile Size', 'Type', 'Area m²', 'Qty (+10%)'],
+    materialRows,
+    [55, 50, 70, 40, 45]
+  );
 
-  p.push(`<text x="${tblX}" y="${tblY - 5}" font-size="9" font-weight="bold" fill="${C.text}">MATERIAL SCHEDULE</text>`);
+  // Tile laying pattern detail box
+  const patX = MARGIN + 10;
+  const patY = svgH - MARGIN - 100;
+  svg += `<rect x="${patX}" y="${patY}" width="120" height="90" fill="#FAFAFA" stroke="${C.dim}" stroke-width="0.5"/>`;
+  svg += `<text x="${patX + 60}" y="${patY + 12}" text-anchor="middle" font-size="6" fill="${C.text}" font-weight="bold">LAYING PATTERNS</text>`;
 
-  // Header
-  p.push(`<rect x="${tblX}" y="${tblY}" width="${totalW}" height="${rowH + 2}" fill="#2c3e50" stroke="${C.wall}" stroke-width="1"/>`);
-  let hx = tblX;
-  tblHeaders.forEach((h, i) => {
-    p.push(`<text x="${hx + colW[i] / 2}" y="${tblY + rowH / 2 + 4}" text-anchor="middle" font-size="7" font-weight="bold" fill="white">${h}</text>`);
-    hx += colW[i];
-  });
+  // Grid pattern
+  const gx = patX + 10;
+  const gy = patY + 22;
+  svg += `<rect x="${gx}" y="${gy}" width="30" height="20" fill="#F5F0E0" stroke="${C.dim}" stroke-width="0.5"/>`;
+  for (let x = gx + 10; x < gx + 30; x += 10) {
+    svg += `<line x1="${x}" y1="${gy}" x2="${x}" y2="${gy + 20}" stroke="${C.dim}" stroke-width="0.3"/>`;
+  }
+  for (let y = gy + 10; y < gy + 20; y += 10) {
+    svg += `<line x1="${gx}" y1="${y}" x2="${gx + 30}" y2="${y}" stroke="${C.dim}" stroke-width="0.3"/>`;
+  }
+  svg += `<text x="${gx + 15}" y="${gy + 30}" text-anchor="middle" font-size="5" fill="${C.text}">GRID</text>`;
 
-  // Rows
-  schedule.forEach((s, i) => {
-    const ry = tblY + rowH + 2 + i * rowH;
-    const bg = i % 2 === 0 ? '#ffffff' : '#f8f9fa';
-    p.push(`<rect x="${tblX}" y="${ry}" width="${totalW}" height="${rowH}" fill="${bg}" stroke="${C.dim}" stroke-width="0.3"/>`);
-    const conf = tileConfig[s.type] || defaultTile;
-    const dadoSkirting = conf.dado ? `Dado: ${conf.dado}` : conf.skirting ? 'Skirting: 100mm' : '-';
-    const cells = [s.room, s.finish, s.area.toString(), dadoSkirting];
-    let cx = tblX;
-    cells.forEach((c, ci) => {
-      p.push(`<text x="${cx + colW[ci] / 2}" y="${ry + rowH / 2 + 3}" text-anchor="middle" font-size="6.5" fill="${C.text}">${c}</text>`);
-      cx += colW[ci];
-    });
-  });
+  // Brick bond pattern
+  const bbx = patX + 50;
+  svg += `<rect x="${bbx}" y="${gy}" width="30" height="20" fill="#F0ECD8" stroke="${C.dim}" stroke-width="0.5"/>`;
+  for (let y = gy; y < gy + 20; y += 6) {
+    svg += `<line x1="${bbx}" y1="${y}" x2="${bbx + 30}" y2="${y}" stroke="${C.dim}" stroke-width="0.3"/>`;
+    const offset = ((y - gy) / 6) % 2 === 0 ? 0 : 5;
+    for (let x = bbx + 10 + offset; x < bbx + 30; x += 10) {
+      svg += `<line x1="${x}" y1="${y}" x2="${x}" y2="${y + 6}" stroke="${C.dim}" stroke-width="0.3"/>`;
+    }
+  }
+  svg += `<text x="${bbx + 15}" y="${gy + 30}" text-anchor="middle" font-size="5" fill="${C.text}">BRICK BOND</text>`;
 
-  // Table border
-  p.push(`<rect x="${tblX}" y="${tblY}" width="${totalW}" height="${rowH + 2 + schedule.length * rowH}" fill="none" stroke="${C.wall}" stroke-width="1"/>`);
+  // Diagonal pattern
+  const dx = patX + 10;
+  const dy = patY + 58;
+  svg += `<rect x="${dx}" y="${dy}" width="30" height="20" fill="#D8E0E8" stroke="${C.dim}" stroke-width="0.5"/>`;
+  const dClip = `clip_diag_legend`;
+  svg += `<defs><clipPath id="${dClip}"><rect x="${dx}" y="${dy}" width="30" height="20"/></clipPath></defs>`;
+  svg += `<g clip-path="url(#${dClip})" opacity="0.4">`;
+  for (let d = -30; d < 60; d += 8) {
+    svg += `<line x1="${dx + d}" y1="${dy}" x2="${dx + d + 20}" y2="${dy + 20}" stroke="${C.dim}" stroke-width="0.3"/>`;
+    svg += `<line x1="${dx + d + 20}" y1="${dy}" x2="${dx + d}" y2="${dy + 20}" stroke="${C.dim}" stroke-width="0.3"/>`;
+  }
+  svg += `</g>`;
+  svg += `<text x="${dx + 15}" y="${dy + 30}" text-anchor="middle" font-size="5" fill="${C.text}">DIAGONAL</text>`;
 
-  const notes = [
-    'NOTES:',
-    '1. Wet area tiles: Anti-skid ceramic (CoF ≥ 0.6)',
-    '2. Dry area tiles: Vitrified/Polished as specified',
-    '3. Dado tiles: Wall tiles up to specified height',
-    '4. Skirting: 100mm high matching floor tile',
-    '5. Tile adhesive: Polymer modified (wet areas)',
-    '6. Grouting: Epoxy grout for wet, cementitious for dry',
-    '7. Waterproofing below tiles in all wet areas',
-    '8. Floor slope in wet areas: 1:60 towards drain',
-  ].join('\n');
-  p.push(legend(svgW, svgH, notes));
-  p.push('</svg>');
-  return p.join('');
+  svg += `</svg>`;
+  return svg;
 }

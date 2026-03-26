@@ -1318,7 +1318,7 @@ export default function InteriorDrawings({ layout, rooms }: Props) {
     const centeredRoom = { ...room, x: 0, y: 0 };
     return {
       ...layout,
-      floors: [{ floor: 0, floorLabel: 'Ground', rooms: [centeredRoom], columns: [] }],
+      floors: [{ level: 0, rooms: [centeredRoom] }],
     };
   }, [layout, floor0, selectedRoomId]);
 

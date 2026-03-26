@@ -14,9 +14,7 @@ export type RoomType =
   | 'passage'
   | 'entrance'
   | 'store'
-  | 'utility'
-  | 'living'
-  | 'bathroom';
+  | 'utility';
 
 export interface FloorProgram {
   floorLabel: string;

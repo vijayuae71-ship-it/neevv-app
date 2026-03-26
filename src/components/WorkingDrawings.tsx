@@ -474,18 +474,18 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq }) 
 
   let svgHtml = '';
   switch (activeDrawing) {
-    case 'excavation': svgHtml = renderExcavation(layout, requirements.floors.length); break;
+    case 'excavation': svgHtml = renderExcavation(layout, requirements); break;
     case 'foundation': svgHtml = renderFoundation(layout); break;
-    case 'rccDetail': svgHtml = renderRCCDetail(layout, requirements.floors.length); break;
+    case 'rccDetail': svgHtml = renderRCCDetail(layout, requirements); break;
     case 'structural': svgHtml = renderStructural(layout); break;
-    case 'reinforcement': svgHtml = renderReinforcement(layout, requirements.floors.length); break;
-    case 'barBending': svgHtml = renderBarBending(layout, requirements.floors.length); break;
+    case 'reinforcement': svgHtml = renderReinforcement(layout, requirements); break;
+    case 'barBending': svgHtml = renderBarBending(layout, requirements); break;
     case 'section': svgHtml = renderSection(layout, numFloors); break;
     case 'elevation': svgHtml = renderElevation(layout, numFloors, requirements.facing); break;
-    case 'brickwork': svgHtml = renderBrickwork(layout, requirements.floors.length); break;
-    case 'electrical': svgHtml = renderElectrical(layout, requirements.floors.length); break;
-    case 'plumbing': svgHtml = renderPlumbing(layout, requirements.floors.length); break;
-    case 'tiling': svgHtml = renderTiling(layout, requirements.floors.length); break;
+    case 'brickwork': svgHtml = renderBrickwork(layout, requirements); break;
+    case 'electrical': svgHtml = renderElectrical(layout, requirements); break;
+    case 'plumbing': svgHtml = renderPlumbing(layout, requirements); break;
+    case 'tiling': svgHtml = renderTiling(layout, requirements); break;
   }
 
   const descriptions: Record<DrawingType, string> = {

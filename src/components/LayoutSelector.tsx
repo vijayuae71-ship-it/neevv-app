@@ -1,4 +1,5 @@
 'use client';
+
 import React from 'react';
 import { Layout } from '../types';
 import { CheckCircle, AlertTriangle, Compass, Maximize, ArrowRight } from 'lucide-react';

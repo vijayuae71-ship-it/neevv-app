@@ -1,3 +1,5 @@
+'use client';
+
 import React from 'react';
 import { BRAND_LOGO_BASE64 } from '../utils/brand';
 

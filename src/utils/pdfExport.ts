@@ -86,16 +86,15 @@ export async function exportToPDF(
   }
 
   if (mode === 'working-drawings' || mode === 'full-package') {
-    const numFloors = requirements.floors.length;
     const drawingGenerators: { key: string; label: string; fn: () => string }[] = [
-      { key: 'excavation', label: 'excavation drawing', fn: () => renderExcavation(layout, numFloors) },
-      { key: 'rcc-slab', label: 'RCC slab drawing', fn: () => renderRCCDetail(layout, numFloors) },
-      { key: 'rebar-details', label: 'reinforcement details', fn: () => renderReinforcement(layout, numFloors) },
-      { key: 'bbs', label: 'bar bending schedule', fn: () => renderBarBending(layout, numFloors) },
-      { key: 'brickwork', label: 'brickwork layout', fn: () => renderBrickwork(layout, numFloors) },
-      { key: 'tiling', label: 'tiling layout', fn: () => renderTiling(layout, numFloors) },
-      { key: 'electrical', label: 'electrical layout', fn: () => renderElectrical(layout, numFloors) },
-      { key: 'plumbing', label: 'plumbing layout', fn: () => renderPlumbing(layout, numFloors) },
+      { key: 'excavation', label: 'excavation drawing', fn: () => renderExcavation(layout, requirements) },
+      { key: 'rcc-slab', label: 'RCC slab drawing', fn: () => renderRCCDetail(layout, requirements) },
+      { key: 'rebar-details', label: 'reinforcement details', fn: () => renderReinforcement(layout, requirements) },
+      { key: 'bbs', label: 'bar bending schedule', fn: () => renderBarBending(layout, requirements) },
+      { key: 'brickwork', label: 'brickwork layout', fn: () => renderBrickwork(layout, requirements) },
+      { key: 'tiling', label: 'tiling layout', fn: () => renderTiling(layout, requirements) },
+      { key: 'electrical', label: 'electrical layout', fn: () => renderElectrical(layout, requirements) },
+      { key: 'plumbing', label: 'plumbing layout', fn: () => renderPlumbing(layout, requirements) },
     ];
 
     for (const { key, label, fn } of drawingGenerators) {

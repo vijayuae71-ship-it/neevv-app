@@ -11,33 +11,7 @@
   --neevv-purple: #6C5CE7;
 }
 
-@layer base {
-  body {
-    @apply antialiased text-gray-900 bg-white;
-    font-family: 'Inter', system-ui, -apple-system, sans-serif;
-  }
-}
-
 @layer components {
-  .btn-primary {
-    @apply bg-neevv-accent text-white px-6 py-3 rounded-lg font-semibold 
-           hover:bg-orange-600 transition-all duration-200 shadow-md hover:shadow-lg
-           active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed;
-  }
-
-  .btn-secondary {
-    @apply border-2 border-neevv-primary text-neevv-primary px-6 py-3 rounded-lg 
-           font-semibold hover:bg-neevv-primary hover:text-white transition-all duration-200;
-  }
-
-  .neevv-card {
-    @apply bg-white rounded-xl shadow-lg border border-gray-100 p-6;
-  }
-
-  .neevv-card-dark {
-    @apply bg-gray-900 rounded-xl shadow-lg border border-gray-800 p-6 text-white;
-  }
-
   .input-field {
     @apply w-full px-4 py-3 rounded-lg border border-gray-300 focus:border-neevv-accent 
            focus:ring-2 focus:ring-neevv-accent/20 outline-none transition-all duration-200;
@@ -45,18 +19,6 @@
 
   .section-title {
     @apply text-2xl font-bold text-neevv-primary mb-2;
-  }
-
-  .step-active {
-    @apply bg-neevv-accent text-white;
-  }
-
-  .step-completed {
-    @apply bg-neevv-green text-white;
-  }
-
-  .step-inactive {
-    @apply bg-gray-200 text-gray-500;
   }
 }
 

@@ -11,7 +11,6 @@ export const C = {
   elecRed: '#CC3333', elecBlue: '#3366CC', elecGreen: '#33AA33',
   tile: '#D4C4B0', tileGreen: '#88AA88', tileBlue: '#8899BB',
   brick: '#C47040', mortar: '#BBAA88',
-  plot: '#666666', setback: '#009900', accent: '#E74C3C',
 };
 
 export const MARGIN = 90;
@@ -22,18 +21,9 @@ export const txFn = (m: number) => MARGIN + m * SC;
 export const tyFn = (baseY: number, m: number) => baseY - m * SC;
 
 /* ── Dimension chain with 45° ticks ── */
-export function dimChain(x1: number, y1: number, x2: number, y2: number, label: string, offsetOrDir: number | string, horizontal?: boolean): string {
-  let offset: number;
-  let horiz: boolean;
-  if (typeof offsetOrDir === 'string') {
-    horiz = offsetOrDir === 'h';
-    offset = horiz ? 30 : -30;
-  } else {
-    offset = offsetOrDir;
-    horiz = horizontal ?? true;
-  }
+export function dimChain(x1: number, y1: number, x2: number, y2: number, label: string, offset: number, horizontal: boolean): string {
   const p: string[] = [];
-  if (horiz) {
+  if (horizontal) {
     const dy = offset;
     p.push(`<line x1="${x1}" y1="${y1}" x2="${x1}" y2="${y1 + dy}" stroke="${C.dim}" stroke-width="0.3"/>`);
     p.push(`<line x1="${x2}" y1="${y1}" x2="${x2}" y2="${y1 + dy}" stroke="${C.dim}" stroke-width="0.3"/>`);
@@ -42,7 +32,7 @@ export function dimChain(x1: number, y1: number, x2: number, y2: number, label: 
     p.push(`<line x1="${x1 - 2}" y1="${ly + 2}" x2="${x1 + 2}" y2="${ly - 2}" stroke="${C.dim}" stroke-width="0.8"/>`);
     p.push(`<line x1="${x2 - 2}" y1="${ly + 2}" x2="${x2 + 2}" y2="${ly - 2}" stroke="${C.dim}" stroke-width="0.8"/>`);
     p.push(`<text x="${(x1 + x2) / 2}" y="${ly - 3}" text-anchor="middle" font-size="6" font-family="'Courier New',monospace" fill="${C.dim}">${label}</text>`);
-  } else { // vertical
+  } else {
     const dx = offset;
     p.push(`<line x1="${x1}" y1="${y1}" x2="${x1 + dx}" y2="${y1}" stroke="${C.dim}" stroke-width="0.3"/>`);
     p.push(`<line x1="${x1}" y1="${y2}" x2="${x1 + dx}" y2="${y2}" stroke="${C.dim}" stroke-width="0.3"/>`);
@@ -137,70 +127,31 @@ export function legend(svgW: number, svgH: number, text: string): string {
 }
 
 /* ── Grid labels (circles with A/B/C and 1/2/3) ── */
-export function gridLabels(
-  xsOrTx: number[] | ((m: number) => number),
-  ysOrTy: number[] | ((m: number) => number),
-  plotWOrBx0: number,
-  plotDOrBy0: number,
-  bw?: number,
-  bd?: number,
-  rooms?: unknown[]
-): string {
+export function gridLabels(xs: number[], ys: number[], plotW: number, plotD: number): string {
   const p: string[] = [];
-  
-  if (typeof xsOrTx === 'function') {
-    // Called from drawing modules: gridLabels(tx, ty, bx0, by0, bw, bd, rooms)
-    const txFn = xsOrTx;
-    const tyFn = ysOrTy as (m: number) => number;
-    const buildW = bw ?? 10;
-    const buildD = bd ?? 8;
-    // Generate grid lines at building corners
-    const xs = [0, buildW];
-    const ys = [0, buildD];
-    xs.forEach((xv, i) => {
-      const px = txFn(plotWOrBx0 + xv);
-      const topY = tyFn(plotDOrBy0) - 15;
-      const botY = tyFn(plotDOrBy0 + buildD) + 5;
-      p.push(`<line x1="${px}" y1="${topY}" x2="${px}" y2="${botY}" stroke="${C.grid}" stroke-width="0.2" stroke-dasharray="6,4"/>`);
-      p.push(`<circle cx="${px}" cy="${topY - 10}" r="9" fill="#FFF" stroke="${C.grid}" stroke-width="0.6"/>`);
-      p.push(`<text x="${px}" y="${topY - 7}" text-anchor="middle" font-size="7" font-family="'Courier New',monospace" fill="${C.grid}" font-weight="700">${String.fromCharCode(65 + i)}</text>`);
-      p.push(`<circle cx="${px}" cy="${botY + 10}" r="9" fill="#FFF" stroke="${C.grid}" stroke-width="0.6"/>`);
-      p.push(`<text x="${px}" y="${botY + 13}" text-anchor="middle" font-size="7" font-family="'Courier New',monospace" fill="${C.grid}" font-weight="700">${String.fromCharCode(65 + i)}</text>`);
-    });
-    ys.forEach((yv, i) => {
-      const py = tyFn(plotDOrBy0 + yv);
-      const leftX = txFn(plotWOrBx0) - 15;
-      const rightX = txFn(plotWOrBx0 + buildW) + 5;
-      p.push(`<line x1="${leftX}" y1="${py}" x2="${rightX}" y2="${py}" stroke="${C.grid}" stroke-width="0.2" stroke-dasharray="6,4"/>`);
-      p.push(`<circle cx="${leftX - 10}" cy="${py}" r="9" fill="#FFF" stroke="${C.grid}" stroke-width="0.6"/>`);
-      p.push(`<text x="${leftX - 10}" y="${py + 3}" text-anchor="middle" font-size="7" font-family="'Courier New',monospace" fill="${C.grid}" font-weight="700">${i + 1}</text>`);
-      p.push(`<circle cx="${rightX + 10}" cy="${py}" r="9" fill="#FFF" stroke="${C.grid}" stroke-width="0.6"/>`);
-      p.push(`<text x="${rightX + 10}" y="${py + 3}" text-anchor="middle" font-size="7" font-family="'Courier New',monospace" fill="${C.grid}" font-weight="700">${i + 1}</text>`);
-    });
-  } else {
-    // Original pattern: gridLabels(xs[], ys[], plotW, plotD)
-    const xs = xsOrTx;
-    const ys = ysOrTy as number[];
-    const plotW = plotWOrBx0;
-    const plotD = plotDOrBy0;
-    const tx = (m: number) => MARGIN + m * SC;
-    const ty = (m: number) => MARGIN + m * SC;
-    xs.forEach((xv, i) => {
-      p.push(`<line x1="${tx(xv)}" y1="${ty(0) - 15}" x2="${tx(xv)}" y2="${ty(plotD) + 5}" stroke="${C.grid}" stroke-width="0.2" stroke-dasharray="6,4"/>`);
-      p.push(`<circle cx="${tx(xv)}" cy="${ty(0) - 25}" r="9" fill="#FFF" stroke="${C.grid}" stroke-width="0.6"/>`);
-      p.push(`<text x="${tx(xv)}" y="${ty(0) - 22}" text-anchor="middle" font-size="7" font-family="'Courier New',monospace" fill="${C.grid}" font-weight="700">${String.fromCharCode(65 + i)}</text>`);
-      p.push(`<circle cx="${tx(xv)}" cy="${ty(plotD) + 15}" r="9" fill="#FFF" stroke="${C.grid}" stroke-width="0.6"/>`);
-      p.push(`<text x="${tx(xv)}" y="${ty(plotD) + 18}" text-anchor="middle" font-size="7" font-family="'Courier New',monospace" fill="${C.grid}" font-weight="700">${String.fromCharCode(65 + i)}</text>`);
-    });
-    ys.forEach((yv, i) => {
-      p.push(`<line x1="${tx(0) - 15}" y1="${ty(yv)}" x2="${tx(plotW) + 5}" y2="${ty(yv)}" stroke="${C.grid}" stroke-width="0.2" stroke-dasharray="6,4"/>`);
-      p.push(`<circle cx="${tx(0) - 25}" cy="${ty(yv)}" r="9" fill="#FFF" stroke="${C.grid}" stroke-width="0.6"/>`);
-      p.push(`<text x="${tx(0) - 25}" y="${ty(yv) + 3}" text-anchor="middle" font-size="7" font-family="'Courier New',monospace" fill="${C.grid}" font-weight="700">${i + 1}</text>`);
-      p.push(`<circle cx="${tx(plotW) + 15}" cy="${ty(yv)}" r="9" fill="#FFF" stroke="${C.grid}" stroke-width="0.6"/>`);
-      p.push(`<text x="${tx(plotW) + 15}" y="${ty(yv) + 3}" text-anchor="middle" font-size="7" font-family="'Courier New',monospace" fill="${C.grid}" font-weight="700">${i + 1}</text>`);
-    });
-  }
-  
+  const tx = (m: number) => MARGIN + m * SC;
+  const ty = (m: number) => MARGIN + m * SC;
+
+  xs.forEach((xv, i) => {
+    p.push(`<line x1="${tx(xv)}" y1="${ty(0) - 15}" x2="${tx(xv)}" y2="${ty(plotD) + 5}" stroke="${C.grid}" stroke-width="0.2" stroke-dasharray="6,4"/>`);
+    // Top circle
+    p.push(`<circle cx="${tx(xv)}" cy="${ty(0) - 25}" r="9" fill="#FFF" stroke="${C.grid}" stroke-width="0.6"/>`);
+    p.push(`<text x="${tx(xv)}" y="${ty(0) - 22}" text-anchor="middle" font-size="7" font-family="'Courier New',monospace" fill="${C.grid}" font-weight="700">${String.fromCharCode(65 + i)}</text>`);
+    // Bottom circle
+    p.push(`<circle cx="${tx(xv)}" cy="${ty(plotD) + 15}" r="9" fill="#FFF" stroke="${C.grid}" stroke-width="0.6"/>`);
+    p.push(`<text x="${tx(xv)}" y="${ty(plotD) + 18}" text-anchor="middle" font-size="7" font-family="'Courier New',monospace" fill="${C.grid}" font-weight="700">${String.fromCharCode(65 + i)}</text>`);
+  });
+
+  ys.forEach((yv, i) => {
+    p.push(`<line x1="${tx(0) - 15}" y1="${ty(yv)}" x2="${tx(plotW) + 5}" y2="${ty(yv)}" stroke="${C.grid}" stroke-width="0.2" stroke-dasharray="6,4"/>`);
+    // Left circle
+    p.push(`<circle cx="${tx(0) - 25}" cy="${ty(yv)}" r="9" fill="#FFF" stroke="${C.grid}" stroke-width="0.6"/>`);
+    p.push(`<text x="${tx(0) - 25}" y="${ty(yv) + 3}" text-anchor="middle" font-size="7" font-family="'Courier New',monospace" fill="${C.grid}" font-weight="700">${i + 1}</text>`);
+    // Right circle
+    p.push(`<circle cx="${tx(plotW) + 15}" cy="${ty(yv)}" r="9" fill="#FFF" stroke="${C.grid}" stroke-width="0.6"/>`);
+    p.push(`<text x="${tx(plotW) + 15}" y="${ty(yv) + 3}" text-anchor="middle" font-size="7" font-family="'Courier New',monospace" fill="${C.grid}" font-weight="700">${i + 1}</text>`);
+  });
+
   return p.join('');
 }
 

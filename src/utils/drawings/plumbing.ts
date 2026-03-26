@@ -1,213 +1,295 @@
-import { Layout } from '../../types';
-import { C, MARGIN, SC, drawingBorder, northArrow, legend, gridLabels } from '../drawingHelpers';
+import { C, MARGIN, SC, dimChain, drawingBorder, northArrow, legend, drawTable } from '../drawingHelpers';
+import { Layout, Room, ProjectRequirements } from '../../types';
 
-function symbolWC(x: number, y: number): string {
-  return `<g>
-    <ellipse cx="${x}" cy="${y + 3}" rx="5" ry="7" fill="white" stroke="#2980b9" stroke-width="1"/>
-    <rect x="${x - 5}" y="${y - 8}" width="10" height="8" rx="2" fill="white" stroke="#2980b9" stroke-width="1"/>
-    <text x="${x}" y="${y - 2}" text-anchor="middle" font-size="5" fill="#2980b9">WC</text>
-  </g>`;
+function drawWC(px: number, py: number): string {
+  let s = '';
+  s += `<rect x="${px - 8}" y="${py - 5}" width="16" height="12" rx="2" fill="#FFF" stroke="${C.drain}" stroke-width="1.2"/>`;
+  s += `<circle cx="${px}" cy="${py + 1}" r="4" fill="none" stroke="${C.drain}" stroke-width="1"/>`;
+  s += `<text x="${px}" y="${py + 18}" text-anchor="middle" font-size="5" fill="${C.text}">WC</text>`;
+  return s;
 }
 
-function symbolWashBasin(x: number, y: number): string {
-  return `<g>
-    <ellipse cx="${x}" cy="${y}" rx="6" ry="4" fill="white" stroke="#2980b9" stroke-width="1"/>
-    <circle cx="${x}" cy="${y}" r="1.5" fill="#2980b9"/>
-    <text x="${x}" y="${y + 10}" text-anchor="middle" font-size="5" fill="#2980b9">WB</text>
-  </g>`;
+function drawBasin(px: number, py: number): string {
+  let s = '';
+  s += `<path d="M${px - 7},${py} A7,7 0 0,1 ${px + 7},${py}" fill="none" stroke="${C.drain}" stroke-width="1.2"/>`;
+  s += `<line x1="${px - 7}" y1="${py}" x2="${px + 7}" y2="${py}" stroke="${C.drain}" stroke-width="1"/>`;
+  s += `<text x="${px}" y="${py + 12}" text-anchor="middle" font-size="5" fill="${C.text}">WB</text>`;
+  return s;
 }
 
-function symbolSink(x: number, y: number): string {
-  return `<g>
-    <rect x="${x - 7}" y="${y - 4}" width="14" height="8" rx="1" fill="white" stroke="#2980b9" stroke-width="1"/>
-    <circle cx="${x - 2}" cy="${y}" r="1.5" fill="#2980b9"/>
-    <circle cx="${x + 3}" cy="${y}" r="1.5" fill="#2980b9"/>
-    <text x="${x}" y="${y + 12}" text-anchor="middle" font-size="5" fill="#2980b9">SINK</text>
-  </g>`;
+function drawShower(px: number, py: number): string {
+  let s = '';
+  s += `<circle cx="${px}" cy="${py}" r="6" fill="none" stroke="${C.water}" stroke-width="1.2"/>`;
+  s += `<line x1="${px - 4}" y1="${py - 4}" x2="${px + 4}" y2="${py + 4}" stroke="${C.water}" stroke-width="0.8"/>`;
+  s += `<line x1="${px + 4}" y1="${py - 4}" x2="${px - 4}" y2="${py + 4}" stroke="${C.water}" stroke-width="0.8"/>`;
+  s += `<text x="${px}" y="${py + 14}" text-anchor="middle" font-size="5" fill="${C.text}">FT</text>`;
+  return s;
 }
 
-function symbolFloorTrap(x: number, y: number): string {
-  return `<g>
-    <circle cx="${x}" cy="${y}" r="4" fill="white" stroke="#8e6f3e" stroke-width="1"/>
-    <line x1="${x - 2.5}" y1="${y - 2.5}" x2="${x + 2.5}" y2="${y + 2.5}" stroke="#8e6f3e" stroke-width="0.6"/>
-    <line x1="${x + 2.5}" y1="${y - 2.5}" x2="${x - 2.5}" y2="${y + 2.5}" stroke="#8e6f3e" stroke-width="0.6"/>
-    <text x="${x}" y="${y + 9}" text-anchor="middle" font-size="4" fill="#8e6f3e">FT</text>
-  </g>`;
+function drawSink(px: number, py: number): string {
+  let s = '';
+  s += `<rect x="${px - 10}" y="${py - 5}" width="20" height="10" rx="2" fill="#FFF" stroke="${C.drain}" stroke-width="1.2"/>`;
+  s += `<circle cx="${px}" cy="${py}" r="2" fill="${C.drain}"/>`;
+  s += `<text x="${px}" y="${py + 16}" text-anchor="middle" font-size="5" fill="${C.text}">SINK</text>`;
+  return s;
 }
 
-function slopeArrow(x1: number, y1: number, x2: number, y2: number): string {
-  return `<g>
-    <line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#8e6f3e" stroke-width="1" marker-end="url(#slopeArr)"/>
-    <text x="${(x1 + x2) / 2}" y="${(y1 + y2) / 2 - 4}" text-anchor="middle" font-size="5" fill="#8e6f3e">1:60</text>
-  </g>`;
+function drawFloorDrain(px: number, py: number): string {
+  let s = '';
+  s += `<circle cx="${px}" cy="${py}" r="4" fill="none" stroke="${C.drain}" stroke-width="1"/>`;
+  s += `<circle cx="${px}" cy="${py}" r="1.5" fill="${C.drain}"/>`;
+  s += `<text x="${px}" y="${py + 12}" text-anchor="middle" font-size="4" fill="${C.text}">FD</text>`;
+  return s;
 }
 
-export function renderPlumbing(layout: Layout, numFloors: number): string {
-  const floor = layout.floors[0];
+function drawManhole(px: number, py: number, label: string): string {
+  let s = '';
+  s += `<rect x="${px - 6}" y="${py - 6}" width="12" height="12" fill="${C.drain}" stroke="#553322" stroke-width="1.5" opacity="0.7"/>`;
+  s += `<line x1="${px - 6}" y1="${py - 6}" x2="${px + 6}" y2="${py + 6}" stroke="#553322" stroke-width="0.6"/>`;
+  s += `<line x1="${px + 6}" y1="${py - 6}" x2="${px - 6}" y2="${py + 6}" stroke="#553322" stroke-width="0.6"/>`;
+  s += `<text x="${px}" y="${py + 18}" text-anchor="middle" font-size="5" fill="${C.text}" font-weight="bold">${label}</text>`;
+  return s;
+}
+
+export function renderPlumbing(layout: Layout, requirements: ProjectRequirements): string {
   const plotW = layout.plotWidthM;
   const plotD = layout.plotDepthM;
-  const sb = layout.setbacks;
-  const bx0 = sb.left;
-  const by0 = sb.front;
-  const bw = plotW - sb.left - sb.right;
-  const bd = plotD - sb.front - sb.rear;
-  const svgW = Math.max(700, MARGIN * 2 + plotW * SC + 120);
-  const svgH = Math.max(500, MARGIN * 2 + plotD * SC + 80);
-  const tx = (m: number) => MARGIN + m * SC;
-  const ty = (m: number) => MARGIN + m * SC;
-  const p: string[] = [];
+  const svgW = Math.round((plotW + 6) * SC);
+  const svgH = Math.round((plotD + 7) * SC);
+  const ox = MARGIN + 2 * SC;
+  const oy = MARGIN + 1.5 * SC;
 
-  p.push(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${svgW} ${svgH}" width="${svgW}" height="${svgH}">`);
-  p.push(drawingBorder(svgW, svgH, 'PLUMBING LAYOUT', `Ground Floor | ${numFloors}-Storey Residential`));
-  p.push(northArrow(svgW - 40, 70));
+  const rooms = layout.floors[0]?.rooms || [];
 
-  // Defs
-  p.push(`<defs>`);
-  p.push(`<marker id="slopeArr" markerWidth="6" markerHeight="4" refX="6" refY="2" orient="auto"><path d="M0,0 L6,2 L0,4Z" fill="#8e6f3e"/></marker>`);
-  p.push(`</defs>`);
+  let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${svgW} ${svgH}" width="100%" preserveAspectRatio="xMidYMin meet" font-family="'Courier New',monospace">`;
+  svg += `<rect width="${svgW}" height="${svgH}" fill="${C.bg}"/>`;
+  svg += drawingBorder(svgW, svgH, 'PLUMBING LAYOUT', `Plot: ${plotW}m × ${plotD}m | Water Supply &amp; Drainage`);
+  svg += northArrow(svgW - MARGIN - 30, MARGIN + 40);
 
-  // Plot and building outlines
-  p.push(`<rect x="${tx(0)}" y="${ty(0)}" width="${plotW * SC}" height="${plotD * SC}" fill="none" stroke="${C.plot}" stroke-width="1" stroke-dasharray="10,5"/>`);
-  p.push(`<rect x="${tx(bx0)}" y="${ty(by0)}" width="${bw * SC}" height="${bd * SC}" fill="#fafafa" stroke="${C.wall}" stroke-width="2"/>`);
+  // Plot outline
+  const pw = plotW * SC;
+  const pd = plotD * SC;
+  svg += `<rect x="${ox}" y="${oy}" width="${pw}" height="${pd}" fill="none" stroke="${C.grid}" stroke-width="0.5" stroke-dasharray="6,3"/>`;
 
-  // Room outlines and plumbing fixtures
-  const wetRooms: Array<{ x: number; y: number; w: number; d: number; type: string; name: string }> = [];
+  // Building footprint
+  const bx = ox + layout.setbacks.left * SC;
+  const by = oy + layout.setbacks.front * SC;
+  const bw = layout.buildableWidthM * SC;
+  const bd = layout.buildableDepthM * SC;
+  svg += `<rect x="${bx}" y="${by}" width="${bw}" height="${bd}" fill="#FAFAFA" stroke="${C.wall}" stroke-width="1"/>`;
 
-  floor.rooms.forEach((r) => {
-    const rx = bx0 + r.x;
-    const ry = by0 + r.y;
-    const rw = r.width;
-    const rd = r.depth;
+  // Room outlines and fixtures
+  const toilets: Room[] = [];
+  const kitchens: Room[] = [];
 
-    // Room outline
-    const isWet = r.type === 'toilet' || r.type === 'bathroom' || r.type === 'kitchen';
-    p.push(`<rect x="${tx(rx)}" y="${ty(ry)}" width="${rw * SC}" height="${rd * SC}" fill="${isWet ? '#e8f4fd' : 'none'}" stroke="${C.dim}" stroke-width="0.8"/>`);
+  for (const room of rooms) {
+    const rx = ox + room.x * SC;
+    const ry = oy + room.y * SC;
+    const rw = room.width * SC;
+    const rd = room.depth * SC;
+    svg += `<rect x="${rx}" y="${ry}" width="${rw}" height="${rd}" fill="none" stroke="${C.wall}" stroke-width="0.8"/>`;
+    svg += `<text x="${rx + rw / 2}" y="${ry + 12}" text-anchor="middle" font-size="7" fill="${C.text}" opacity="0.5">${room.name}</text>`;
 
-    // Room label
-    p.push(`<text x="${tx(rx + rw / 2)}" y="${ty(ry) + 12}" text-anchor="middle" font-size="7" fill="${C.dim}" font-style="italic">${r.name}</text>`);
-
-    if (isWet) {
-      wetRooms.push({ x: rx, y: ry, w: rw, d: rd, type: r.type, name: r.name });
+    if (room.type === 'toilet') {
+      toilets.push(room);
+      // WC in top-left area
+      svg += drawWC(rx + 18, ry + rd - 22);
+      // Wash basin top-right
+      svg += drawBasin(rx + rw - 18, ry + 22);
+      // Shower/floor trap center
+      svg += drawShower(rx + rw / 2, ry + rd / 2);
+      // Floor drain
+      svg += drawFloorDrain(rx + rw / 2 + 15, ry + rd - 15);
+    } else if (room.type === 'kitchen') {
+      kitchens.push(room);
+      // Sink along top wall
+      svg += drawSink(rx + rw / 2, ry + 18);
+      // Dishwasher point
+      svg += `<rect x="${rx + rw / 2 + 18}" y="${ry + 12}" width="12" height="12" fill="none" stroke="${C.water}" stroke-width="0.8" stroke-dasharray="2,1"/>`;
+      svg += `<text x="${rx + rw / 2 + 24}" y="${ry + 32}" text-anchor="middle" font-size="4" fill="${C.text}">DW</text>`;
+    } else if (room.type === 'utility') {
+      // Washing machine point
+      svg += `<rect x="${rx + rw / 2 - 8}" y="${ry + rd / 2 - 8}" width="16" height="16" rx="3" fill="none" stroke="${C.water}" stroke-width="1.2"/>`;
+      svg += `<text x="${rx + rw / 2}" y="${ry + rd / 2 + 3}" text-anchor="middle" font-size="6" fill="${C.water}" font-weight="bold">WM</text>`;
     }
-
-    // Plumbing fixtures based on room type
-    if (r.type === 'toilet' || r.type === 'bathroom') {
-      // WC
-      p.push(symbolWC(tx(rx + rw - 0.4), ty(ry + 0.4)));
-      // Wash basin
-      p.push(symbolWashBasin(tx(rx + 0.4), ty(ry + 0.4)));
-      // Floor trap
-      p.push(symbolFloorTrap(tx(rx + rw / 2), ty(ry + rd - 0.4)));
-      // Slope arrow to floor trap
-      p.push(slopeArrow(tx(rx + 0.3), ty(ry + rd / 2), tx(rx + rw / 2) - 6, ty(ry + rd - 0.4)));
-
-      // Water supply line (blue)
-      p.push(`<line x1="${tx(rx)}" y1="${ty(ry + 0.3)}" x2="${tx(rx + rw - 0.2)}" y2="${ty(ry + 0.3)}" stroke="#2980b9" stroke-width="1.5"/>`);
-      p.push(`<text x="${tx(rx + rw / 2)}" y="${ty(ry + 0.3) - 4}" text-anchor="middle" font-size="4.5" fill="#2980b9">CW 15mm CPVC</text>`);
-
-      // Hot water line (red) - for bathroom
-      if (r.type === 'bathroom') {
-        p.push(`<line x1="${tx(rx)}" y1="${ty(ry + 0.5)}" x2="${tx(rx + 0.6)}" y2="${ty(ry + 0.5)}" stroke="#e74c3c" stroke-width="1.2" stroke-dasharray="4,2"/>`);
-        p.push(`<text x="${tx(rx + 0.3)}" y="${ty(ry + 0.5) + 8}" text-anchor="middle" font-size="4.5" fill="#e74c3c">HW 15mm</text>`);
-      }
-
-      // Drain line (brown)
-      p.push(`<line x1="${tx(rx + rw / 2)}" y1="${ty(ry + rd - 0.3)}" x2="${tx(rx + rw)}" y2="${ty(ry + rd - 0.3)}" stroke="#8e6f3e" stroke-width="2" stroke-dasharray="6,2"/>`);
-      p.push(`<text x="${tx(rx + rw - 0.3)}" y="${ty(ry + rd - 0.3) - 4}" text-anchor="middle" font-size="4.5" fill="#8e6f3e">75mm PVC</text>`);
-
-      // Soil pipe from WC
-      p.push(`<line x1="${tx(rx + rw - 0.4)}" y1="${ty(ry + 0.7)}" x2="${tx(rx + rw)}" y2="${ty(ry + 0.7)}" stroke="#5d4037" stroke-width="2.5"/>`);
-      p.push(`<text x="${tx(rx + rw) + 3}" y="${ty(ry + 0.7) + 3}" font-size="4.5" fill="#5d4037">110mm</text>`);
-    }
-
-    if (r.type === 'kitchen') {
-      // Kitchen sink
-      p.push(symbolSink(tx(rx + rw - 0.5), ty(ry + 0.5)));
-      // Floor trap
-      p.push(symbolFloorTrap(tx(rx + rw / 2), ty(ry + rd - 0.3)));
-
-      // Water supply
-      p.push(`<line x1="${tx(rx)}" y1="${ty(ry + 0.4)}" x2="${tx(rx + rw - 0.3)}" y2="${ty(ry + 0.4)}" stroke="#2980b9" stroke-width="1.5"/>`);
-      p.push(`<text x="${tx(rx + rw / 2)}" y="${ty(ry + 0.4) - 4}" text-anchor="middle" font-size="4.5" fill="#2980b9">CW 15mm CPVC</text>`);
-
-      // Hot water line
-      p.push(`<line x1="${tx(rx)}" y1="${ty(ry + 0.6)}" x2="${tx(rx + rw - 0.3)}" y2="${ty(ry + 0.6)}" stroke="#e74c3c" stroke-width="1.2" stroke-dasharray="4,2"/>`);
-      p.push(`<text x="${tx(rx + rw / 2)}" y="${ty(ry + 0.6) + 8}" text-anchor="middle" font-size="4.5" fill="#e74c3c">HW 15mm CPVC</text>`);
-
-      // Drain
-      p.push(`<line x1="${tx(rx + rw - 0.5)}" y1="${ty(ry + 0.8)}" x2="${tx(rx + rw)}" y2="${ty(ry + 0.8)}" stroke="#8e6f3e" stroke-width="1.5" stroke-dasharray="6,2"/>`);
-      p.push(`<text x="${tx(rx + rw) + 3}" y="${ty(ry + 0.8) + 3}" font-size="4.5" fill="#8e6f3e">50mm</text>`);
-
-      // Slope arrow
-      p.push(slopeArrow(tx(rx + rw - 0.8), ty(ry + rd / 2), tx(rx + rw / 2) + 5, ty(ry + rd - 0.3)));
-    }
-  });
-
-  // Main water supply riser (blue, thick)
-  const riserX = tx(bx0 - 0.3);
-  p.push(`<line x1="${riserX}" y1="${ty(by0)}" x2="${riserX}" y2="${ty(by0 + bd)}" stroke="#2980b9" stroke-width="2.5"/>`);
-  p.push(`<text x="${riserX - 3}" y="${ty(by0 + bd / 2)}" text-anchor="end" font-size="6" fill="#2980b9" transform="rotate(-90,${riserX - 3},${ty(by0 + bd / 2)})">MAIN SUPPLY RISER 25mm</text>`);
-
-  // Main drain line (brown, thick)
-  const drainY = ty(by0 + bd + 0.3);
-  p.push(`<line x1="${tx(bx0)}" y1="${drainY}" x2="${tx(bx0 + bw)}" y2="${drainY}" stroke="#8e6f3e" stroke-width="3"/>`);
-  p.push(`<text x="${tx(bx0 + bw / 2)}" y="${drainY + 12}" text-anchor="middle" font-size="6" fill="#8e6f3e">MAIN DRAIN 110mm PVC → MUNICIPAL SEWER</text>`);
-  // Slope arrow on drain
-  p.push(slopeArrow(tx(bx0 + bw / 2), drainY - 6, tx(bx0 + bw) - 10, drainY - 6));
-
-  // Overhead tank position (top-right)
-  const ohtX = tx(bx0 + bw) + 15;
-  const ohtY = ty(by0) - 10;
-  p.push(`<rect x="${ohtX}" y="${ohtY}" width="30" height="20" rx="3" fill="#d4e6f1" stroke="#2980b9" stroke-width="1.5"/>`);
-  p.push(`<text x="${ohtX + 15}" y="${ohtY + 13}" text-anchor="middle" font-size="5.5" font-weight="bold" fill="#2980b9">OHT</text>`);
-  p.push(`<text x="${ohtX + 15}" y="${ohtY + 28}" text-anchor="middle" font-size="5" fill="#2980b9">1000L</text>`);
-
-  // Underground sump position (bottom-left)
-  const sumpX = tx(bx0) - 35;
-  const sumpY = ty(by0 + bd) - 20;
-  p.push(`<rect x="${sumpX}" y="${sumpY}" width="30" height="20" rx="3" fill="#fadbd8" stroke="#e74c3c" stroke-width="1.5"/>`);
-  p.push(`<text x="${sumpX + 15}" y="${sumpY + 13}" text-anchor="middle" font-size="5.5" font-weight="bold" fill="#e74c3c">SUMP</text>`);
-  p.push(`<text x="${sumpX + 15}" y="${sumpY + 28}" text-anchor="middle" font-size="5" fill="#e74c3c">2000L</text>`);
-
-  // Geyser position (in/near bathroom)
-  const bathRoom = floor.rooms.find((r) => r.type === 'bathroom' || r.type === 'toilet');
-  if (bathRoom) {
-    const gx = tx(bx0 + bathRoom.x + bathRoom.width - 0.3);
-    const gy = ty(by0 + bathRoom.y + bathRoom.depth - 0.3);
-    p.push(`<rect x="${gx - 6}" y="${gy - 6}" width="12" height="12" rx="2" fill="#fdebd0" stroke="#e67e22" stroke-width="1"/>`);
-    p.push(`<text x="${gx}" y="${gy + 3}" text-anchor="middle" font-size="5" font-weight="bold" fill="#e67e22">G</text>`);
-    p.push(`<text x="${gx}" y="${gy + 14}" text-anchor="middle" font-size="4.5" fill="#e67e22">GEYSER</text>`);
   }
 
-  p.push(gridLabels(tx, ty, bx0, by0, bw, bd, floor.rooms));
+  // Main water inlet from front (road side = bottom)
+  const inletX = ox + (plotW * 0.3) * SC;
+  const inletY = oy + pd;
+  svg += `<line x1="${inletX}" y1="${inletY + 15}" x2="${inletX}" y2="${inletY}" stroke="${C.water}" stroke-width="2.5"/>`;
+  svg += `<text x="${inletX + 5}" y="${inletY + 20}" font-size="6" fill="${C.water}" font-weight="bold">WATER MAIN INLET 25Ø</text>`;
+  svg += `<polygon points="${inletX},${inletY} ${inletX - 4},${inletY + 6} ${inletX + 4},${inletY + 6}" fill="${C.water}"/>`;
 
-  // Color legend
-  const legX = tx(0) + 10;
-  const legY = ty(plotD) + 35;
-  p.push(`<text x="${legX}" y="${legY}" font-size="9" font-weight="bold" fill="${C.text}">PIPE LEGEND:</text>`);
-  const pipes = [
-    { color: '#2980b9', dash: '', label: 'Cold Water Supply (CPVC)', size: '15-25mm' },
-    { color: '#e74c3c', dash: '4,2', label: 'Hot Water Supply (CPVC)', size: '15mm' },
-    { color: '#8e6f3e', dash: '6,2', label: 'Waste/Drain Line (PVC)', size: '50-75mm' },
-    { color: '#5d4037', dash: '', label: 'Soil Pipe (PVC)', size: '110mm' },
+  // Underground sump near front
+  const sumpX = ox + (plotW * 0.15) * SC;
+  const sumpY = oy + pd - 30;
+  svg += `<rect x="${sumpX}" y="${sumpY}" width="36" height="24" fill="#D8EEFF" stroke="${C.water}" stroke-width="1.5"/>`;
+  svg += `<text x="${sumpX + 18}" y="${sumpY + 10}" text-anchor="middle" font-size="6" fill="${C.water}" font-weight="bold">SUMP</text>`;
+  svg += `<text x="${sumpX + 18}" y="${sumpY + 18}" text-anchor="middle" font-size="5" fill="${C.water}">2000L</text>`;
+
+  // Overhead tank at top
+  const ohtX = ox + (plotW * 0.7) * SC;
+  const ohtY = oy + 8;
+  svg += `<rect x="${ohtX}" y="${ohtY}" width="36" height="20" fill="#D8EEFF" stroke="${C.water}" stroke-width="1.5"/>`;
+  svg += `<text x="${ohtX + 18}" y="${ohtY + 10}" text-anchor="middle" font-size="6" fill="${C.water}" font-weight="bold">OHT</text>`;
+  svg += `<text x="${ohtX + 18}" y="${ohtY + 17}" text-anchor="middle" font-size="5" fill="${C.water}">1000L</text>`;
+
+  // Rising main from sump to OHT
+  svg += `<line x1="${sumpX + 18}" y1="${sumpY}" x2="${sumpX + 18}" y2="${oy + pd / 2}" stroke="${C.water}" stroke-width="2"/>`;
+  svg += `<line x1="${sumpX + 18}" y1="${oy + pd / 2}" x2="${ohtX + 18}" y2="${oy + pd / 2}" stroke="${C.water}" stroke-width="2"/>`;
+  svg += `<line x1="${ohtX + 18}" y1="${oy + pd / 2}" x2="${ohtX + 18}" y2="${ohtY + 20}" stroke="${C.water}" stroke-width="2"/>`;
+  svg += `<text x="${sumpX + 22}" y="${oy + pd / 2 - 3}" font-size="5" fill="${C.water}">25Ø RISING MAIN</text>`;
+
+  // Cold water branches to wet rooms from OHT
+  for (const room of [...toilets, ...kitchens]) {
+    const rcx = ox + (room.x + room.width / 2) * SC;
+    const rcy = oy + (room.y + room.depth / 2) * SC;
+    // Branch line (20mm)
+    svg += `<line x1="${ohtX + 18}" y1="${rcy}" x2="${rcx}" y2="${rcy}" stroke="${C.water}" stroke-width="1.5"/>`;
+    svg += `<text x="${(ohtX + 18 + rcx) / 2}" y="${rcy - 4}" text-anchor="middle" font-size="5" fill="${C.water}">20Ø</text>`;
+  }
+
+  // Hot water supply (dashed red) from geyser to shower/sink in toilets
+  for (const room of toilets) {
+    const rx = ox + room.x * SC;
+    const ry = oy + room.y * SC;
+    const rw = room.width * SC;
+    const rd = room.depth * SC;
+    // Geyser location
+    const gx = rx + rw - 12;
+    const gy = ry + 12;
+    svg += `<rect x="${gx - 6}" y="${gy - 6}" width="12" height="12" fill="#FFDDDD" stroke="${C.hotWater}" stroke-width="1.2"/>`;
+    svg += `<text x="${gx}" y="${gy + 3}" text-anchor="middle" font-size="5" fill="${C.hotWater}" font-weight="bold">G</text>`;
+    // Hot line to shower
+    svg += `<line x1="${gx}" y1="${gy + 6}" x2="${rx + rw / 2}" y2="${ry + rd / 2}" stroke="${C.hotWater}" stroke-width="1.2" stroke-dasharray="4,2"/>`;
+    svg += `<text x="${gx - 8}" y="${gy + rd / 3}" font-size="4" fill="${C.hotWater}">HOT 15Ø</text>`;
+  }
+
+  // Hot water to kitchen sink
+  for (const room of kitchens) {
+    const rx = ox + room.x * SC;
+    const ry = oy + room.y * SC;
+    const rw = room.width * SC;
+    // Geyser near sink
+    const gx = rx + rw / 2 - 20;
+    const gy = ry + 18;
+    svg += `<rect x="${gx - 6}" y="${gy - 6}" width="12" height="12" fill="#FFDDDD" stroke="${C.hotWater}" stroke-width="1.2"/>`;
+    svg += `<text x="${gx}" y="${gy + 3}" text-anchor="middle" font-size="5" fill="${C.hotWater}" font-weight="bold">G</text>`;
+    svg += `<line x1="${gx + 6}" y1="${gy}" x2="${rx + rw / 2}" y2="${ry + 18}" stroke="${C.hotWater}" stroke-width="1.2" stroke-dasharray="4,2"/>`;
+  }
+
+  // Drainage - soil lines from WC to external manholes
+  const mhSpacing = 40;
+  let mhCount = 0;
+
+  for (const room of toilets) {
+    const rx = ox + room.x * SC;
+    const ry = oy + room.y * SC;
+    const rw = room.width * SC;
+    const rd = room.depth * SC;
+    // Soil line out from WC (100mm)
+    const wcX = rx + 18;
+    const wcY = ry + rd - 22;
+    const mhX = bx - 15;
+    const mhY = wcY;
+    svg += `<line x1="${wcX}" y1="${wcY}" x2="${mhX + 6}" y2="${mhY}" stroke="${C.drain}" stroke-width="3" opacity="0.6"/>`;
+    svg += `<text x="${(wcX + mhX) / 2}" y="${mhY - 5}" text-anchor="middle" font-size="5" fill="${C.drain}">100Ø SOIL</text>`;
+    svg += drawManhole(mhX, mhY, `MH${++mhCount}`);
+    // Slope arrow
+    svg += `<text x="${(wcX + mhX) / 2}" y="${mhY + 8}" text-anchor="middle" font-size="4" fill="${C.drain}">1:40 FALL →</text>`;
+
+    // Waste line from basin/shower (75mm)
+    const wbX = rx + rw - 18;
+    const wbY = ry + 22;
+    svg += `<line x1="${wbX}" y1="${wbY}" x2="${mhX + 6}" y2="${mhY - mhSpacing * 0.3}" stroke="${C.drain}" stroke-width="2" opacity="0.5"/>`;
+    svg += `<text x="${(wbX + mhX) / 2}" y="${wbY - 5}" text-anchor="middle" font-size="4" fill="${C.drain}">75Ø WASTE</text>`;
+
+    // Vent pipe
+    svg += `<line x1="${rx + rw / 2}" y1="${ry}" x2="${rx + rw / 2}" y2="${ry - 15}" stroke="${C.drain}" stroke-width="1" stroke-dasharray="3,2" opacity="0.5"/>`;
+    svg += `<text x="${rx + rw / 2 + 5}" y="${ry - 8}" font-size="4" fill="${C.drain}">50Ø VP</text>`;
+  }
+
+  // Kitchen waste line
+  for (const room of kitchens) {
+    const rx = ox + room.x * SC;
+    const ry = oy + room.y * SC;
+    const rw = room.width * SC;
+    const sinkX = rx + rw / 2;
+    const sinkY = ry + 18;
+    const mhX = bx - 15;
+    const mhY = sinkY + 10;
+    svg += `<line x1="${sinkX}" y1="${sinkY}" x2="${mhX + 6}" y2="${mhY}" stroke="${C.drain}" stroke-width="2" opacity="0.5"/>`;
+    svg += `<text x="${(sinkX + mhX) / 2}" y="${mhY - 5}" text-anchor="middle" font-size="4" fill="${C.drain}">75Ø WASTE</text>`;
+    svg += drawManhole(mhX, mhY, `MH${++mhCount}`);
+  }
+
+  // RWP at building corners
+  const rwpPositions = [
+    { x: bx + 6, y: by + 6 },
+    { x: bx + bw - 6, y: by + 6 },
+    { x: bx + 6, y: by + bd - 6 },
+    { x: bx + bw - 6, y: by + bd - 6 },
   ];
-  pipes.forEach((pipe, i) => {
-    const iy = legY + 14 + i * 14;
-    p.push(`<line x1="${legX}" y1="${iy}" x2="${legX + 30}" y2="${iy}" stroke="${pipe.color}" stroke-width="2" ${pipe.dash ? `stroke-dasharray="${pipe.dash}"` : ''}/>`);
-    p.push(`<text x="${legX + 35}" y="${iy + 3}" font-size="7" fill="${C.text}">${pipe.label} (${pipe.size})</text>`);
-  });
+  for (const pos of rwpPositions) {
+    svg += `<circle cx="${pos.x}" cy="${pos.y}" r="5" fill="none" stroke="${C.drain}" stroke-width="1.2"/>`;
+    svg += `<text x="${pos.x}" y="${pos.y + 3}" text-anchor="middle" font-size="4" fill="${C.drain}" font-weight="bold">RWP</text>`;
+  }
 
-  const notes = [
-    'NOTES:',
-    '1. All supply pipes: CPVC as per IS 15778',
-    '2. Drain/waste pipes: uPVC SWR as per IS 13592',
-    '3. Floor slope in wet areas: 1:60 towards floor trap',
-    '4. Anti-siphon trap at every fixture',
-    '5. Vent pipe: 75mm PVC extending 1m above terrace',
-    '6. Pressure testing: 6 kg/cm² for 24 hrs',
-    '7. Sump capacity: 2000L, OHT: 1000L (per floor)',
-  ].join('\n');
-  p.push(legend(svgW, svgH, notes));
-  p.push('</svg>');
-  return p.join('');
+  // Septic tank / municipal sewer at front
+  const stX = ox + (plotW * 0.6) * SC;
+  const stY = oy + pd - 8;
+  svg += `<rect x="${stX}" y="${stY}" width="60" height="16" fill="#F5EED8" stroke="${C.drain}" stroke-width="1.5"/>`;
+  svg += `<text x="${stX + 30}" y="${stY + 11}" text-anchor="middle" font-size="5" fill="${C.drain}" font-weight="bold">CONNECTION TO MUNICIPAL SEWER</text>`;
+
+  // Drain line from last manhole to sewer
+  if (mhCount > 0) {
+    svg += `<line x1="${bx - 15}" y1="${by + bd - 20}" x2="${stX}" y2="${stY + 8}" stroke="${C.drain}" stroke-width="3" opacity="0.5"/>`;
+    svg += `<text x="${bx + bw / 3}" y="${by + bd + 10}" font-size="5" fill="${C.drain}">100Ø TO SEWER →</text>`;
+  }
+
+  // Pipe size schedule table
+  const tableX = svgW - MARGIN - 200;
+  const tableY = svgH - MARGIN - 120;
+  svg += `<text x="${tableX}" y="${tableY - 6}" font-size="7" fill="${C.text}" font-weight="bold">PIPE SIZE SCHEDULE</text>`;
+  svg += drawTable(tableX, tableY,
+    ['Line', 'Size', 'Material'],
+    [
+      ['Cold Water Main', '25mm', 'CPVC'],
+      ['CW Branch', '20mm', 'CPVC'],
+      ['CW Sub-branch', '15mm', 'CPVC'],
+      ['Hot Water', '15mm', 'CPVC'],
+      ['Soil Line', '100mm', 'SWR PVC'],
+      ['Waste Line', '75mm', 'SWR PVC'],
+      ['Vent Pipe', '50mm', 'SWR PVC'],
+      ['Rain Water', '110mm', 'PVC'],
+    ],
+    [85, 50, 60]
+  );
+
+  // Legend
+  const lgX = MARGIN + 10;
+  const lgY = svgH - MARGIN - 105;
+  svg += `<rect x="${lgX}" y="${lgY}" width="150" height="95" fill="#FAFAFA" stroke="${C.dim}" stroke-width="0.5"/>`;
+  svg += `<text x="${lgX + 75}" y="${lgY + 12}" text-anchor="middle" font-size="7" fill="${C.text}" font-weight="bold">LEGEND</text>`;
+  const legItems: Array<[string, string, string, string]> = [
+    [C.water, '2.5', '', 'Cold Water Supply'],
+    [C.hotWater, '1.5', '4,2', 'Hot Water Supply'],
+    [C.drain, '3', '', 'Soil/Drainage Line'],
+    [C.drain, '1', '3,2', 'Vent Pipe'],
+  ];
+  legItems.forEach(([color, sw, dash, desc], i) => {
+    const iy = lgY + 24 + i * 14;
+    svg += `<line x1="${lgX + 8}" y1="${iy}" x2="${lgX + 35}" y2="${iy}" stroke="${color}" stroke-width="${sw}" ${dash ? `stroke-dasharray="${dash}"` : ''}/>`;
+    svg += `<text x="${lgX + 42}" y="${iy + 3}" font-size="6" fill="${C.text}">${desc}</text>`;
+  });
+  // Fixture symbols in legend
+  const fiy = lgY + 24 + legItems.length * 14 + 4;
+  svg += `<rect x="${lgX + 10}" y="${fiy - 4}" width="8" height="8" fill="${C.drain}" opacity="0.7" stroke="#553322" stroke-width="0.8"/>`;
+  svg += `<text x="${lgX + 42}" y="${fiy + 3}" font-size="6" fill="${C.text}">Manhole</text>`;
+  svg += `<circle cx="${lgX + 14}" cy="${fiy + 14}" r="4" fill="none" stroke="${C.drain}" stroke-width="1"/>`;
+  svg += `<text x="${lgX + 42}" y="${fiy + 17}" font-size="6" fill="${C.text}">Rain Water Pipe</text>`;
+
+  svg += `</svg>`;
+  return svg;
 }

@@ -1,142 +1,171 @@
-import { Layout } from '../../types';
-import { C, MARGIN, SC, dimChain, drawingBorder, northArrow, legend, gridLabels } from '../drawingHelpers';
+import { C, MARGIN, SC, dimChain, levelMark, concreteHatch, crossHatch, brickHatch, drawingBorder, northArrow, legend, gridLabels, drawTable } from '../drawingHelpers';
+import { Layout, Column, Room, ProjectRequirements } from '../../types';
 
-export function renderExcavation(layout: Layout, numFloors: number): string {
-  const floor = layout.floors[0];
-  const plotW = layout.plotWidthM;
-  const plotD = layout.plotDepthM;
+export function renderExcavation(layout: Layout, requirements: ProjectRequirements): string {
+  const pW = layout.plotWidthM;
+  const pD = layout.plotDepthM;
+  const svgW = Math.round((pW + 9) * SC); // extra width for notes panel on right
+  const svgH = Math.round((pD + 5) * SC);
+
+  const ox = MARGIN + 2 * SC; // plot origin x
+  const oy = MARGIN + 1.5 * SC; // plot origin y
+  const plotW = pW * SC;
+  const plotH = pD * SC;
+
+  const cols = layout.floors[0]?.columns || [];
+
+  // Derive unique X and Y positions from columns
+  const colXs = [...new Set(cols.map(c => c.x))].sort((a, b) => a - b);
+  const colYs = [...new Set(cols.map(c => c.y))].sort((a, b) => a - b);
+
+  // If no columns, create a default grid
+  const gridXs = colXs.length > 0 ? colXs : [0.5, layout.buildableWidthM / 2, layout.buildableWidthM - 0.5];
+  const gridYs = colYs.length > 0 ? colYs : [0.5, layout.buildableDepthM / 2, layout.buildableDepthM - 0.5];
+
   const sb = layout.setbacks;
-  const svgW = Math.max(700, MARGIN * 2 + plotW * SC + 120);
-  const svgH = Math.max(500, MARGIN * 2 + plotD * SC + 80);
-  const tx = (m: number) => MARGIN + m * SC;
-  const ty = (m: number) => MARGIN + m * SC;
-  const p: string[] = [];
+  const bx = ox + sb.left * SC; // buildable origin x
+  const by = oy + sb.front * SC; // buildable origin y
 
-  p.push(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${svgW} ${svgH}" width="${svgW}" height="${svgH}">`);
-  p.push(drawingBorder(svgW, svgH, 'EXCAVATION DRAWING', `Plot: ${plotW}m × ${plotD}m | Floors: ${numFloors}`));
-  p.push(northArrow(svgW - 40, 70));
+  // Trench params
+  const trenchWidthM = 1.8; // 1200mm footing + 300mm each side
+  const trenchHalf = (trenchWidthM / 2) * SC;
+  const excDepth = 1200; // mm
+  const pccLevel = 1100; // mm
 
-  // Defs: earth hatch pattern
-  p.push(`<defs>`);
-  p.push(`<pattern id="earthHatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">`);
-  p.push(`<line x1="0" y1="0" x2="0" y2="8" stroke="${C.dim}" stroke-width="0.5"/>`);
-  p.push(`</pattern>`);
-  p.push(`<pattern id="trenchFill" width="6" height="6" patternUnits="userSpaceOnUse">`);
-  p.push(`<rect width="6" height="6" fill="#f5e6d3"/>`);
-  p.push(`<circle cx="1" cy="1" r="0.6" fill="${C.dim}"/>`);
-  p.push(`<circle cx="4" cy="4" r="0.6" fill="${C.dim}"/>`);
-  p.push(`</pattern>`);
-  p.push(`</defs>`);
+  let svg = '';
 
-  // Plot boundary
-  p.push(`<rect x="${tx(0)}" y="${ty(0)}" width="${plotW * SC}" height="${plotD * SC}" fill="none" stroke="${C.plot}" stroke-width="2" stroke-dasharray="10,5"/>`);
-  p.push(`<text x="${tx(plotW / 2)}" y="${ty(0) - 8}" text-anchor="middle" font-size="9" fill="${C.plot}">PLOT BOUNDARY</text>`);
+  // --- Plot boundary (chain-dotted) ---
+  svg += `<rect x="${ox}" y="${oy}" width="${plotW}" height="${plotH}" fill="none" stroke="${C.dim}" stroke-width="1.2" stroke-dasharray="12,4,3,4"/>`;
 
-  // Setback lines
-  const bx = sb.left;
-  const by = sb.front;
-  const bw = plotW - sb.left - sb.right;
-  const bd = plotD - sb.front - sb.rear;
-  p.push(`<rect x="${tx(bx)}" y="${ty(by)}" width="${bw * SC}" height="${bd * SC}" fill="none" stroke="${C.setback}" stroke-width="1" stroke-dasharray="6,3"/>`);
-  p.push(`<text x="${tx(bx) + 4}" y="${ty(by) - 4}" font-size="8" fill="${C.setback}">SETBACK LINE</text>`);
+  // --- Setback lines (dashed) ---
+  const bW = layout.buildableWidthM * SC;
+  const bD = layout.buildableDepthM * SC;
+  svg += `<rect x="${bx}" y="${by}" width="${bW}" height="${bD}" fill="none" stroke="${C.grid}" stroke-width="0.6" stroke-dasharray="6,3"/>`;
 
-  // Trench width in meters
-  const trenchW = 0.6; // 600mm
+  // --- Trench lines along column grid ---
+  let trenchParts = '';
+  let totalTrenchAreaSqM = 0;
 
-  // Draw trench around building footprint
-  // Outer trench boundary
-  const tox = bx - trenchW / 2;
-  const toy = by - trenchW / 2;
-  const tow = bw + trenchW;
-  const tod = bd + trenchW;
-  // Inner trench boundary
-  const tix = bx + trenchW / 2;
-  const tiy = by + trenchW / 2;
-  const tiw = bw - trenchW;
-  const tid = bd - trenchW;
-
-  // Outer trench rectangle with earth fill
-  p.push(`<rect x="${tx(tox)}" y="${ty(toy)}" width="${tow * SC}" height="${tod * SC}" fill="url(#trenchFill)" stroke="${C.wall}" stroke-width="1.5"/>`);
-  // Inner cutout (building interior - no trench)
-  p.push(`<rect x="${tx(tix)}" y="${ty(tiy)}" width="${tiw * SC}" height="${tid * SC}" fill="white" stroke="${C.wall}" stroke-width="1"/>`);
-
-  // Draw internal wall trenches for each room
-  floor.rooms.forEach((r) => {
-    const rx = bx + r.x;
-    const ry = by + r.y;
-    // Internal trench lines along room boundaries
-    // Bottom edge
-    if (r.y + r.depth < bd - 0.1) {
-      p.push(`<rect x="${tx(rx)}" y="${ty(ry + r.depth - trenchW / 2)}" width="${r.width * SC}" height="${trenchW * SC}" fill="url(#trenchFill)" stroke="${C.dim}" stroke-width="0.5"/>`);
+  // Horizontal trenches (connecting columns along each Y row)
+  for (const cy of gridYs) {
+    const py = by + cy * SC;
+    const leftX = bx + Math.min(...gridXs) * SC;
+    const rightX = bx + Math.max(...gridXs) * SC;
+    trenchParts += `<rect x="${leftX - trenchHalf}" y="${py - trenchHalf}" width="${rightX - leftX + trenchHalf * 2}" height="${trenchHalf * 2}" fill="${C.earth}" fill-opacity="0.25" stroke="${C.earth}" stroke-width="1"/>`;
+    // Slope hatch on sides
+    const tw = rightX - leftX + trenchHalf * 2;
+    for (let hx = 0; hx < tw; hx += 8) {
+      trenchParts += `<line x1="${leftX - trenchHalf + hx}" y1="${py - trenchHalf}" x2="${leftX - trenchHalf + hx + 4}" y2="${py - trenchHalf - 4}" stroke="${C.earth}" stroke-width="0.4" opacity="0.5"/>`;
+      trenchParts += `<line x1="${leftX - trenchHalf + hx}" y1="${py + trenchHalf}" x2="${leftX - trenchHalf + hx + 4}" y2="${py + trenchHalf + 4}" stroke="${C.earth}" stroke-width="0.4" opacity="0.5"/>`;
     }
-    // Right edge
-    if (r.x + r.width < bw - 0.1) {
-      p.push(`<rect x="${tx(rx + r.width - trenchW / 2)}" y="${ty(ry)}" width="${trenchW * SC}" height="${r.depth * SC}" fill="url(#trenchFill)" stroke="${C.dim}" stroke-width="0.5"/>`);
-    }
-  });
-
-  // Room labels
-  floor.rooms.forEach((r) => {
-    const cx = tx(bx + r.x + r.width / 2);
-    const cy = ty(by + r.y + r.depth / 2);
-    p.push(`<text x="${cx}" y="${cy}" text-anchor="middle" font-size="8" fill="${C.text}" font-weight="bold">${r.name.toUpperCase()}</text>`);
-    p.push(`<text x="${cx}" y="${cy + 11}" text-anchor="middle" font-size="7" fill="${C.dim}">${r.width.toFixed(1)}×${r.depth.toFixed(1)}m</text>`);
-  });
-
-  // Depth annotations at corners
-  const depthLabel = '1200mm DEEP';
-  const corners = [
-    { x: tox, y: toy },
-    { x: tox + tow, y: toy },
-    { x: tox, y: toy + tod },
-    { x: tox + tow, y: toy + tod },
-  ];
-  corners.forEach((c, i) => {
-    const cx = tx(c.x);
-    const cy = ty(c.y);
-    const offX = i % 2 === 0 ? -50 : 20;
-    const offY = i < 2 ? -12 : 16;
-    p.push(`<line x1="${cx}" y1="${cy}" x2="${cx + offX}" y2="${cy + offY}" stroke="${C.dim}" stroke-width="0.5"/>`);
-    p.push(`<text x="${cx + offX}" y="${cy + offY - 2}" font-size="7" fill="${C.accent}">${depthLabel}</text>`);
-  });
-
-  // Dimension chains
-  // Horizontal: plot width
-  p.push(dimChain(tx(0), ty(plotD) + 30, tx(plotW), ty(plotD) + 30, `${plotW.toFixed(1)}m`, 'h'));
-  // Horizontal: building width
-  p.push(dimChain(tx(bx), ty(plotD) + 50, tx(bx + bw), ty(plotD) + 50, `${bw.toFixed(1)}m`, 'h'));
-  // Vertical: plot depth
-  p.push(dimChain(tx(plotW) + 30, ty(0), tx(plotW) + 30, ty(plotD), `${plotD.toFixed(1)}m`, 'v'));
-  // Vertical: building depth
-  p.push(dimChain(tx(plotW) + 50, ty(by), tx(plotW) + 50, ty(by + bd), `${bd.toFixed(1)}m`, 'v'));
-
-  // Setback dimensions
-  if (sb.front > 0) {
-    p.push(dimChain(tx(0) - 20, ty(0), tx(0) - 20, ty(by), `${sb.front.toFixed(1)}m`, 'v'));
-  }
-  if (sb.left > 0) {
-    p.push(dimChain(tx(0), ty(0) - 20, tx(bx), ty(0) - 20, `${sb.left.toFixed(1)}m`, 'h'));
+    const lenM = (Math.max(...gridXs) - Math.min(...gridXs)) + trenchWidthM;
+    totalTrenchAreaSqM += lenM * trenchWidthM;
   }
 
-  // Trench width annotation
-  const midX = tx(bx + bw / 2);
-  const trenchTop = ty(by - trenchW / 2);
-  p.push(`<line x1="${midX - 15}" y1="${trenchTop}" x2="${midX - 15}" y2="${trenchTop + trenchW * SC}" stroke="${C.accent}" stroke-width="0.8"/>`);
-  p.push(`<text x="${midX - 18}" y="${trenchTop + trenchW * SC / 2 + 3}" text-anchor="end" font-size="7" fill="${C.accent}">600mm</text>`);
+  // Vertical trenches (connecting columns along each X column)
+  for (const cx of gridXs) {
+    const px = bx + cx * SC;
+    const topY = by + Math.min(...gridYs) * SC;
+    const botY = by + Math.max(...gridYs) * SC;
+    trenchParts += `<rect x="${px - trenchHalf}" y="${topY - trenchHalf}" width="${trenchHalf * 2}" height="${botY - topY + trenchHalf * 2}" fill="${C.earth}" fill-opacity="0.2" stroke="${C.earth}" stroke-width="1"/>`;
+    const lenM = (Math.max(...gridYs) - Math.min(...gridYs)) + trenchWidthM;
+    totalTrenchAreaSqM += lenM * trenchWidthM;
+  }
 
-  // Grid labels
-  p.push(gridLabels(tx, ty, bx, by, bw, bd, floor.rooms));
+  // Remove double-counted overlap at intersections
+  totalTrenchAreaSqM -= gridXs.length * gridYs.length * trenchWidthM * trenchWidthM;
+  totalTrenchAreaSqM = Math.max(totalTrenchAreaSqM, 0);
+  const volumeCuM = (totalTrenchAreaSqM * excDepth / 1000).toFixed(2);
 
-  const notes = [
-    'NOTES:',
-    '1. Trench width: 600mm for all walls',
-    '2. Trench depth: 1200mm from NGL',
-    '3. PCC bed: 150mm thick M10 grade at trench bottom',
-    '4. Excavated earth to be stacked min 1m from edge',
-    '5. Dewatering if water table encountered',
-    `6. Total excavation depth: 1200mm below NGL`,
-  ].join('\n');
-  p.push(legend(svgW, svgH, notes));
-  p.push('</svg>');
-  return p.join('');
+  svg += trenchParts;
+
+  // --- Center line pegs at column intersections ---
+  for (const cx of gridXs) {
+    for (const cy of gridYs) {
+      const px = bx + cx * SC;
+      const py = by + cy * SC;
+      const cs = 5;
+      svg += `<line x1="${px - cs}" y1="${py}" x2="${px + cs}" y2="${py}" stroke="${C.text}" stroke-width="1.2"/>`;
+      svg += `<line x1="${px}" y1="${py - cs}" x2="${px}" y2="${py + cs}" stroke="${C.text}" stroke-width="1.2"/>`;
+      svg += `<circle cx="${px}" cy="${py}" r="3" fill="none" stroke="${C.text}" stroke-width="0.6"/>`;
+      svg += `<text x="${px + 7}" y="${py - 6}" font-size="6" fill="${C.text}" font-family="monospace">CL PEG</text>`;
+    }
+  }
+
+  // --- Bench mark near front-left corner ---
+  const bmX = ox + 15;
+  const bmY = oy + plotH - 15;
+  svg += levelMark(bmX, bmY, 'BM', 'RL +100.000');
+
+  // --- Trench depth annotations ---
+  const annotX = ox + plotW + 12;
+  const annotY = oy + 30;
+  svg += `<rect x="${annotX}" y="${annotY}" width="130" height="48" fill="${C.bg}" stroke="${C.dim}" stroke-width="0.8" rx="2"/>`;
+  svg += `<text x="${annotX + 6}" y="${annotY + 14}" font-size="7.5" fill="${C.text}" font-family="sans-serif" font-weight="bold">EXCAVATION NOTES</text>`;
+  svg += `<text x="${annotX + 6}" y="${annotY + 26}" font-size="6.5" fill="${C.text}" font-family="sans-serif">Exc. Depth: ${excDepth}mm below GL</text>`;
+  svg += `<text x="${annotX + 6}" y="${annotY + 37}" font-size="6.5" fill="${C.text}" font-family="sans-serif">PCC Level: -${pccLevel}mm</text>`;
+
+  // --- Earth removal volume note box ---
+  const volBoxX = annotX;
+  const volBoxY = annotY + 58;
+  svg += `<rect x="${volBoxX}" y="${volBoxY}" width="130" height="38" fill="#FFFDE7" stroke="${C.earth}" stroke-width="1" rx="2"/>`;
+  svg += `<text x="${volBoxX + 6}" y="${volBoxY + 14}" font-size="7.5" fill="${C.text}" font-family="sans-serif" font-weight="bold">EARTH REMOVAL</text>`;
+  svg += `<text x="${volBoxX + 6}" y="${volBoxY + 26}" font-size="6.5" fill="${C.text}" font-family="sans-serif">Trench Area: ${totalTrenchAreaSqM.toFixed(2)} m²</text>`;
+  svg += `<text x="${volBoxX + 6}" y="${volBoxY + 35}" font-size="6.5" fill="${C.text}" font-family="sans-serif">Volume: ${volumeCuM} m³ (approx)</text>`;
+
+  // --- Access path (dashed rectangle along left side) ---
+  const apX = ox - 1.2 * SC;
+  const apY = oy + 1 * SC;
+  const apW = 1 * SC;
+  const apH = plotH - 2 * SC;
+  svg += `<rect x="${apX}" y="${apY}" width="${apW}" height="${apH}" fill="none" stroke="${C.dim}" stroke-width="1" stroke-dasharray="8,4"/>`;
+  svg += `<text x="${apX + apW / 2}" y="${apY + apH / 2}" font-size="7" fill="${C.dim}" font-family="sans-serif" text-anchor="middle" transform="rotate(-90,${apX + apW / 2},${apY + apH / 2})">ACCESS PATH</text>`;
+
+  // --- Dump yard near rear of plot ---
+  const dumpX = ox + plotW * 0.6;
+  const dumpY = oy - 1.2 * SC;
+  svg += `<rect x="${dumpX}" y="${dumpY}" width="${2.5 * SC}" height="${0.9 * SC}" fill="${C.earth}" fill-opacity="0.15" stroke="${C.earth}" stroke-width="1" stroke-dasharray="5,3"/>`;
+  svg += `<text x="${dumpX + 1.25 * SC}" y="${dumpY + 0.45 * SC + 3}" font-size="7" fill="${C.earth}" font-family="sans-serif" text-anchor="middle" font-weight="bold">DUMP YARD</text>`;
+
+  // --- Dimensions ---
+  // Plot width dim
+  svg += dimChain(ox, oy + plotH + 18, ox + plotW, oy + plotH + 18, `${pW.toFixed(2)}m`, 0, true);
+  // Plot depth dim
+  svg += dimChain(ox - 18, oy, ox - 18, oy + plotH, `${pD.toFixed(2)}m`, 0, false);
+
+  // Setback dims
+  svg += dimChain(ox, oy + plotH + 35, ox + sb.left * SC, oy + plotH + 35, `${sb.left.toFixed(1)}m`, 0, true);
+  svg += dimChain(ox + plotW - sb.right * SC, oy + plotH + 35, ox + plotW, oy + plotH + 35, `${sb.right.toFixed(1)}m`, 0, true);
+
+  // Trench width dim (first horizontal trench)
+  if (gridYs.length > 0) {
+    const ty = by + gridYs[0] * SC;
+    const tx1 = bx + Math.min(...gridXs) * SC - trenchHalf;
+    svg += dimChain(tx1, ty - trenchHalf - 12, tx1 + trenchHalf * 2, ty - trenchHalf - 12, '1800', 0, true);
+  }
+
+  // Spacing between trenches (first two Y rows)
+  if (gridYs.length >= 2) {
+    const ty1 = by + gridYs[0] * SC;
+    const ty2 = by + gridYs[1] * SC;
+    const tx = bx + Math.max(...gridXs) * SC + trenchHalf + 20;
+    svg += dimChain(tx, ty1, tx, ty2, `${(gridYs[1] - gridYs[0]).toFixed(2)}m`, 0, false);
+  }
+
+  // --- Grid references ---
+  const gxPx = gridXs.map(gx => bx + gx * SC);
+  const gyPx = gridYs.map(gy => by + gy * SC);
+  svg += gridLabels(gxPx, gyPx, plotW, plotH);
+
+  // --- North arrow ---
+  const facing = requirements.facing || 'North';
+  svg += northArrow(ox + plotW - 30, oy + 30);
+
+  // --- Legend ---
+  svg += legend(svgW, svgH, `EXCAVATION PLAN | Plot: ${pW}m × ${pD}m | Facing: ${facing} | Scale 1:${Math.round(1000 / SC)}`);
+
+  // --- Drawing border ---
+  const border = drawingBorder(svgW, svgH, 'EXCAVATION LAYOUT PLAN', `${requirements.city || 'Project'} - Residential Building`);
+
+  return `<svg viewBox="0 0 ${svgW} ${svgH}" xmlns="http://www.w3.org/2000/svg" width="100%" preserveAspectRatio="xMidYMin meet" style="background:${C.bg}">${border}${svg}</svg>`;
 }
