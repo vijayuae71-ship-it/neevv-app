@@ -8,8 +8,8 @@ const withPWA = require('next-pwa')({
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: 'standalone',
-  images: { domains: ['storage.googleapis.com'] },
-  experimental: { serverComponentsExternalPackages: ['sharp'] }
+  images: { remotePatterns: [{ protocol: 'https', hostname: 'storage.googleapis.com' }] },
+  serverExternalPackages: ['sharp']
 };
 
 module.exports = withPWA(nextConfig);

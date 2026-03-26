@@ -11,6 +11,7 @@ export const C = {
   elecRed: '#CC3333', elecBlue: '#3366CC', elecGreen: '#33AA33',
   tile: '#D4C4B0', tileGreen: '#88AA88', tileBlue: '#8899BB',
   brick: '#C47040', mortar: '#BBAA88',
+  plot: '#666666', setback: '#009900', accent: '#E74C3C',
 };
 
 export const MARGIN = 90;

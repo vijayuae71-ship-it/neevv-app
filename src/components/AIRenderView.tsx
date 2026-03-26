@@ -51,11 +51,11 @@ export const AIRenderView: React.FC<Props> = ({ layout, requirements }) => {
 
   async function loadCachedRenders() {
     try {
-      const listResult = await window.tasklet.runCommand(`ls ${RENDER_DIR}/*.json 2>/dev/null || echo "EMPTY"`);
+      const listResult = await window.tasklet?.runCommand(`ls ${RENDER_DIR}/*.json 2>/dev/null || echo "EMPTY"`);
       const listStr = typeof listResult === 'object' && listResult !== null ? JSON.stringify(listResult) : String(listResult);
       if (listStr.includes('EMPTY')) return;
 
-      const indexContent = await window.tasklet.readFileFromDisk(`${RENDER_DIR}/index.json`);
+      const indexContent = await window.tasklet?.readFileFromDisk(`${RENDER_DIR}/index.json`);
       if (indexContent) {
         const cached = JSON.parse(indexContent) as RenderResult[];
         // Reconstruct file paths for old entries that had empty imageData
@@ -84,7 +84,7 @@ export const AIRenderView: React.FC<Props> = ({ layout, requirements }) => {
       setProgress('Calling Gemini AI image generation...');
 
       // Ensure render directory exists
-      await window.tasklet.runCommand(`mkdir -p ${RENDER_DIR}`);
+      await window.tasklet?.runCommand(`mkdir -p ${RENDER_DIR}`);
 
       const timestamp = Date.now();
       const outputFile = `${RENDER_DIR}/response_${timestamp}.json`;
@@ -98,7 +98,7 @@ export const AIRenderView: React.FC<Props> = ({ layout, requirements }) => {
         }
       });
       const requestFile = `${RENDER_DIR}/request_${timestamp}.json`;
-      await window.tasklet.writeFileToDisk(requestFile, requestBody);
+      await window.tasklet?.writeFileToDisk(requestFile, requestBody);
 
       // Call Gemini API via curl — response goes directly to file, bypasses block store
       const extCurlCmd = `curl -s --max-time 120 -w "\\n__HTTP_STATUS__%{http_code}" ` +
@@ -106,10 +106,10 @@ export const AIRenderView: React.FC<Props> = ({ layout, requirements }) => {
         `-H "Content-Type: application/json" ` +
         `-d @"${requestFile}" ` +
         `-o "${outputFile}"`;
-      const curlResult = await window.tasklet.runTool('run_command', { command: extCurlCmd, timeout: 150 });
+      const curlResult = await window.tasklet?.runTool('run_command', { command: extCurlCmd, timeout: 150 });
 
       // Clean up request file
-      await window.tasklet.runCommand(`rm -f "${requestFile}"`);
+      await window.tasklet?.runCommand(`rm -f "${requestFile}"`);
 
       // Extract HTTP status from curl output
       const curlLog = typeof curlResult === 'object' ? (curlResult as any).log || '' : String(curlResult);
@@ -123,7 +123,7 @@ export const AIRenderView: React.FC<Props> = ({ layout, requirements }) => {
       }
       if (httpStatus !== 200) {
         try {
-          const errContent = await window.tasklet.readFileFromDisk(outputFile);
+          const errContent = await window.tasklet?.readFileFromDisk(outputFile);
           const errJson = JSON.parse(errContent);
           setError(`API Error (${httpStatus}): ${errJson?.error?.message || 'Unknown error'}`);
         } catch {
@@ -141,7 +141,7 @@ export const AIRenderView: React.FC<Props> = ({ layout, requirements }) => {
       const renderFileName = `render_${safeView}_${timestamp}.png`;
       const APP_RENDERS = '/agent/home/apps/architect-engineer/renders';
       const imgPath = `${APP_RENDERS}/${renderFileName}`;
-      const extractResult = await window.tasklet.runCommand(
+      const extractResult = await window.tasklet!.runCommand(
         `mkdir -p ${APP_RENDERS} && python3 /agent/home/scripts/extract_render.py "${outputFile}" "${imgPath}"`
       );
 
@@ -161,7 +161,7 @@ export const AIRenderView: React.FC<Props> = ({ layout, requirements }) => {
       }
 
       // Also keep a copy in exports for PDF/download usage
-      await window.tasklet.runCommand(
+      await window.tasklet?.runCommand(
         `cp "${imgPath}" "${RENDER_DIR}/render_${safeView}_${timestamp}.png"`
       );
 
@@ -177,7 +177,7 @@ export const AIRenderView: React.FC<Props> = ({ layout, requirements }) => {
       setActiveRender(newRender);
 
       // Cache index (imageData is now a lightweight file path, safe to store)
-      await window.tasklet.writeFileToDisk(
+      await window.tasklet?.writeFileToDisk(
         `${RENDER_DIR}/index.json`,
         JSON.stringify(updatedRenders)
       );
@@ -193,7 +193,7 @@ export const AIRenderView: React.FC<Props> = ({ layout, requirements }) => {
 
   async function downloadRender() {
     if (!activeRender) return;
-    const filename = activeRender.split('/').pop() || 'render.png';
+    const filename = activeRender.imageData.split('/').pop() || 'render.png';
     try {
       const resp = await fetch(`./renders/${filename}`);
       const blob = await resp.blob();
