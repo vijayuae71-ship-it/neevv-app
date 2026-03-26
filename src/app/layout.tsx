@@ -119,13 +119,7 @@ export default function RootLayout({
         ` }} />
       </head>
       <body className="bg-base-100 text-base-content">
-        {/* Tailwind v4 browser CDN — exact same as Tasklet instant app */}
-        <Script
-          src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"
-          strategy="beforeInteractive"
-        />
-
-        {/* Three.js for 3D rendering — exact same CDN as Tasklet */}
+        {/* Three.js for 3D rendering */}
         <Script
           src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"
           strategy="beforeInteractive"
@@ -135,7 +129,7 @@ export default function RootLayout({
           strategy="beforeInteractive"
         />
 
-        {/* Auto-detect system theme — exact same as Tasklet */}
+        {/* Auto-detect system theme */}
         <Script id="theme-detect" strategy="beforeInteractive">{`
           (function() {
             var theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'alfred-dark' : 'alfred-light';
