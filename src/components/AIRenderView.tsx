@@ -50,15 +50,15 @@ export const AIRenderView: React.FC<Props> = ({ layout, requirements }) => {
   }, []);
 
   async function loadCachedRenders() {
+    if (!window.tasklet) return; // Not in Tasklet environment
     try {
-      const listResult = await window.tasklet?.runCommand(`ls ${RENDER_DIR}/*.json 2>/dev/null || echo "EMPTY"`);
+      const listResult = await window.tasklet.runCommand(`ls ${RENDER_DIR}/*.json 2>/dev/null || echo "EMPTY"`);
       const listStr = typeof listResult === 'object' && listResult !== null ? JSON.stringify(listResult) : String(listResult);
       if (listStr.includes('EMPTY')) return;
 
-      const indexContent = await window.tasklet?.readFileFromDisk(`${RENDER_DIR}/index.json`);
+      const indexContent = await window.tasklet.readFileFromDisk(`${RENDER_DIR}/index.json`);
       if (indexContent) {
         const cached = JSON.parse(indexContent) as RenderResult[];
-        // Reconstruct file paths for old entries that had empty imageData
         const fixed = cached.map(r => ({
           ...r,
           imageData: r.imageData || `./renders/render_${(r.viewAngle||'').replace(/[\/\\:*?"<>|]/g, '-')}_${r.timestamp}.png`
@@ -74,6 +74,11 @@ export const AIRenderView: React.FC<Props> = ({ layout, requirements }) => {
   }
 
   async function generateRender() {
+    if (!window.tasklet) {
+      setError('AI rendering requires the Tasklet environment. Use the API route /api/render for production.');
+      return;
+    }
+
     setLoading(true);
     setError(null);
     setProgress('Building architectural prompt...');
@@ -83,13 +88,11 @@ export const AIRenderView: React.FC<Props> = ({ layout, requirements }) => {
       
       setProgress('Calling Gemini AI image generation...');
 
-      // Ensure render directory exists
-      await window.tasklet?.runCommand(`mkdir -p ${RENDER_DIR}`);
+      await window.tasklet.runCommand(`mkdir -p ${RENDER_DIR}`);
 
       const timestamp = Date.now();
       const outputFile = `${RENDER_DIR}/response_${timestamp}.json`;
 
-      // Save prompt to temp file (avoids shell escaping issues with large JSON)
       const requestBody = JSON.stringify({
         contents: [{ parts: [{ text: prompt }] }],
         generationConfig: {
@@ -98,20 +101,17 @@ export const AIRenderView: React.FC<Props> = ({ layout, requirements }) => {
         }
       });
       const requestFile = `${RENDER_DIR}/request_${timestamp}.json`;
-      await window.tasklet?.writeFileToDisk(requestFile, requestBody);
+      await window.tasklet.writeFileToDisk(requestFile, requestBody);
 
-      // Call Gemini API via curl — response goes directly to file, bypasses block store
       const extCurlCmd = `curl -s --max-time 120 -w "\\n__HTTP_STATUS__%{http_code}" ` +
         `-X POST "https://generativelanguage.googleapis.com/v1beta/models/${selectedModel}:generateContent?key=${GEMINI_API_KEY}" ` +
         `-H "Content-Type: application/json" ` +
         `-d @"${requestFile}" ` +
         `-o "${outputFile}"`;
-      const curlResult = await window.tasklet?.runTool('run_command', { command: extCurlCmd, timeout: 150 });
+      const curlResult = await window.tasklet.runTool('run_command', { command: extCurlCmd, timeout: 150 });
 
-      // Clean up request file
-      await window.tasklet?.runCommand(`rm -f "${requestFile}"`);
+      await window.tasklet.runCommand(`rm -f "${requestFile}"`);
 
-      // Extract HTTP status from curl output
       const curlLog = typeof curlResult === 'object' ? (curlResult as any).log || '' : String(curlResult);
       const statusMatch = curlLog.match(/__HTTP_STATUS__(\d+)/);
       const httpStatus = statusMatch ? parseInt(statusMatch[1]) : 0;
@@ -123,7 +123,7 @@ export const AIRenderView: React.FC<Props> = ({ layout, requirements }) => {
       }
       if (httpStatus !== 200) {
         try {
-          const errContent = await window.tasklet?.readFileFromDisk(outputFile);
+          const errContent = await window.tasklet.readFileFromDisk(outputFile);
           const errJson = JSON.parse(errContent || '{}');
           setError(`API Error (${httpStatus}): ${errJson?.error?.message || 'Unknown error'}`);
         } catch {
@@ -135,13 +135,11 @@ export const AIRenderView: React.FC<Props> = ({ layout, requirements }) => {
 
       setProgress('Processing AI-generated image...');
 
-      // Extract image from JSON server-side and save into app assets folder
-      // This avoids loading 2MB+ base64 into app state (which crashes batchWriteBlocks)
       const safeView = selectedView.replace(/[\/\\:*?"<>|]/g, '-');
       const renderFileName = `render_${safeView}_${timestamp}.png`;
       const APP_RENDERS = '/agent/home/apps/architect-engineer/renders';
       const imgPath = `${APP_RENDERS}/${renderFileName}`;
-      const extractResult = await window.tasklet!.runCommand(
+      const extractResult = await window.tasklet.runCommand(
         `mkdir -p ${APP_RENDERS} && python3 /agent/home/scripts/extract_render.py "${outputFile}" "${imgPath}"`
       );
 
@@ -160,24 +158,21 @@ export const AIRenderView: React.FC<Props> = ({ layout, requirements }) => {
         return;
       }
 
-      // Also keep a copy in exports for PDF/download usage
-      await window.tasklet?.runCommand(
+      await window.tasklet.runCommand(
         `cp "${imgPath}" "${RENDER_DIR}/render_${safeView}_${timestamp}.png"`
       );
 
-      // Use relative URL to serve from app directory — no base64 in state!
       const newRender: RenderResult = {
         viewAngle: selectedView,
         imageData: `./renders/${renderFileName}`,
         timestamp
       };
 
-      const updatedRenders = [newRender, ...renders.slice(0, 7)]; // Keep last 8
+      const updatedRenders = [newRender, ...renders.slice(0, 7)];
       setRenders(updatedRenders);
       setActiveRender(newRender);
 
-      // Cache index (imageData is now a lightweight file path, safe to store)
-      await window.tasklet?.writeFileToDisk(
+      await window.tasklet.writeFileToDisk(
         `${RENDER_DIR}/index.json`,
         JSON.stringify(updatedRenders)
       );
