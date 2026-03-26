@@ -16,7 +16,7 @@ import { calculateBOQ } from '@/utils/boqCalculator';
 import { BRAND_LOGO_BASE64 } from '@/utils/brand';
 import { useAuth } from '@/hooks/useAuth';
 import { useProject } from '@/hooks/useProject';
-import { Home, Palette, ArrowRight, Building2, Ruler, PenTool, FileSpreadsheet, Sofa } from 'lucide-react';
+import { Home, Palette, ArrowRight, Building2, Ruler, PenTool, FileSpreadsheet, Sofa, Eye } from 'lucide-react';
 
 type AppMode = 'landing' | 'new_build' | 'interior_only';
 
