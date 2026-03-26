@@ -1,0 +1,27 @@
+{
+  "name": "neevv — Sapno Ka Nirman",
+  "short_name": "neevv",
+  "description": "AI-Powered Residential Design Studio",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#FFFFFF",
+  "theme_color": "#2D3436",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/icons/logo.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["design", "utilities", "business"],
+  "lang": "en-IN",
+  "dir": "ltr"
+}

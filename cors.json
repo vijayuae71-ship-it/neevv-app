@@ -1,0 +1,8 @@
+[
+  {
+    "origin": ["https://neevv.com", "https://neevv.in", "http://localhost:3000"],
+    "method": ["GET"],
+    "responseHeader": ["Content-Type"],
+    "maxAgeSeconds": 3600
+  }
+]
