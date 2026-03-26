@@ -56,7 +56,7 @@ steps:
       - 'NODE_ENV=production,GEMINI_API_KEY=${_GEMINI_API_KEY}'
 
   # Step 4: Deploy Firebase Hosting (clean URL → Cloud Run)
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+  - name: 'node:18'
     entrypoint: 'bash'
     args:
       - '-c'
