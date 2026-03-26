@@ -20,7 +20,8 @@
     "sharp": "^0.33.4",
     "jspdf": "^2.5.1",
     "svg2pdf.js": "^2.2.3",
-    "lucide-react": "^0.378.0"
+    "lucide-react": "^0.378.0",
+    "daisyui": "^5.0.0"
   },
   "devDependencies": {
     "typescript": "^5.4.0",
