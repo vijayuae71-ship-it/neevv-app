@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState } from 'react';
-import Image from 'next/image';
 import { AppStep, ProjectRequirements, Layout, BOQ } from '@/types';
 import { StepIndicator } from '@/components/StepIndicator';
 import { RequirementForm } from '@/components/RequirementForm';
@@ -102,7 +101,7 @@ export default function HomePage() {
         {/* Header */}
         <header className="bg-gray-50 border-b border-gray-200 px-4 py-3 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
-            <Image src="/icons/logo.png" alt="neevv" width={120} height={32} className="h-8 w-auto" />
+            <img src="/icons/logo.png" alt="neevv" className="h-8 w-auto" />
             <div className="h-6 w-px bg-gray-300" />
             <span className="text-xs text-gray-400 tracking-wide uppercase hidden sm:inline">Residential Design Studio</span>
           </div>
@@ -198,11 +197,9 @@ export default function HomePage() {
       {/* Header */}
       <header className="bg-gray-800 border-b border-gray-700 px-4 py-3 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-3">
-          <Image
+          <img
             src="/icons/logo.png"
             alt="neevv"
-            width={120}
-            height={32}
             className="h-8 w-auto cursor-pointer"
             onClick={handleBackToLanding}
           />
