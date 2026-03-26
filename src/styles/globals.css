@@ -2,38 +2,19 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --neevv-primary: #2D3436;
-  --neevv-accent: #E17055;
-  --neevv-blue: #0984E3;
-  --neevv-green: #00B894;
-  --neevv-gold: #FDCB6E;
-  --neevv-purple: #6C5CE7;
-}
-
-@layer components {
-  .input-field {
-    @apply w-full px-4 py-3 rounded-lg border border-gray-300 focus:border-neevv-accent 
-           focus:ring-2 focus:ring-neevv-accent/20 outline-none transition-all duration-200;
-  }
-
-  .section-title {
-    @apply text-2xl font-bold text-neevv-primary mb-2;
-  }
-}
-
 /* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
 }
 ::-webkit-scrollbar-track {
-  @apply bg-gray-100;
+  background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  @apply bg-gray-400 rounded-full;
+  background: rgba(128,128,128,0.4);
+  border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  @apply bg-gray-500;
+  background: rgba(128,128,128,0.6);
 }
 
 /* Print styles for PDF export */

@@ -1,8 +1,5 @@
 import type { Metadata, Viewport } from 'next';
-import { Inter } from 'next/font/google';
 import '@/styles/globals.css';
-
-const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
   title: 'neevv — Sapno Ka Nirman | AI-Powered Home Design',
@@ -37,8 +34,77 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
-      <body className={inter.className}>
+    <html lang="en" data-theme="dark">
+      <head>
+        {/* DaisyUI v5 — exact same version as Tasklet instant app */}
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@5" type="text/css" />
+        {/* Custom neevv themes — copied from Tasklet index.html */}
+        <style dangerouslySetInnerHTML={{ __html: `
+          [data-theme='light'] {
+            color-scheme: light;
+            --radius-selector: 0rem;
+            --radius-field: 0.25rem;
+            --radius-box: 0.25rem;
+            --size-selector: 0.25rem;
+            --size-field: 0.25rem;
+            --border: 1px;
+            --depth: 1;
+            --noise: 0;
+            --color-base-100: #f5f5f5;
+            --color-base-200: #eaeaea;
+            --color-base-300: #dfdfdf;
+            --color-base-content: #1c1c1e;
+            --color-primary: #4f6f52;
+            --color-primary-content: #ffffff;
+            --color-secondary: #ff7f50;
+            --color-secondary-content: #1c1c1e;
+            --color-accent: #ff7f50;
+            --color-accent-content: #1c1c1e;
+            --color-neutral: #1f1f23;
+            --color-neutral-content: #e8e8ec;
+            --color-info: #4a7c9b;
+            --color-info-content: #f4f4f5;
+            --color-success: #3d8b6e;
+            --color-success-content: #f4f4f5;
+            --color-warning: #b8860b;
+            --color-warning-content: #1c1c1e;
+            --color-error: #9e3d32;
+            --color-error-content: #f4f4f5;
+          }
+          [data-theme='dark'] {
+            color-scheme: dark;
+            --radius-selector: 0rem;
+            --radius-field: 0.25rem;
+            --radius-box: 0.25rem;
+            --size-selector: 0.25rem;
+            --size-field: 0.25rem;
+            --border: 1px;
+            --depth: 1;
+            --noise: 0;
+            --color-base-100: #121215;
+            --color-base-200: #1a1a1e;
+            --color-base-300: #252529;
+            --color-base-content: #f4f4f5;
+            --color-primary: #4f6f52;
+            --color-primary-content: #ffffff;
+            --color-secondary: #ff7f50;
+            --color-secondary-content: #1c1c1e;
+            --color-accent: #ff7f50;
+            --color-accent-content: #1c1c1e;
+            --color-neutral: #3a3a42;
+            --color-neutral-content: #b8b8c0;
+            --color-info: #4a7c9b;
+            --color-info-content: #f4f4f5;
+            --color-success: #3d8b6e;
+            --color-success-content: #f4f4f5;
+            --color-warning: #b8860b;
+            --color-warning-content: #1c1c1e;
+            --color-error: #9e3d32;
+            --color-error-content: #f4f4f5;
+          }
+        ` }} />
+      </head>
+      <body className="bg-base-100 text-base-content">
         {children}
       </body>
     </html>
