@@ -31,15 +31,9 @@ export default function RootLayout({
           src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"
           strategy="afterInteractive"
         />
-        {/* Theme auto-detection */}
+        {/* Light mode only */}
         <Script id="theme-init" strategy="beforeInteractive">
-          {`(function() {
-            var theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'alfred-dark' : 'alfred-light';
-            document.documentElement.setAttribute('data-theme', theme);
-            window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function(e) {
-              document.documentElement.setAttribute('data-theme', e.matches ? 'alfred-dark' : 'alfred-light');
-            });
-          })();`}
+          {`document.documentElement.setAttribute('data-theme', 'alfred-light');`}
         </Script>
         {children}
       </body>
