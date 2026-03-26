@@ -16,7 +16,7 @@ import { calculateBOQ } from '@/utils/boqCalculator';
 import { BRAND_LOGO_BASE64 } from '@/utils/brand';
 import { useAuth } from '@/hooks/useAuth';
 import { useProject } from '@/hooks/useProject';
-import { Home, Palette, ArrowRight, Building2, Ruler, PenTool, FileSpreadsheet, Sofa, Eye } from 'lucide-react';
+import { Home, Palette, ArrowRight } from 'lucide-react';
 
 type AppMode = 'landing' | 'new_build' | 'interior_only';
 
@@ -135,91 +135,76 @@ export default function HomePage() {
   /* ============ LANDING PAGE ============ */
   if (mode === 'landing') {
     return (
-      <div className="flex flex-col h-screen bg-base-100">
+      <div className="flex flex-col min-h-screen bg-white">
         <Navbar />
-        <div className="flex-1 flex items-center justify-center p-6 overflow-y-auto">
+        <div className="flex-1 flex items-center justify-center p-6">
           <div className="max-w-3xl w-full space-y-10">
             {/* Hero */}
             <div className="text-center space-y-3">
-              <h1 className="text-4xl font-bold">
+              <h1 className="text-4xl font-bold text-gray-900">
                 Welcome to <span className="text-primary">neevv</span>
               </h1>
-              <p className="text-lg opacity-60">Sapno Ka Nirman — Building Dreams</p>
-              <p className="text-sm opacity-40">AI-powered residential design for Indian homes</p>
+              <p className="text-lg text-gray-600">Sapno Ka Nirman — Building Dreams</p>
+              <p className="text-sm text-gray-500">AI-powered residential design for Indian homes</p>
             </div>
 
-            {/* Entry Cards */}
+            {/* Entry Cards - exactly 2 */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Build a New Home */}
-              <button
-                className="neevv-card text-left group"
+              {/* Card 1: Build a New Home */}
+              <div
+                role="button"
+                tabIndex={0}
+                className="bg-white border border-gray-200 rounded-lg p-6 cursor-pointer hover:shadow-lg hover:border-primary transition-all"
                 onClick={() => setMode('new_build')}
               >
-                <div className="space-y-4">
-                  <div className="w-14 h-14 rounded-xl bg-primary/15 flex items-center justify-center group-hover:bg-primary/25 transition-colors">
-                    <Home size={28} className="text-primary" />
-                  </div>
-                  <div>
-                    <h2 className="text-xl font-semibold">Build a New Home</h2>
-                    <p className="text-sm opacity-60 mt-2 leading-relaxed">
-                      Complete architectural workflow — plot requirements, floor plans, 3D views, construction drawings, BOQ, and interior design.
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {[
-                      { icon: Building2, label: 'Floor Plans' },
-                      { icon: Eye, label: '3D Views' },
-                      { icon: PenTool, label: 'Drawings' },
-                      { icon: FileSpreadsheet, label: 'BOQ' },
-                      { icon: Sofa, label: 'Interiors' },
-                    ].map(({ icon: Icon, label }) => (
-                      <span key={label} className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded bg-base-300/50 opacity-70">
-                        <Icon size={12} /> {label}
-                      </span>
-                    ))}
-                  </div>
-                  <div className="flex items-center gap-1 text-primary text-sm font-medium pt-2">
-                    Get Started <ArrowRight size={14} />
-                  </div>
+                <div className="w-14 h-14 rounded-xl bg-green-50 flex items-center justify-center mb-4">
+                  <Home size={28} className="text-primary" />
                 </div>
-              </button>
+                <h2 className="text-xl font-semibold text-gray-900 mb-2">Build a New Home</h2>
+                <p className="text-sm text-gray-600 leading-relaxed mb-4">
+                  Complete architectural workflow — plot requirements, floor plans, 3D views, construction drawings, BOQ, and interior design.
+                </p>
+                <div className="flex flex-wrap gap-2 mb-4">
+                  {['Floor Plans', '3D Views', 'Drawings', 'BOQ', 'Interiors'].map((label) => (
+                    <span key={label} className="text-xs px-2 py-1 rounded bg-gray-100 text-gray-700">
+                      {label}
+                    </span>
+                  ))}
+                </div>
+                <div className="flex items-center gap-1 text-primary text-sm font-medium">
+                  Get Started <ArrowRight size={14} />
+                </div>
+              </div>
 
-              {/* Interior Design Only */}
-              <button
-                className="neevv-card text-left group"
+              {/* Card 2: Interior Design Only */}
+              <div
+                role="button"
+                tabIndex={0}
+                className="bg-white border border-gray-200 rounded-lg p-6 cursor-pointer hover:shadow-lg hover:border-secondary transition-all"
                 onClick={() => setMode('interior_only')}
               >
-                <div className="space-y-4">
-                  <div className="w-14 h-14 rounded-xl bg-secondary/15 flex items-center justify-center group-hover:bg-secondary/25 transition-colors">
-                    <Palette size={28} className="text-secondary" />
-                  </div>
-                  <div>
-                    <h2 className="text-xl font-semibold">Interior Design Only</h2>
-                    <p className="text-sm opacity-60 mt-2 leading-relaxed">
-                      Already have an apartment or flat? Enter room details and get mood boards, interior drawings, and cost estimation.
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {[
-                      { icon: Palette, label: 'Mood Boards' },
-                      { icon: PenTool, label: 'Drawings' },
-                      { icon: Ruler, label: 'Execution' },
-                      { icon: FileSpreadsheet, label: 'Costing' },
-                    ].map(({ icon: Icon, label }) => (
-                      <span key={label} className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded bg-base-300/50 opacity-70">
-                        <Icon size={12} /> {label}
-                      </span>
-                    ))}
-                  </div>
-                  <div className="flex items-center gap-1 text-secondary text-sm font-medium pt-2">
-                    Get Started <ArrowRight size={14} />
-                  </div>
+                <div className="w-14 h-14 rounded-xl bg-orange-50 flex items-center justify-center mb-4">
+                  <Palette size={28} className="text-secondary" />
                 </div>
-              </button>
+                <h2 className="text-xl font-semibold text-gray-900 mb-2">Interior Design Only</h2>
+                <p className="text-sm text-gray-600 leading-relaxed mb-4">
+                  Already have an apartment or flat? Enter room details and get mood boards, interior drawings, and cost estimation.
+                </p>
+                <div className="flex flex-wrap gap-2 mb-4">
+                  {['Mood Boards', 'Drawings', 'Execution', 'Costing'].map((label) => (
+                    <span key={label} className="text-xs px-2 py-1 rounded bg-gray-100 text-gray-700">
+                      {label}
+                    </span>
+                  ))}
+                </div>
+                <div className="flex items-center gap-1 text-secondary text-sm font-medium">
+                  Get Started <ArrowRight size={14} />
+                </div>
+              </div>
             </div>
 
             {/* Footer */}
-            <p className="text-center text-xs opacity-30">
+            <p className="text-center text-xs text-gray-400">
               NBC 2016 compliant · Vastu intelligence · Indian residential standards
             </p>
           </div>
