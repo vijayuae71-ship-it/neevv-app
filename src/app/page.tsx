@@ -131,7 +131,7 @@ export default function HomePage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* New Build Card */}
               <button
-                className="card text-left group hover:shadow-xl hover:border-neevv-accent transition-all duration-200"
+                className="neevv-card text-left group hover:shadow-xl hover:border-neevv-accent transition-all duration-200"
                 onClick={() => setMode('new_build')}
               >
                 <div className="space-y-4">
@@ -157,7 +157,7 @@ export default function HomePage() {
 
               {/* Interior Only Card */}
               <button
-                className="card text-left group hover:shadow-xl hover:border-neevv-purple transition-all duration-200"
+                className="neevv-card text-left group hover:shadow-xl hover:border-neevv-purple transition-all duration-200"
                 onClick={() => setMode('interior_only')}
               >
                 <div className="space-y-4">
