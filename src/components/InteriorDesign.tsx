@@ -1,3 +1,5 @@
+'use client';
+
 import React, { useState, useMemo } from 'react';
 import { Layout, ProjectRequirements, RoomInterior, InteriorDesignData } from '../types';
 import { generateInteriorDesign } from '../utils/interiorCalculator';

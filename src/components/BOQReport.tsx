@@ -1,3 +1,5 @@
+'use client';
+
 import React, { useState } from 'react';
 import { BOQ, BOQLineItem, Layout } from '../types';
 import { Package, Zap, Droplets, Building2, Ruler, Layers, DoorOpen, PieChart, IndianRupee } from 'lucide-react';

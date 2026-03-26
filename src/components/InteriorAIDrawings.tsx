@@ -1,3 +1,5 @@
+'use client';
+
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import type { Room, RoomInterior, InteriorMoodBoard, Layout } from '../types';
 import { buildInteriorRoomPrompt, InteriorRenderType } from '../utils/interiorRenderPrompt';

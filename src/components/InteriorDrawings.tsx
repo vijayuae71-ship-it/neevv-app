@@ -1,3 +1,5 @@
+'use client';
+
 import React, { useState, useMemo } from 'react';
 import { Layout, Room, RoomInterior, FurnitureItem } from '../types';
 import BrandWatermark from './BrandWatermark';

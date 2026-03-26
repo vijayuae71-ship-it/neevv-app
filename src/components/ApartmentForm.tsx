@@ -1,3 +1,5 @@
+'use client';
+
 import React, { useState } from 'react';
 import { Layout, ProjectRequirements, Room, FloorLayout, RoomType, Facing } from '../types';
 import { Home, Plus, Trash2, ArrowLeft, ArrowRight, Ruler } from 'lucide-react';

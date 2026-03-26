@@ -1,3 +1,5 @@
+'use client';
+
 import React, { useState } from 'react';
 import { ProjectRequirements, FloorProgram, Facing, ParkingType } from '../types';
 import { MapPin, Ruler, Home, Compass, Car, Star, Plus, Minus } from 'lucide-react';

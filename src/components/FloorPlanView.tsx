@@ -1,3 +1,5 @@
+'use client';
+
 import React, { useState } from 'react';
 import { Layout, Room, Column, Setbacks } from '../types';
 import { Compass, Grid3x3, Ruler, Armchair, ArrowRight, ChevronDown, ChevronUp, AlertTriangle, CheckCircle } from 'lucide-react';

@@ -1,3 +1,5 @@
+'use client';
+
 import React, { useState, useEffect } from 'react';
 import { Layout, ProjectRequirements } from '../types';
 import { buildArchitecturalPrompt } from '../utils/aiRenderPrompt';

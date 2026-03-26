@@ -1,3 +1,5 @@
+'use client';
+
 import React, { useState } from 'react';
 import { Room, Layout, InteriorStyle, RoomInterior, RoomFinishType, ColorPalette, InteriorMoodBoard as MoodBoardType } from '../types';
 import { STYLE_TEMPLATES, getDefaultFurniture, getDefaultMaterials, mapRoomTypeToFinish } from '../utils/interiorTemplates';

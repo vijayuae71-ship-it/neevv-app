@@ -1,3 +1,5 @@
+'use client';
+
 import React, { useRef, useEffect, useState } from 'react';
 import { Layout, ProjectRequirements } from '../types';
 import { buildScene } from '../utils/sceneBuilder';
