@@ -49,7 +49,7 @@ gcloud run deploy $SERVICE_NAME \
   --max-instances 10 \
   --port 8080 \
   --set-env-vars "NODE_ENV=production" \
-  --set-env-vars "GEMINI_API_KEY=${GEMINI_API_KEY}" \
+  --set-env-vars "GEMINI_API_KEY=${GEMINI_API_KEY:-AIzaSyDkBoNsiNMWeBdriH3_UqTyJovZs6vMdDg}" \
   --set-env-vars "GCP_PROJECT_ID=${PROJECT_ID}" \
   --set-env-vars "GCS_BUCKET_NAME=neevv-renders" \
   --set-env-vars "NEXT_PUBLIC_FIREBASE_PROJECT_ID=${PROJECT_ID}" \
