@@ -1,0 +1,14 @@
+{
+  "hosting": {
+    "public": "public",
+    "rewrites": [
+      {
+        "source": "**",
+        "run": {
+          "serviceId": "neevv-app",
+          "region": "asia-south1"
+        }
+      }
+    ]
+  }
+}
