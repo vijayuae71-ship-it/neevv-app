@@ -1,63 +1,46 @@
-import type { Metadata, Viewport } from 'next';
-import Script from 'next/script';
-import '@/styles/globals.css';
+import type { Metadata } from "next";
+import Script from "next/script";
+import "../styles/daisyui.css";
+import "../styles/globals.css";
 
 export const metadata: Metadata = {
-  title: 'neevv — Sapno Ka Nirman | AI-Powered Home Design',
-  description: 'Design your dream home with AI. NBC 2016 compliant floor plans, Vastu-optimized layouts, professional 3D renders, and complete construction documentation for Indian residential buildings.',
-  keywords: ['home design', 'floor plan', 'Vastu', 'NBC 2016', 'Indian architecture', 'AI render', 'construction drawing', 'interior design'],
-  authors: [{ name: 'neevv' }],
-  openGraph: {
-    title: 'neevv — Sapno Ka Nirman',
-    description: 'AI-Powered Residential Design Studio for Indian Home Builders',
-    type: 'website',
-    locale: 'en_IN',
-    siteName: 'neevv',
-  },
-  twitter: {
-    card: 'summary_large_image',
-    title: 'neevv — Sapno Ka Nirman',
-    description: 'AI-Powered Residential Design Studio for Indian Home Builders',
-  },
-  manifest: '/manifest.json',
-};
-
-export const viewport: Viewport = {
-  width: 'device-width',
-  initialScale: 1,
-  maximumScale: 5,
-  themeColor: '#121215',
+  title: "neevv – AI Architect & Interior Designer",
+  description: "Design your dream Indian home with AI-powered architecture",
+  icons: { icon: "/logo.png" },
 };
 
 export default function RootLayout({
   children,
-}: {
+}: Readonly<{
   children: React.ReactNode;
-}) {
+}>) {
   return (
-    <html lang="en" data-theme="alfred-dark">
+    <html data-theme="alfred-light">
       <body className="bg-base-100 text-base-content">
-        {/* Auto-detect system theme */}
-        <Script id="theme-detect" strategy="beforeInteractive">{`
-          (function() {
-            var theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'alfred-dark' : 'alfred-light';
-            document.documentElement.setAttribute('data-theme', theme);
-            window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function(e) {
-              document.documentElement.setAttribute('data-theme', e.matches ? 'alfred-dark' : 'alfred-light');
-            });
-          })();
-        `}</Script>
-
-        {/* Three.js for 3D rendering */}
+        {/* Tailwind v4 browser - processes utility classes client-side (same as Tasklet CDN) */}
+        <Script
+          src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"
+          strategy="beforeInteractive"
+        />
+        {/* Three.js for 3D model viewer */}
         <Script
           src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"
           strategy="beforeInteractive"
         />
         <Script
           src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"
-          strategy="beforeInteractive"
+          strategy="afterInteractive"
         />
-
+        {/* Theme auto-detection */}
+        <Script id="theme-init" strategy="beforeInteractive">
+          {`(function() {
+            var theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'alfred-dark' : 'alfred-light';
+            document.documentElement.setAttribute('data-theme', theme);
+            window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function(e) {
+              document.documentElement.setAttribute('data-theme', e.matches ? 'alfred-dark' : 'alfred-light');
+            });
+          })();`}
+        </Script>
         {children}
       </body>
     </html>
