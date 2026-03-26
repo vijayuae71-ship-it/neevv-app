@@ -38,7 +38,10 @@ steps:
       - '--port'
       - '8080'
       - '--set-env-vars'
-      - 'NODE_ENV=production'
+      - 'NODE_ENV=production,GEMINI_API_KEY=${_GEMINI_API_KEY}'
+
+substitutions:
+  _GEMINI_API_KEY: ''
 
 images:
   - 'gcr.io/$PROJECT_ID/neevv-app:$COMMIT_SHA'
