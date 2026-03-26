@@ -3,12 +3,13 @@ import { getAuth, GoogleAuthProvider } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 
 const firebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+  apiKey: "AIzaSyBwq7uTfP7P4eEF9kZ-03IpMTb4P_HetfM",
+  authDomain: "neev-491312.firebaseapp.com",
+  projectId: "neev-491312",
+  storageBucket: "neev-491312.firebasestorage.app",
+  messagingSenderId: "196024286149",
+  appId: "1:196024286149:web:2dc89e65b063997cca29ac",
+  measurementId: "G-E8FLZYV3NF",
 };
 
 // Initialize Firebase (prevent duplicate initialization)
