@@ -1,6 +1,6 @@
-import { Layout, Requirements } from '../../types';
+import { Layout, ProjectRequirements } from '../../types';
 
-export function renderFootingDetail(layout: Layout, requirements: Requirements): string {
+export function renderFootingDetail(layout: Layout, requirements: ProjectRequirements): string {
   // Get column data from layout
   const floor = layout.floors[0];
   const col = floor?.columns?.[0];
