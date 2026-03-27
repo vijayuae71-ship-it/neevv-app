@@ -98,7 +98,7 @@ export default function HomePage() {
 
   /* ============ NAVBAR (shared) ============ */
   const Navbar = ({ showBack = false }: { showBack?: boolean }) => (
-    <div className="bg-base-200 border-b border-base-300 px-4 py-3 flex items-center justify-between shrink-0">
+    <div className="bg-gray-100 border-b border-gray-300 px-4 py-3 flex items-center justify-between shrink-0">
       <div className="flex items-center gap-3">
         <img
           src={BRAND_LOGO_BASE64}
@@ -108,7 +108,7 @@ export default function HomePage() {
           style={showBack ? { cursor: 'pointer' } : undefined}
           title={showBack ? 'Back to Home' : undefined}
         />
-        <div className="h-6 w-px bg-base-300" />
+        <div className="h-6 w-px bg-gray-300" />
         <span className="text-xs opacity-50 tracking-wide uppercase">
           {mode === 'interior_only' ? 'Interior Design Studio' : 'Residential Design Studio'}
         </span>
@@ -215,7 +215,7 @@ export default function HomePage() {
 
   /* ============ MAIN APP ============ */
   return (
-    <div className="flex flex-col h-screen bg-base-100">
+    <div className="flex flex-col h-screen bg-white">
       <Navbar showBack />
 
       {/* Step indicator - only for new_build mode */}

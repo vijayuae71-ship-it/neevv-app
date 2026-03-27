@@ -16,7 +16,7 @@ export default function RootLayout({
 }>) {
   return (
     <html data-theme="alfred-light">
-      <body className="bg-base-100 text-base-content">
+      <body className="bg-white text-gray-900">
         {/* Tailwind v4 browser - processes utility classes client-side (same as Tasklet CDN) */}
         <Script
           src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"
