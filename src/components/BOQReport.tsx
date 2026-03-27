@@ -89,7 +89,7 @@ export const BOQReport: React.FC<Props> = ({ boq, layout }) => {
                       <tbody>
                         <tr><td>Concrete (M20)</td><td className="text-right font-mono">{boq.concreteVolumeM3}</td><td>m³</td></tr>
                         <tr><td>Steel (Fe500D)</td><td className="text-right font-mono">{boq.steelWeightMT}</td><td>MT</td></tr>
-                        <tr><td>Bricks/Blocks</td><td className="text-right font-mono">{boq.brickCount.toLocaleString()}</td><td>nos</td></tr>
+                        <tr><td>Brick Masonry (230mm)</td><td className="text-right font-mono">{(boq.brickCount / 480).toFixed(1)}</td><td>m³</td></tr>
                         <tr><td>Cement (OPC 53)</td><td className="text-right font-mono">{boq.cementBags.toLocaleString()}</td><td>bags</td></tr>
                         <tr><td>Sand</td><td className="text-right font-mono">{boq.sandCuM}</td><td>m³</td></tr>
                         <tr><td>Aggregate (20mm)</td><td className="text-right font-mono">{boq.aggregateCuM}</td><td>m³</td></tr>

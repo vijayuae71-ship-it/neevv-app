@@ -562,14 +562,16 @@ function FurnitureShape({ item, ox, oy }: { item: PlacedFurniture; ox: number; o
     }
   }
 
-  // Label
+  // Label — truncate long names to prevent overlap
+  const maxChars = Math.max(8, Math.round(w / 4));
+  const truncName = item.name.length > maxChars ? item.name.slice(0, maxChars - 1) + '…' : item.name;
   els.push(
-    <text key="lbl" x={x + w / 2} y={y + d + 8} textAnchor="middle" fontSize={5} fontFamily={FONT} fill="#444">
-      {item.name}
+    <text key="lbl" x={x + w / 2} y={y + d + 8} textAnchor="middle" fontSize={Math.min(5, w / 12)} fontFamily={FONT} fill="#444">
+      {truncName}
     </text>
   );
   els.push(
-    <text key="dim" x={x + w / 2} y={y + d + 14} textAnchor="middle" fontSize={4.5} fontFamily={FONT} fill="#888">
+    <text key="dim" x={x + w / 2} y={y + d + 14} textAnchor="middle" fontSize={4} fontFamily={FONT} fill="#888">
       {item.widthMM}×{item.depthMM}
     </text>
   );
@@ -1319,7 +1321,7 @@ export default function InteriorDrawings({ layout, rooms }: Props) {
   return (
     <div className="space-y-4">
       {/* Tab selector */}
-      <div className="flex flex-wrap gap-2 p-3 rounded-lg" style={{ background: '#1a1a2e' }}>
+      <div className="flex flex-wrap gap-2 p-3 rounded-lg bg-gray-100 border border-gray-200">
         {tabs.map(tab => (
           <button
             key={tab.key}
@@ -1327,7 +1329,7 @@ export default function InteriorDrawings({ layout, rooms }: Props) {
             className={`px-4 py-2 rounded text-sm font-medium transition-colors ${
               activeTab === tab.key
                 ? 'bg-blue-600 text-white'
-                : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                : 'bg-white text-gray-700 hover:bg-gray-200 border border-gray-300'
             }`}
           >
             {tab.label}
@@ -1336,8 +1338,8 @@ export default function InteriorDrawings({ layout, rooms }: Props) {
       </div>
 
       {/* Room selector */}
-      <div className="flex flex-wrap gap-2 p-3 rounded-lg" style={{ background: '#0d1117' }}>
-        <span className="text-gray-400 text-xs self-center mr-1">Room:</span>
+      <div className="flex flex-wrap gap-2 p-3 rounded-lg bg-gray-50 border border-gray-200">
+        <span className="text-gray-500 text-xs self-center mr-1 font-semibold">Room:</span>
         {floor0.map(room => (
           <button
             key={room.id}
@@ -1345,7 +1347,7 @@ export default function InteriorDrawings({ layout, rooms }: Props) {
             className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${
               selectedRoomId === room.id
                 ? 'bg-emerald-600 text-white'
-                : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                : 'bg-white text-gray-700 hover:bg-gray-200 border border-gray-300'
             }`}
           >
             {roomLabel(room)}

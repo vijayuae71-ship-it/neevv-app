@@ -6,9 +6,9 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
 const GCS_BUCKET = process.env.GCS_BUCKET_NAME || '';
 
 const MODELS: Record<string, string> = {
-  'nano-banana': 'gemini-2.0-flash-exp',
-  'nano-banana-2': 'gemini-2.0-flash-exp',
-  'nano-banana-pro': 'gemini-2.0-flash-exp',
+  'nano-banana': 'gemini-2.5-flash-image',
+  'nano-banana-2': 'gemini-3.1-flash-image-preview',
+  'nano-banana-pro': 'gemini-3-pro-image-preview',
 };
 
 export async function POST(request: NextRequest) {
@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
       body: JSON.stringify({
         contents: [{ parts: [{ text: prompt }] }],
         generationConfig: {
-          responseModalities: ['TEXT', 'IMAGE'],
+          responseModalities: ['IMAGE'],
         },
       }),
     });

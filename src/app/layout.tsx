@@ -4,8 +4,8 @@ import "../styles/daisyui.css";
 import "../styles/globals.css";
 
 export const metadata: Metadata = {
-  title: "neevv – AI Architect & Interior Designer",
-  description: "Design your dream Indian home with AI-powered architecture",
+  title: "neevv — Architecture • Structure • MEP • Interiors",
+  description: "AI-powered residential design studio for Indian home builders. Architectural, structural, MEP and interior design services.",
   icons: { icon: "/logo.png" },
 };
 

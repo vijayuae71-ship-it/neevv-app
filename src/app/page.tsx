@@ -110,7 +110,7 @@ export default function HomePage() {
         />
         <div className="h-6 w-px bg-gray-300" />
         <span className="text-xs opacity-80 tracking-wide uppercase">
-          {mode === 'interior_only' ? 'Interior Design Studio' : 'Residential Design Studio'}
+          {mode === 'interior_only' ? 'Interior Design Studio' : 'Architecture • Structure • MEP • Interiors'}
         </span>
       </div>
       <div className="flex items-center gap-3">
@@ -144,8 +144,8 @@ export default function HomePage() {
               <h1 className="text-4xl font-bold text-gray-900">
                 Welcome to <span className="text-blue-600">neevv</span>
               </h1>
-              <p className="text-lg text-gray-600">Sapno Ka Nirman — Building Dreams</p>
-              <p className="text-sm text-gray-500">AI-powered residential design for Indian homes</p>
+              <p className="text-lg text-gray-600">Architecture • Structure • MEP • Interiors</p>
+              <p className="text-sm text-gray-500">AI-powered residential design studio for Indian home builders</p>
             </div>
 
             {/* Entry Cards - exactly 2 */}
@@ -180,7 +180,7 @@ export default function HomePage() {
               <div
                 role="button"
                 tabIndex={0}
-                className="bg-white border border-gray-200 rounded-lg p-6 cursor-pointer hover:shadow-lg hover:border-secondary transition-all"
+                className="bg-white border border-gray-200 rounded-lg p-6 cursor-pointer hover:shadow-lg hover:border-amber-500 transition-all"
                 onClick={() => setMode('interior_only')}
               >
                 <div className="w-14 h-14 rounded-xl bg-orange-50 flex items-center justify-center mb-4">

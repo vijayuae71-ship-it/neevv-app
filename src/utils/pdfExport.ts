@@ -27,8 +27,8 @@ export type ExportMode = 'working-drawings' | 'floorplan' | 'full-package';
  * into chunks, writing each via writeFileToDisk to a temp part, then cat them together.
  */
 async function writeLargeFile(filePath: string, content: string): Promise<void> {
-  if (!window.tasklet) {
-    throw new Error('PDF export requires the Tasklet environment. Use the /api/export endpoint in production.');
+  if (typeof window === 'undefined' || !(window as any).tasklet) {
+    throw new Error('PDF export is coming soon! Our team is building a seamless download experience for you.');
   }
   const MAX_DIRECT = 80000; // 80KB - safe for writeFileToDisk
   if (content.length <= MAX_DIRECT) {
@@ -68,8 +68,8 @@ export async function exportToPDF(
   mode: ExportMode,
   onProgress?: (p: ExportProgress) => void
 ): Promise<string> {
-  if (!window.tasklet) {
-    throw new Error('PDF export requires the Tasklet environment. Use the /api/export endpoint in production.');
+  if (typeof window === 'undefined' || !(window as any).tasklet) {
+    throw new Error('PDF export is coming soon! Our team is building a seamless download experience for you.');
   }
 
   const totalSteps = 16;

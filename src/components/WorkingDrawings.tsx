@@ -18,6 +18,7 @@ import { renderElectrical } from '../utils/drawings/electrical';
 import { renderPlumbing } from '../utils/drawings/plumbing';
 import { renderTiling } from '../utils/drawings/tiling';
 import { renderRCCDetail } from '../utils/drawings/rccDetail';
+import { renderFootingDetail } from '../utils/drawings/footingDetail';
 
 interface Props {
   layout: Layout;
@@ -37,7 +38,8 @@ type DrawingType =
   | 'brickwork'
   | 'electrical'
   | 'plumbing'
-  | 'tiling';
+  | 'tiling'
+  | 'footingDetail';
 
 /* ══════════════════════════════════════════ */
 /* ── SECTION A-A (inline — kept from original) ── */
@@ -456,7 +458,8 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq }) 
 
   const tabs: { id: DrawingType; label: string; icon: React.ReactNode; group: string }[] = [
     { id: 'excavation', label: 'Excavation', icon: <Shovel size={12} />, group: 'Site' },
-    { id: 'foundation', label: 'Foundation', icon: <Grid3x3 size={12} />, group: 'Structure' },
+    { id: 'foundation', label: 'Foundation Plan', icon: <Grid3x3 size={12} />, group: 'Structure' },
+    { id: 'footingDetail', label: 'Footing Detail', icon: <Layers size={12} />, group: 'Structure' },
     { id: 'rccDetail', label: 'RCC Slab/Beam', icon: <Layers size={12} />, group: 'Structure' },
     { id: 'structural', label: 'Column Grid', icon: <Columns3 size={12} />, group: 'Structure' },
     { id: 'reinforcement', label: 'Rebar Details', icon: <Ruler size={12} />, group: 'Structure' },
@@ -475,6 +478,7 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq }) 
   switch (activeDrawing) {
     case 'excavation': svgHtml = renderExcavation(layout, requirements); break;
     case 'foundation': svgHtml = renderFoundation(layout); break;
+    case 'footingDetail': svgHtml = renderFootingDetail(layout, requirements); break;
     case 'rccDetail': svgHtml = renderRCCDetail(layout, requirements); break;
     case 'structural': svgHtml = renderStructural(layout); break;
     case 'reinforcement': svgHtml = renderReinforcement(layout, requirements); break;
@@ -490,6 +494,7 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq }) 
   const descriptions: Record<DrawingType, string> = {
     excavation: 'Trench excavation layout with depths, bench mark, center line pegs, and earth removal volume. Trench width: 1800mm (1200mm footing + 300mm working space each side).',
     foundation: 'Foundation layout with isolated footings (1200×1200×300mm), column pedestals, plinth beam grid (230×300). SBC assumed 150 kN/m².',
+    footingDetail: 'Detailed footing cross-section and plan with reinforcement, PCC bed, pedestal starter bars, and soil bearing details per IS 456. Includes raft foundation option for weak soil.',
     rccDetail: 'RCC slab & beam layout showing slab panels (one-way/two-way), beam grid, reinforcement directions, staircase opening, and cantilever balcony slabs.',
     structural: 'Column-beam grid with centerline references. Column: 230×300mm. Beam: 230×400mm. Max clear span ≤ 4500mm.',
     reinforcement: 'Detailed reinforcement sections for footing, column, beam, slab, and lintel with bar sizes, spacing, cover, and stirrup details.',

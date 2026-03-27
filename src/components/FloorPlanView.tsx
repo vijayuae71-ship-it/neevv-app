@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { Layout, Room, Column, Setbacks } from '../types';
 import { Compass, Grid3x3, Ruler, Armchair, ArrowRight, ChevronDown, ChevronUp, AlertTriangle, CheckCircle } from 'lucide-react';
-import { BRAND_LOGO_BASE64 } from '../utils/brand';
+// Brand watermark removed — clean professional output
 
 interface Props {
   layout: Layout;
@@ -302,14 +302,7 @@ export const FloorPlanView: React.FC<Props> = ({ layout, vastuEnabled, onProceed
               {(layout.plotDepthM / 0.3048).toFixed(0)}' - 0" ({layout.plotDepthM.toFixed(2)} m)
             </text>
           </g>
-          {/* Brand watermark */}
-          <image
-            href={BRAND_LOGO_BASE64}
-            x={10} y={10}
-            width="100" height="33"
-            opacity="0.35"
-            preserveAspectRatio="xMidYMid meet"
-          />
+          {/* neevv — Architecture • Structure • MEP • Interiors */}
         </svg>
       </div>
 
@@ -473,27 +466,44 @@ const DoorSymbol: React.FC<{
   const t = WALL_T;
   const r = doorPx; // arc radius = door width
 
-  // Door opens inward (into the room)
+  // Toilet doors open OUTWARD per NBC (safety/accessibility)
+  // All other doors open inward (into the room)
+  const isToilet = room.type === 'toilet';
+
   switch (wall.side) {
     case 'bottom': {
       const dx = mx - doorPx / 2;
-      return (
+      return isToilet ? (
         <g>
-          {/* Clear wall gap */}
           <rect x={dx - 1} y={my - t} width={doorPx + 2} height={t * 2} fill={C.bg} />
-          {/* Wall ends (jambs) – small thick marks */}
           <line x1={dx} y1={my - t} x2={dx} y2={my + t} stroke={C.wall} strokeWidth="1.5" />
           <line x1={dx + doorPx} y1={my - t} x2={dx + doorPx} y2={my + t} stroke={C.wall} strokeWidth="1.5" />
-          {/* Door leaf – solid line */}
+          {/* Outward: leaf swings down/out */}
+          <line x1={dx} y1={my} x2={dx} y2={my + r} stroke={C.door} strokeWidth="1.2" />
+          <path d={`M ${dx} ${my + r} A ${r} ${r} 0 0 0 ${dx + r} ${my}`} fill="none" stroke={C.door} strokeWidth="0.5" strokeDasharray="3,1.5" />
+        </g>
+      ) : (
+        <g>
+          <rect x={dx - 1} y={my - t} width={doorPx + 2} height={t * 2} fill={C.bg} />
+          <line x1={dx} y1={my - t} x2={dx} y2={my + t} stroke={C.wall} strokeWidth="1.5" />
+          <line x1={dx + doorPx} y1={my - t} x2={dx + doorPx} y2={my + t} stroke={C.wall} strokeWidth="1.5" />
           <line x1={dx} y1={my} x2={dx} y2={my - r} stroke={C.door} strokeWidth="1.2" />
-          {/* 90° swing arc */}
           <path d={`M ${dx} ${my - r} A ${r} ${r} 0 0 1 ${dx + r} ${my}`} fill="none" stroke={C.door} strokeWidth="0.5" strokeDasharray="3,1.5" />
         </g>
       );
     }
     case 'top': {
       const dx = mx - doorPx / 2;
-      return (
+      return isToilet ? (
+        <g>
+          <rect x={dx - 1} y={my - t} width={doorPx + 2} height={t * 2} fill={C.bg} />
+          <line x1={dx} y1={my - t} x2={dx} y2={my + t} stroke={C.wall} strokeWidth="1.5" />
+          <line x1={dx + doorPx} y1={my - t} x2={dx + doorPx} y2={my + t} stroke={C.wall} strokeWidth="1.5" />
+          {/* Outward: leaf swings up/out */}
+          <line x1={dx} y1={my} x2={dx} y2={my - r} stroke={C.door} strokeWidth="1.2" />
+          <path d={`M ${dx} ${my - r} A ${r} ${r} 0 0 1 ${dx + r} ${my}`} fill="none" stroke={C.door} strokeWidth="0.5" strokeDasharray="3,1.5" />
+        </g>
+      ) : (
         <g>
           <rect x={dx - 1} y={my - t} width={doorPx + 2} height={t * 2} fill={C.bg} />
           <line x1={dx} y1={my - t} x2={dx} y2={my + t} stroke={C.wall} strokeWidth="1.5" />
@@ -505,7 +515,16 @@ const DoorSymbol: React.FC<{
     }
     case 'left': {
       const dy = my - doorPx / 2;
-      return (
+      return isToilet ? (
+        <g>
+          <rect x={mx - t} y={dy - 1} width={t * 2} height={doorPx + 2} fill={C.bg} />
+          <line x1={mx - t} y1={dy} x2={mx + t} y2={dy} stroke={C.wall} strokeWidth="1.5" />
+          <line x1={mx - t} y1={dy + doorPx} x2={mx + t} y2={dy + doorPx} stroke={C.wall} strokeWidth="1.5" />
+          {/* Outward: leaf swings left/out */}
+          <line x1={mx} y1={dy} x2={mx - r} y2={dy} stroke={C.door} strokeWidth="1.2" />
+          <path d={`M ${mx - r} ${dy} A ${r} ${r} 0 0 0 ${mx} ${dy + r}`} fill="none" stroke={C.door} strokeWidth="0.5" strokeDasharray="3,1.5" />
+        </g>
+      ) : (
         <g>
           <rect x={mx - t} y={dy - 1} width={t * 2} height={doorPx + 2} fill={C.bg} />
           <line x1={mx - t} y1={dy} x2={mx + t} y2={dy} stroke={C.wall} strokeWidth="1.5" />
@@ -517,7 +536,16 @@ const DoorSymbol: React.FC<{
     }
     case 'right': {
       const dy = my - doorPx / 2;
-      return (
+      return isToilet ? (
+        <g>
+          <rect x={mx - t} y={dy - 1} width={t * 2} height={doorPx + 2} fill={C.bg} />
+          <line x1={mx - t} y1={dy} x2={mx + t} y2={dy} stroke={C.wall} strokeWidth="1.5" />
+          <line x1={mx - t} y1={dy + doorPx} x2={mx + t} y2={dy + doorPx} stroke={C.wall} strokeWidth="1.5" />
+          {/* Outward: leaf swings right/out */}
+          <line x1={mx} y1={dy} x2={mx + r} y2={dy} stroke={C.door} strokeWidth="1.2" />
+          <path d={`M ${mx + r} ${dy} A ${r} ${r} 0 0 1 ${mx} ${dy + r}`} fill="none" stroke={C.door} strokeWidth="0.5" strokeDasharray="3,1.5" />
+        </g>
+      ) : (
         <g>
           <rect x={mx - t} y={dy - 1} width={t * 2} height={doorPx + 2} fill={C.bg} />
           <line x1={mx - t} y1={dy} x2={mx + t} y2={dy} stroke={C.wall} strokeWidth="1.5" />

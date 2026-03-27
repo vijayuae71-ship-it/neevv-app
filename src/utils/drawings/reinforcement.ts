@@ -3,7 +3,7 @@ import { Layout, Column, Room, ProjectRequirements } from '../../types';
 
 export function renderReinforcement(layout: Layout, requirements: ProjectRequirements): string {
   const svgW = 800;
-  const svgH = 700;
+  const svgH = 860;
 
   const boxW = 340;
   const boxH = 220;
