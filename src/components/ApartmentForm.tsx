@@ -308,7 +308,7 @@ export default function ApartmentForm({ onSubmit, onBack }: Props) {
                 return (
                   <button
                     key={tpl.name}
-                    className="card card-bordered border-2 hover:border-primary hover:shadow-lg transition-all cursor-pointer bg-white"
+                    className="card card-bordered border-2 hover:border-blue-500 hover:shadow-lg transition-all cursor-pointer bg-white"
                     onClick={() => applyTemplate(tpl)}
                   >
                     <div className="card-body p-4 items-center text-center">

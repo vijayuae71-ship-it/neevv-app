@@ -154,7 +154,7 @@ export default function HomePage() {
               <div
                 role="button"
                 tabIndex={0}
-                className="bg-white border border-gray-200 rounded-lg p-6 cursor-pointer hover:shadow-lg hover:border-primary transition-all"
+                className="bg-white border border-gray-200 rounded-lg p-6 cursor-pointer hover:shadow-lg hover:border-blue-500 transition-all"
                 onClick={() => setMode('new_build')}
               >
                 <div className="w-14 h-14 rounded-xl bg-green-50 flex items-center justify-center mb-4">
