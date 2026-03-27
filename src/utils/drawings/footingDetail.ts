@@ -4,9 +4,9 @@ export function renderFootingDetail(layout: Layout, requirements: ProjectRequire
   // Get column data from layout
   const floor = layout.floors[0];
   const col = floor?.columns?.[0];
-  const colSize = col ? `${col.width}x${col.depth}` : '300x300';
-  const colW = col?.width || 300;
-  const colD = col?.depth || 300;
+  const colSize = col ? `${col.widthMM}x${col.depthMM}` : '300x300';
+  const colW = col?.widthMM || 300;
+  const colD = col?.depthMM || 300;
 
   // Calculate footing dimensions based on column size
   const footingW = Math.max(colW * 4, 1200);  // typically 3-4x column width
