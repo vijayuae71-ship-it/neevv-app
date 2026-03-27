@@ -2,7 +2,6 @@
 
 import React, { useMemo } from 'react';
 import { InteriorExecutionPhase } from '../types';
-import BrandWatermark from './BrandWatermark';
 
 interface Props {
   phases: InteriorExecutionPhase[];
@@ -100,8 +99,7 @@ export default function InteriorTimeline({ phases, totalDays }: Props) {
 
   if (phases.length === 0) {
     return (
-      <div className="relative p-8 text-center text-base-content/50">
-        <BrandWatermark position="top-left" />
+      <div className="relative p-8 text-center text-gray-500">
         <p>No execution phases available.</p>
       </div>
     );
@@ -109,8 +107,7 @@ export default function InteriorTimeline({ phases, totalDays }: Props) {
 
   return (
     <div className="relative">
-      <BrandWatermark position="top-left" />
-      <div className="overflow-x-auto border border-base-300 rounded-xl bg-base-100">
+      <div className="overflow-x-auto border border-gray-200 rounded-xl bg-white">
         <svg
           width={svgWidth}
           height={svgHeight}

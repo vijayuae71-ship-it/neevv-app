@@ -4,7 +4,6 @@ import React, { useState } from 'react';
 import { Layout, ProjectRequirements } from '../types';
 import { buildArchitecturalPrompt } from '../utils/aiRenderPrompt';
 import { Camera, RefreshCw, Download, AlertTriangle, Sparkles, Eye } from 'lucide-react';
-import BrandWatermark from './BrandWatermark';
 
 const MODELS = [
   { id: 'nano-banana', label: 'Nano Banana' },
@@ -194,7 +193,7 @@ export const AIRenderView: React.FC<Props> = ({ layout, requirements }) => {
       <div className="flex-1 rounded-lg overflow-hidden bg-gray-200 min-h-0 relative" style={{ minHeight: '400px' }}>
         {loading && (
           <div className="absolute inset-0 flex flex-col items-center justify-center z-10 bg-gray-200">
-            <span className="loading loading-spinner loading-lg text-primary mb-4" />
+            <span className="loading loading-spinner loading-lg text-blue-600 mb-4" />
             <p className="text-sm text-gray-700">{progress || 'Generating AI render...'}</p>
             <p className="text-xs text-gray-500 mt-2">This may take 15-30 seconds</p>
           </div>
@@ -224,11 +223,10 @@ export const AIRenderView: React.FC<Props> = ({ layout, requirements }) => {
               alt={`AI Render - ${activeRender.viewAngle}`}
               className="w-full h-full object-contain"
             />
-            <BrandWatermark position="top-left" opacity={0.5} width={90} />
           </>
         ) : !loading && (
           <div className="flex flex-col items-center justify-center h-full text-gray-500">
-            <Camera size={48} className="mb-4 opacity-50" />
+            <Camera size={48} className="mb-4 opacity-80" />
             <p className="text-lg font-medium text-gray-700">AI Photorealistic Render</p>
             <p className="text-sm mt-2 max-w-md text-center text-gray-600">
               Generate a professional V-Ray quality architectural render from your floor plan using Google Gemini AI.

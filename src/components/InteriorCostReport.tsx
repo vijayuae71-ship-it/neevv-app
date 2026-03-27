@@ -2,7 +2,6 @@
 
 import React, { useState, useMemo } from 'react';
 import { InteriorDesignData, RoomInterior } from '../types';
-import BrandWatermark from './BrandWatermark';
 
 interface Props {
   data: InteriorDesignData;
@@ -99,7 +98,7 @@ function CostSummaryTab({ data }: { data: InteriorDesignData }) {
       <div className="stats stats-vertical lg:stats-horizontal shadow w-full">
         <div className="stat">
           <div className="stat-title">Total Project Cost</div>
-          <div className="stat-value text-primary text-2xl">{formatCurrency(total)}</div>
+          <div className="stat-value text-blue-600 text-2xl">{formatCurrency(total)}</div>
         </div>
         <div className="stat">
           <div className="stat-title">Cost / sqft</div>
@@ -117,7 +116,7 @@ function CostSummaryTab({ data }: { data: InteriorDesignData }) {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Horizontal bar chart */}
-        <div className="card bg-base-100 shadow-sm border border-base-300">
+        <div className="card bg-white shadow-sm border border-gray-200">
           <div className="card-body p-4">
             <h3 className="card-title text-sm">Category-wise Breakdown</h3>
             <svg
@@ -149,7 +148,7 @@ function CostSummaryTab({ data }: { data: InteriorDesignData }) {
         </div>
 
         {/* Donut / Pie chart */}
-        <div className="card bg-base-100 shadow-sm border border-base-300">
+        <div className="card bg-white shadow-sm border border-gray-200">
           <div className="card-body p-4 flex flex-col items-center">
             <h3 className="card-title text-sm">Cost Proportions</h3>
             <svg width={220} height={220} viewBox="0 0 220 220" xmlns="http://www.w3.org/2000/svg">
@@ -224,7 +223,7 @@ function RoomBreakdownTab({ data, rooms }: { data: InteriorDesignData; rooms: Ro
   }, [roomItems]);
 
   if (rooms.length === 0) {
-    return <p className="text-base-content/50 text-center py-8">No room data available.</p>;
+    return <p className="text-gray-500 text-center py-8">No room data available.</p>;
   }
 
   return (
@@ -235,7 +234,7 @@ function RoomBreakdownTab({ data, rooms }: { data: InteriorDesignData; rooms: Ro
         const cost = roomCosts.get(room.roomName) ?? 0;
 
         return (
-          <div key={room.roomId} className="collapse collapse-arrow border border-base-300 bg-base-100">
+          <div key={room.roomId} className="collapse collapse-arrow border border-gray-200 bg-white">
             <input
               type="checkbox"
               checked={isOpen}
@@ -244,13 +243,13 @@ function RoomBreakdownTab({ data, rooms }: { data: InteriorDesignData; rooms: Ro
             <div className="collapse-title font-medium flex items-center justify-between pr-12">
               <div>
                 <span className="font-semibold">{room.roomName}</span>
-                <span className="text-xs ml-2 opacity-60 capitalize">{room.style.replace(/_/g, ' ')}</span>
+                <span className="text-xs ml-2 opacity-80 capitalize">{room.style.replace(/_/g, ' ')}</span>
               </div>
               <span className="badge badge-primary badge-outline">{formatCurrency(cost)}</span>
             </div>
             <div className="collapse-content">
               {items.length === 0 ? (
-                <p className="text-sm opacity-50">No BOQ items for this room.</p>
+                <p className="text-sm opacity-80">No BOQ items for this room.</p>
               ) : (
                 <div className="overflow-x-auto">
                   <table className="table table-xs table-zebra w-full">
@@ -318,7 +317,7 @@ function CategoryDetailsTab({ data }: { data: InteriorDesignData }) {
         const isOpen = openCat === catKey;
 
         return (
-          <div key={catKey} className="collapse collapse-arrow border border-base-300 bg-base-100">
+          <div key={catKey} className="collapse collapse-arrow border border-gray-200 bg-white">
             <input
               type="checkbox"
               checked={isOpen}
@@ -360,7 +359,7 @@ function CategoryDetailsTab({ data }: { data: InteriorDesignData }) {
                         <td>{it.unit}</td>
                         <td className="text-right">{formatCurrency(it.rate)}</td>
                         <td className="text-right">{formatCurrency(it.amount)}</td>
-                        <td className="text-xs opacity-60">{it.remark ?? ''}</td>
+                        <td className="text-xs opacity-80">{it.remark ?? ''}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -432,11 +431,11 @@ function MaterialScheduleTab({ data, rooms }: { data: InteriorDesignData; rooms:
   return (
     <div className="space-y-6">
       {/* Flooring */}
-      <div className="card bg-base-100 shadow-sm border border-base-300">
+      <div className="card bg-white shadow-sm border border-gray-200">
         <div className="card-body p-4">
           <h3 className="card-title text-sm">🪨 Flooring Materials</h3>
           {flooringAgg.length === 0 ? (
-            <p className="text-sm opacity-50">No flooring data.</p>
+            <p className="text-sm opacity-80">No flooring data.</p>
           ) : (
             <table className="table table-xs w-full">
               <thead>
@@ -465,7 +464,7 @@ function MaterialScheduleTab({ data, rooms }: { data: InteriorDesignData; rooms:
       </div>
 
       {/* Paint */}
-      <div className="card bg-base-100 shadow-sm border border-base-300">
+      <div className="card bg-white shadow-sm border border-gray-200">
         <div className="card-body p-4">
           <h3 className="card-title text-sm">🎨 Painting</h3>
           <div className="stat p-2">
@@ -476,7 +475,7 @@ function MaterialScheduleTab({ data, rooms }: { data: InteriorDesignData; rooms:
       </div>
 
       {/* False Ceiling */}
-      <div className="card bg-base-100 shadow-sm border border-base-300">
+      <div className="card bg-white shadow-sm border border-gray-200">
         <div className="card-body p-4">
           <h3 className="card-title text-sm">💡 False Ceiling</h3>
           <div className="stat p-2">
@@ -487,11 +486,11 @@ function MaterialScheduleTab({ data, rooms }: { data: InteriorDesignData; rooms:
       </div>
 
       {/* Woodwork */}
-      <div className="card bg-base-100 shadow-sm border border-base-300">
+      <div className="card bg-white shadow-sm border border-gray-200">
         <div className="card-body p-4">
           <h3 className="card-title text-sm">🪵 Woodwork / Furniture</h3>
           {woodworkItems.length === 0 ? (
-            <p className="text-sm opacity-50">No furniture data.</p>
+            <p className="text-sm opacity-80">No furniture data.</p>
           ) : (
             <table className="table table-xs w-full">
               <thead>
@@ -534,8 +533,7 @@ export default function InteriorCostReport({ data, rooms }: Props) {
 
   if (!data || !data.boqItems) {
     return (
-      <div className="relative p-8 text-center text-base-content/50">
-        <BrandWatermark position="top-left" />
+      <div className="relative p-8 text-center text-gray-500">
         <p>No cost data available yet.</p>
       </div>
     );
@@ -543,7 +541,6 @@ export default function InteriorCostReport({ data, rooms }: Props) {
 
   return (
     <div className="relative space-y-4">
-      <BrandWatermark position="top-left" />
 
       {/* Tabs */}
       <div role="tablist" className="tabs tabs-boxed">

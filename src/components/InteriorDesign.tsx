@@ -9,7 +9,6 @@ import InteriorDrawings from './InteriorDrawings';
 import InteriorAIDrawings from './InteriorAIDrawings';
 import InteriorTimeline from './InteriorTimeline';
 import InteriorCostReport from './InteriorCostReport';
-import BrandWatermark from './BrandWatermark';
 
 interface Props {
   layout: Layout;
@@ -50,15 +49,14 @@ export const InteriorDesign: React.FC<Props> = ({ layout, requirements }) => {
 
   return (
     <div className="relative flex flex-col h-full">
-      <BrandWatermark position="top-left" />
 
       {/* Summary bar */}
       {interiorData && (
-        <div className="bg-base-200 px-4 py-2 flex flex-wrap items-center gap-4 text-sm border-b border-base-300 shrink-0">
-          <span className="font-semibold text-primary">{rooms.length} Rooms Configured</span>
-          <span className="text-base-content/70">|</span>
-          <span>Estimated Cost: <span className="font-bold text-success">{fmt(interiorData.totalCost)}</span></span>
-          <span className="text-base-content/70">|</span>
+        <div className="bg-gray-100 px-4 py-2 flex flex-wrap items-center gap-4 text-sm border-b border-gray-200 shrink-0">
+          <span className="font-semibold text-blue-600">{rooms.length} Rooms Configured</span>
+          <span className="text-gray-700">|</span>
+          <span>Estimated Cost: <span className="font-bold text-green-600">{fmt(interiorData.totalCost)}</span></span>
+          <span className="text-gray-700">|</span>
           <span>Duration: <span className="font-bold">{interiorData.totalDurationDays} Days</span></span>
           <div className="ml-auto">
             <button

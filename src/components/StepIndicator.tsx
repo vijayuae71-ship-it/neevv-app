@@ -24,7 +24,7 @@ export const StepIndicator: React.FC<Props> = ({ current, onNavigate, canNavigat
   const currentIndex = STEPS.findIndex((s) => s.id === current);
 
   return (
-    <div className="flex items-center gap-0.5 px-2 py-1.5 bg-base-200 border-b border-base-300 overflow-x-auto">
+    <div className="flex items-center gap-0.5 px-2 py-1.5 bg-gray-100 border-b border-gray-200 overflow-x-auto">
       {STEPS.map((s, i) => {
         const isActive = s.id === current;
         const isDone = i < currentIndex;
@@ -33,11 +33,11 @@ export const StepIndicator: React.FC<Props> = ({ current, onNavigate, canNavigat
         return (
           <React.Fragment key={s.id}>
             {i > 0 && (
-              <div className={`w-4 h-px flex-shrink-0 ${isDone ? 'bg-primary' : 'bg-base-300'}`} />
+              <div className={`w-4 h-px flex-shrink-0 ${isDone ? 'bg-blue-600' : 'bg-gray-200'}`} />
             )}
             <button
               className={`btn btn-xs flex-shrink-0 gap-1 ${
-                isActive ? 'btn-primary' : isDone ? 'btn-ghost text-primary' : 'btn-ghost text-base-content/40'
+                isActive ? 'btn-primary' : isDone ? 'btn-ghost text-blue-600' : 'btn-ghost text-gray-400'
               } ${!canNav && !isActive ? 'btn-disabled' : ''}`}
               onClick={() => canNav && onNavigate(s.id)}
             >

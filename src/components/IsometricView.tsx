@@ -5,7 +5,6 @@ import { Layout, ProjectRequirements } from '../types';
 import { buildScene } from '../utils/sceneBuilder';
 import { AIRenderView } from './AIRenderView';
 import { Box, Sparkles, Ruler } from 'lucide-react';
-import BrandWatermark from './BrandWatermark';
 
 /** Floating dimension info panel */
 const DimensionPanel: React.FC<{ layout: Layout; requirements: ProjectRequirements }> = ({ layout, requirements }) => {
@@ -20,12 +19,12 @@ const DimensionPanel: React.FC<{ layout: Layout; requirements: ProjectRequiremen
   const totalHeight = numFloors * 3;
 
   return (
-    <div className="absolute bottom-3 right-3 bg-base-100/90 backdrop-blur-sm rounded-lg shadow-lg p-3 text-xs z-10 border border-base-300" style={{ maxWidth: '220px' }}>
-      <div className="flex items-center gap-1 font-bold text-primary mb-1.5 border-b border-base-300 pb-1">
+    <div className="absolute bottom-3 right-3 bg-white/90 backdrop-blur-sm rounded-lg shadow-lg p-3 text-xs z-10 border border-gray-200" style={{ maxWidth: '220px' }}>
+      <div className="flex items-center gap-1 font-bold text-blue-600 mb-1.5 border-b border-gray-200 pb-1">
         <Ruler size={12} />
         <span>KEY DIMENSIONS</span>
       </div>
-      <div className="space-y-1 font-mono text-base-content/80">
+      <div className="space-y-1 font-mono text-gray-900/80">
         <div className="flex justify-between"><span>Plot:</span><span className="font-semibold">{requirements.plotWidthFt}' × {requirements.plotDepthFt}'</span></div>
         <div className="flex justify-between"><span>Building:</span><span className="font-semibold">{buildW.toFixed(1)}m × {buildD.toFixed(1)}m</span></div>
         <div className="flex justify-between"><span>Height:</span><span className="font-semibold">{totalHeight}m ({numFloors}F)</span></div>
@@ -33,8 +32,8 @@ const DimensionPanel: React.FC<{ layout: Layout; requirements: ProjectRequiremen
         <div className="flex justify-between"><span>Slab:</span><span className="font-semibold">150mm RCC</span></div>
         <div className="flex justify-between"><span>Walls:</span><span className="font-semibold">230mm</span></div>
         <div className="flex justify-between"><span>Built-up/F:</span><span className="font-semibold">{builtUpPerFloor} sq.ft</span></div>
-        <div className="flex justify-between"><span>Total:</span><span className="font-semibold text-primary">{totalBuiltUp} sq.ft</span></div>
-        <div className="border-t border-base-300 pt-1 mt-1">
+        <div className="flex justify-between"><span>Total:</span><span className="font-semibold text-blue-600">{totalBuiltUp} sq.ft</span></div>
+        <div className="border-t border-gray-200 pt-1 mt-1">
           <div className="flex justify-between"><span>Setback F:</span><span>{frontSetback}m</span></div>
           <div className="flex justify-between"><span>Setback S:</span><span>{sideSetback}m</span></div>
           <div className="flex justify-between"><span>Setback R:</span><span>{rearSetback}m</span></div>
@@ -182,8 +181,8 @@ export const IsometricView: React.FC<Props> = ({ layout, requirements }) => {
       {viewMode === '3d' ? (
         <>
           {/* 3D Toolbar */}
-          <div className="flex items-center gap-2 p-2 bg-base-200 rounded-lg mb-2 flex-wrap">
-            <span className="text-sm font-semibold text-base-content/70">Floor:</span>
+          <div className="flex items-center gap-2 p-2 bg-gray-100 rounded-lg mb-2 flex-wrap">
+            <span className="text-sm font-semibold text-gray-700">Floor:</span>
             <button
               className={`btn btn-xs ${showFloor === 'all' ? 'btn-primary' : 'btn-ghost'}`}
               onClick={() => setShowFloor('all')}
@@ -201,7 +200,7 @@ export const IsometricView: React.FC<Props> = ({ layout, requirements }) => {
             ))}
             <div className="divider divider-horizontal mx-1" />
             <label className="flex items-center gap-1 cursor-pointer">
-              <span className="text-xs text-base-content/70">Cutaway</span>
+              <span className="text-xs text-gray-700">Cutaway</span>
               <input
                 type="checkbox"
                 className="toggle toggle-xs toggle-primary"
@@ -210,7 +209,7 @@ export const IsometricView: React.FC<Props> = ({ layout, requirements }) => {
               />
             </label>
             <label className="flex items-center gap-1 cursor-pointer">
-              <span className="text-xs text-base-content/70">Dimensions</span>
+              <span className="text-xs text-gray-700">Dimensions</span>
               <input
                 type="checkbox"
                 className="toggle toggle-xs toggle-secondary"
@@ -219,19 +218,18 @@ export const IsometricView: React.FC<Props> = ({ layout, requirements }) => {
               />
             </label>
             <div className="flex-1" />
-            <span className="text-xs text-base-content/50">Drag to rotate • Scroll to zoom</span>
+            <span className="text-xs text-gray-500">Drag to rotate • Scroll to zoom</span>
           </div>
           {/* 3D Canvas Container */}
           <div
             ref={containerRef}
-            className="flex-1 rounded-lg overflow-hidden bg-base-300 min-h-0 relative"
+            className="flex-1 rounded-lg overflow-hidden bg-gray-200 min-h-0 relative"
             style={{ minHeight: '400px' }}
           >
-            <BrandWatermark position="top-left" opacity={0.4} width={80} />
             {showDimensions && <DimensionPanel layout={layout} requirements={requirements} />}
           </div>
           {/* Legend */}
-          <div className="flex flex-wrap gap-2 mt-2 p-2 bg-base-200 rounded-lg">
+          <div className="flex flex-wrap gap-2 mt-2 p-2 bg-gray-100 rounded-lg">
             {[
               { label: 'Bedroom', color: '#D4885C' },
               { label: 'Hall/Living', color: '#E8CC78' },
@@ -243,7 +241,7 @@ export const IsometricView: React.FC<Props> = ({ layout, requirements }) => {
             ].map(item => (
               <div key={item.label} className="flex items-center gap-1">
                 <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: item.color }} />
-                <span className="text-xs text-base-content/70">{item.label}</span>
+                <span className="text-xs text-gray-700">{item.label}</span>
               </div>
             ))}
           </div>

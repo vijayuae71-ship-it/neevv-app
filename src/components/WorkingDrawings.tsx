@@ -7,7 +7,6 @@ import {
   BarChart3, BrickWall, Zap, Droplets, Grid2x2, Ruler, Download
 } from 'lucide-react';
 import { exportToPDF, ExportProgress } from '../utils/pdfExport';
-import BrandWatermark from './BrandWatermark';
 
 /* ── Import all drawing renderers ── */
 import { C, MARGIN, SC, dimChain, levelMark, concreteHatch, drawingBorder, northArrow, legend, gridLabels } from '../utils/drawingHelpers';
@@ -504,22 +503,21 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq }) 
   };
 
   return (
-    <div className="flex flex-col h-full bg-base-100 relative">
-      <BrandWatermark position="top-left" />
+    <div className="flex flex-col h-full bg-white relative">
       {/* Tab bar - grouped */}
-      <div className="p-2 bg-base-200 border-b border-base-300 overflow-x-auto">
+      <div className="p-2 bg-gray-100 border-b border-gray-200 overflow-x-auto">
         <div className="flex items-center gap-1 flex-wrap">
           {groups.map(g => {
             const groupTabs = tabs.filter(t => t.group === g);
             return (
               <React.Fragment key={g}>
-                <span className="text-[9px] font-bold uppercase tracking-widest text-base-content/40 mr-1 ml-2">{g}</span>
+                <span className="text-[9px] font-bold uppercase tracking-widest text-gray-400 mr-1 ml-2">{g}</span>
                 {groupTabs.map(t => (
                   <button key={t.id} className={`btn btn-xs gap-1 ${activeDrawing === t.id ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setActiveDrawing(t.id)}>
                     {t.icon} {t.label}
                   </button>
                 ))}
-                <span className="border-r border-base-300 h-4 mx-1" />
+                <span className="border-r border-gray-200 h-4 mx-1" />
               </React.Fragment>
             );
           })}
@@ -527,24 +525,24 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq }) 
       </div>
 
       {/* Zoom controls */}
-      <div className="flex items-center gap-2 px-3 py-1 bg-base-200 border-b border-base-300">
-        <span className="text-[10px] font-mono text-base-content/50">ZOOM</span>
+      <div className="flex items-center gap-2 px-3 py-1 bg-gray-100 border-b border-gray-200">
+        <span className="text-[10px] font-mono text-gray-500">ZOOM</span>
         <button className="btn btn-xs btn-ghost font-mono" onClick={() => setZoom(z => Math.max(50, z - 25))}>−</button>
         <span className="text-xs font-mono w-10 text-center">{zoom}%</span>
         <button className="btn btn-xs btn-ghost font-mono" onClick={() => setZoom(z => Math.min(200, z + 25))}>+</button>
         <button className="btn btn-xs btn-ghost font-mono" onClick={() => setZoom(100)}>Fit</button>
         <div className="flex-1" />
         {exporting ? (
-          <span className="text-[10px] font-mono text-primary flex items-center gap-1">
+          <span className="text-[10px] font-mono text-blue-600 flex items-center gap-1">
             <span className="loading loading-spinner loading-xs" />
             {exportProgress ? `${exportProgress.step} (${exportProgress.current}/${exportProgress.total})` : 'Preparing...'}
           </span>
         ) : exportResult ? (
-          <span className="text-[10px] font-mono text-success">✓ PDF downloaded</span>
+          <span className="text-[10px] font-mono text-green-600">✓ PDF downloaded</span>
         ) : exportError ? (
-          <span className="text-[10px] font-mono text-error">{exportError}</span>
+          <span className="text-[10px] font-mono text-red-600">{exportError}</span>
         ) : (
-          <span className="text-[10px] font-mono text-base-content/40">Scroll to pan • Use zoom to see details</span>
+          <span className="text-[10px] font-mono text-gray-400">Scroll to pan • Use zoom to see details</span>
         )}
         <button
           className={`btn btn-xs gap-1 ${exporting ? 'btn-disabled' : 'btn-primary'}`}
@@ -570,8 +568,8 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq }) 
       </div>
 
       {/* Description */}
-      <div className="p-2 bg-base-200 border-t border-base-300">
-        <div className="text-[10px] text-base-content/50 font-mono leading-relaxed">
+      <div className="p-2 bg-gray-100 border-t border-gray-200">
+        <div className="text-[10px] text-gray-500 font-mono leading-relaxed">
           {descriptions[activeDrawing]}
         </div>
       </div>

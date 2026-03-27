@@ -145,7 +145,7 @@ export const FloorPlanView: React.FC<Props> = ({ layout, vastuEnabled, onProceed
   return (
     <div className="flex flex-col h-full">
       {/* ─── TOOLBAR ─── */}
-      <div className="flex items-center gap-2 px-4 py-2 bg-base-200 border-b border-base-300 flex-wrap">
+      <div className="flex items-center gap-2 px-4 py-2 bg-gray-100 border-b border-gray-200 flex-wrap">
         <div className="flex gap-1">
           {modes.map((m) => (
             <button key={m.key} className={`btn btn-xs ${viewMode === m.key ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setViewMode(m.key)}>
@@ -349,15 +349,15 @@ export const FloorPlanView: React.FC<Props> = ({ layout, vastuEnabled, onProceed
       </div>
 
       {/* ─── INFO PANEL ─── */}
-      <div className="p-3 bg-base-200 border-t border-base-300 space-y-2 max-h-60 overflow-y-auto">
+      <div className="p-3 bg-gray-100 border-t border-gray-200 space-y-2 max-h-60 overflow-y-auto">
         <div className="flex items-center justify-between text-xs">
-          <span className="text-base-content/60 font-mono">{layout.name} • {fl.floorLabel}</span>
+          <span className="text-gray-600 font-mono">{layout.name} • {fl.floorLabel}</span>
           <span className="font-medium font-mono">{layout.builtUpAreaSqFt} sq.ft built-up</span>
         </div>
 
         {vastuEnabled && (
           <div>
-            <button className="flex items-center gap-1 text-xs text-primary" onClick={() => setShowVastuDetails(!showVastuDetails)}>
+            <button className="flex items-center gap-1 text-xs text-blue-600" onClick={() => setShowVastuDetails(!showVastuDetails)}>
               <Compass size={12} /> Vastu Score: <span className="font-bold">{layout.vastuScore}%</span>
               {showVastuDetails ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
             </button>
@@ -365,9 +365,9 @@ export const FloorPlanView: React.FC<Props> = ({ layout, vastuEnabled, onProceed
               <div className="mt-1 space-y-0.5">
                 {layout.vastuDetails.map((vd, i) => (
                   <div key={i} className="flex items-center gap-1 text-[10px] font-mono">
-                    {vd.compliant ? <CheckCircle size={10} className="text-success flex-shrink-0" /> : <AlertTriangle size={10} className="text-warning flex-shrink-0" />}
-                    <span className="text-base-content/70">{vd.room}</span>
-                    <span className="text-base-content/40">→ {vd.actualZone} (ideal: {vd.idealZone})</span>
+                    {vd.compliant ? <CheckCircle size={10} className="text-green-600 flex-shrink-0" /> : <AlertTriangle size={10} className="text-amber-600 flex-shrink-0" />}
+                    <span className="text-gray-700">{vd.room}</span>
+                    <span className="text-gray-400">→ {vd.actualZone} (ideal: {vd.idealZone})</span>
                   </div>
                 ))}
               </div>
@@ -377,14 +377,14 @@ export const FloorPlanView: React.FC<Props> = ({ layout, vastuEnabled, onProceed
 
         {layout.nbcIssues.length > 0 && (
           <div>
-            <button className="flex items-center gap-1 text-xs text-warning" onClick={() => setShowNBCDetails(!showNBCDetails)}>
+            <button className="flex items-center gap-1 text-xs text-amber-600" onClick={() => setShowNBCDetails(!showNBCDetails)}>
               <AlertTriangle size={12} /> {layout.nbcIssues.length} NBC Issue{layout.nbcIssues.length > 1 ? 's' : ''}
               {showNBCDetails ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
             </button>
             {showNBCDetails && (
               <div className="mt-1 space-y-0.5">
                 {layout.nbcIssues.map((issue, i) => (
-                  <div key={i} className="text-[10px] text-base-content/60 font-mono">• {issue.room}: {issue.issue}</div>
+                  <div key={i} className="text-[10px] text-gray-600 font-mono">• {issue.room}: {issue.issue}</div>
                 ))}
               </div>
             )}

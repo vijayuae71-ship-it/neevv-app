@@ -109,7 +109,7 @@ export default function HomePage() {
           title={showBack ? 'Back to Home' : undefined}
         />
         <div className="h-6 w-px bg-gray-300" />
-        <span className="text-xs opacity-50 tracking-wide uppercase">
+        <span className="text-xs opacity-80 tracking-wide uppercase">
           {mode === 'interior_only' ? 'Interior Design Studio' : 'Residential Design Studio'}
         </span>
       </div>
@@ -118,13 +118,13 @@ export default function HomePage() {
           <button
             onClick={handleSave}
             disabled={saving}
-            className="text-sm bg-primary/20 text-primary px-3 py-1.5 rounded-lg hover:bg-primary/30 transition-colors disabled:opacity-50"
+            className="text-sm bg-blue-100 text-blue-600 px-3 py-1.5 rounded-lg hover:bg-blue-200 transition-colors disabled:opacity-80"
           >
             {saving ? 'Saving...' : '💾 Save'}
           </button>
         )}
         {authLoading ? null : user ? (
-          <button onClick={signOut} className="text-sm opacity-40 hover:opacity-80 transition-opacity">Sign Out</button>
+          <button onClick={signOut} className="text-sm opacity-70 hover:opacity-80 transition-opacity">Sign Out</button>
         ) : (
           <button onClick={signInWithGoogle} className="btn btn-sm btn-outline text-sm">Sign In</button>
         )}
@@ -142,7 +142,7 @@ export default function HomePage() {
             {/* Hero */}
             <div className="text-center space-y-3">
               <h1 className="text-4xl font-bold text-gray-900">
-                Welcome to <span className="text-primary">neevv</span>
+                Welcome to <span className="text-blue-600">neevv</span>
               </h1>
               <p className="text-lg text-gray-600">Sapno Ka Nirman — Building Dreams</p>
               <p className="text-sm text-gray-500">AI-powered residential design for Indian homes</p>
@@ -158,7 +158,7 @@ export default function HomePage() {
                 onClick={() => setMode('new_build')}
               >
                 <div className="w-14 h-14 rounded-xl bg-green-50 flex items-center justify-center mb-4">
-                  <Home size={28} className="text-primary" />
+                  <Home size={28} className="text-blue-600" />
                 </div>
                 <h2 className="text-xl font-semibold text-gray-900 mb-2">Build a New Home</h2>
                 <p className="text-sm text-gray-600 leading-relaxed mb-4">
@@ -171,7 +171,7 @@ export default function HomePage() {
                     </span>
                   ))}
                 </div>
-                <div className="flex items-center gap-1 text-primary text-sm font-medium">
+                <div className="flex items-center gap-1 text-blue-600 text-sm font-medium">
                   Get Started <ArrowRight size={14} />
                 </div>
               </div>
@@ -184,7 +184,7 @@ export default function HomePage() {
                 onClick={() => setMode('interior_only')}
               >
                 <div className="w-14 h-14 rounded-xl bg-orange-50 flex items-center justify-center mb-4">
-                  <Palette size={28} className="text-secondary" />
+                  <Palette size={28} className="text-amber-600" />
                 </div>
                 <h2 className="text-xl font-semibold text-gray-900 mb-2">Interior Design Only</h2>
                 <p className="text-sm text-gray-600 leading-relaxed mb-4">
@@ -197,7 +197,7 @@ export default function HomePage() {
                     </span>
                   ))}
                 </div>
-                <div className="flex items-center gap-1 text-secondary text-sm font-medium">
+                <div className="flex items-center gap-1 text-amber-600 text-sm font-medium">
                   Get Started <ArrowRight size={14} />
                 </div>
               </div>

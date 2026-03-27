@@ -231,7 +231,7 @@ export default function ApartmentForm({ onSubmit, onBack }: Props) {
   }
 
   return (
-    <div className="min-h-screen bg-base-200 p-4 md:p-8">
+    <div className="min-h-screen bg-gray-100 p-4 md:p-8">
       <div className="max-w-4xl mx-auto space-y-6">
         {/* Header */}
         <div className="flex items-center gap-3">
@@ -240,13 +240,13 @@ export default function ApartmentForm({ onSubmit, onBack }: Props) {
             Back
           </button>
           <div className="flex items-center gap-2">
-            <Home className="w-6 h-6 text-primary" />
+            <Home className="w-6 h-6 text-blue-600" />
             <h1 className="text-2xl font-bold">Apartment / Flat Interior</h1>
           </div>
         </div>
 
         {/* Project Info */}
-        <div className="card bg-base-100 shadow-md">
+        <div className="card bg-white shadow-md">
           <div className="card-body">
             <h2 className="card-title text-lg">Project Details</h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -296,7 +296,7 @@ export default function ApartmentForm({ onSubmit, onBack }: Props) {
         </div>
 
         {/* Quick Templates */}
-        <div className="card bg-base-100 shadow-md">
+        <div className="card bg-white shadow-md">
           <div className="card-body">
             <h2 className="card-title text-lg">Quick Start Templates</h2>
             <p className="text-sm opacity-70 -mt-1">
@@ -308,11 +308,11 @@ export default function ApartmentForm({ onSubmit, onBack }: Props) {
                 return (
                   <button
                     key={tpl.name}
-                    className="card card-bordered border-2 hover:border-primary hover:shadow-lg transition-all cursor-pointer bg-base-100"
+                    className="card card-bordered border-2 hover:border-primary hover:shadow-lg transition-all cursor-pointer bg-white"
                     onClick={() => applyTemplate(tpl)}
                   >
                     <div className="card-body p-4 items-center text-center">
-                      <div className="text-2xl font-bold text-primary">{tpl.label}</div>
+                      <div className="text-2xl font-bold text-blue-600">{tpl.label}</div>
                       <div className="text-xs opacity-70">
                         {tpl.rooms.length} rooms · {area} sq.ft
                       </div>
@@ -332,7 +332,7 @@ export default function ApartmentForm({ onSubmit, onBack }: Props) {
         </div>
 
         {/* Room List */}
-        <div className="card bg-base-100 shadow-md">
+        <div className="card bg-white shadow-md">
           <div className="card-body">
             <div className="flex items-center justify-between">
               <h2 className="card-title text-lg">
@@ -364,8 +364,8 @@ export default function ApartmentForm({ onSubmit, onBack }: Props) {
             </div>
 
             {roomEntries.length === 0 ? (
-              <div className="text-center py-12 opacity-50">
-                <Home className="w-12 h-12 mx-auto mb-3 opacity-30" />
+              <div className="text-center py-12 opacity-80">
+                <Home className="w-12 h-12 mx-auto mb-3 opacity-80" />
                 <p className="font-medium">No rooms added yet</p>
                 <p className="text-sm">Use a template above or add rooms manually</p>
               </div>
@@ -387,9 +387,9 @@ export default function ApartmentForm({ onSubmit, onBack }: Props) {
                     {roomEntries.map((entry, idx) => (
                       <tr
                         key={entry.id}
-                        className={idx % 2 === 0 ? 'bg-base-100' : 'bg-base-200/40'}
+                        className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}
                       >
-                        <td className="font-mono text-xs opacity-50">{idx + 1}</td>
+                        <td className="font-mono text-xs opacity-80">{idx + 1}</td>
                         <td>
                           <select
                             className="select select-bordered select-xs w-full max-w-[140px]"
@@ -442,7 +442,7 @@ export default function ApartmentForm({ onSubmit, onBack }: Props) {
                         </td>
                         <td>
                           <button
-                            className="btn btn-ghost btn-xs text-error"
+                            className="btn btn-ghost btn-xs text-red-600"
                             onClick={() => removeRoom(entry.id)}
                           >
                             <Trash2 className="w-3.5 h-3.5" />
@@ -458,9 +458,9 @@ export default function ApartmentForm({ onSubmit, onBack }: Props) {
             {/* Total area */}
             {roomEntries.length > 0 && (
               <div className="flex justify-end mt-3">
-                <div className="bg-primary/10 rounded-lg px-4 py-2 text-right">
+                <div className="bg-blue-50 rounded-lg px-4 py-2 text-right">
                   <span className="text-sm opacity-70">Total Carpet Area: </span>
-                  <span className="text-lg font-bold text-primary">
+                  <span className="text-lg font-bold text-blue-600">
                     {totalAreaSqFt.toLocaleString()} sq.ft
                   </span>
                 </div>

@@ -3,7 +3,6 @@
 import React, { useState } from 'react';
 import { Room, Layout, InteriorStyle, RoomInterior, RoomFinishType, ColorPalette, InteriorMoodBoard as MoodBoardType } from '../types';
 import { STYLE_TEMPLATES, getDefaultFurniture, getDefaultMaterials, mapRoomTypeToFinish } from '../utils/interiorTemplates';
-import BrandWatermark from './BrandWatermark';
 
 interface Props {
   layout: Layout;
@@ -86,7 +85,7 @@ function buildRoomInterior(room: Room, style: InteriorStyle): RoomInterior {
 function ColorSwatch({ color, size = 24, onClick }: { color: string; size?: number; onClick?: () => void }) {
   return (
     <div
-      className="rounded-full border border-base-content/20 inline-block cursor-pointer"
+      className="rounded-full border border-gray-200content/20 inline-block cursor-pointer"
       style={{ backgroundColor: color, width: size, height: size, minWidth: size }}
       onClick={onClick}
     />
@@ -234,7 +233,6 @@ export default function InteriorMoodBoard({ layout, onComplete }: Props) {
 
   return (
     <div className="relative w-full">
-      <BrandWatermark position="top-left" />
 
       {/* ---------- STEP INDICATOR ---------- */}
       <div className="flex items-center gap-2 mb-6">
@@ -243,7 +241,7 @@ export default function InteriorMoodBoard({ layout, onComplete }: Props) {
           const active = step === subStep;
           return (
             <React.Fragment key={step}>
-              {i > 0 && <div className="flex-1 h-px bg-base-content/20" />}
+              {i > 0 && <div className="flex-1 h-px bg-whitecontent/20" />}
               <span className={`badge ${active ? 'badge-primary' : 'badge-ghost'} text-xs`}>
                 {i + 1}. {labels[i]}
               </span>
@@ -265,7 +263,7 @@ export default function InteriorMoodBoard({ layout, onComplete }: Props) {
               return (
                 <div
                   key={styleKey}
-                  className={`card bg-base-200 cursor-pointer transition-all ${selected ? 'ring-2 ring-primary' : 'hover:ring-1 hover:ring-base-content/30'}`}
+                  className={`card bg-gray-100 cursor-pointer transition-all ${selected ? 'ring-2 ring-primary' : 'hover:ring-1 hover:ring-gray-300'}`}
                   onClick={() => setGlobalStyle(styleKey)}
                 >
                   <div className="card-body p-4">
@@ -318,7 +316,7 @@ export default function InteriorMoodBoard({ layout, onComplete }: Props) {
             <div className="text-sm font-semibold mb-2">
               Rooms ({configuredSet.size}/{roomInteriors.length} configured)
             </div>
-            <ul className="menu bg-base-200 rounded-box w-full max-h-[60vh] overflow-y-auto">
+            <ul className="menu bg-gray-100 rounded-box w-full max-h-[60vh] overflow-y-auto">
               {roomInteriors.map((ri, idx) => {
                 const done = configuredSet.has(ri.roomId);
                 const active = idx === selectedRoomIdx;
@@ -329,7 +327,7 @@ export default function InteriorMoodBoard({ layout, onComplete }: Props) {
                       onClick={() => setSelectedRoomIdx(idx)}
                     >
                       <span className="truncate">{ri.roomName}</span>
-                      {done && <span className="text-success text-xs">✓</span>}
+                      {done && <span className="text-green-600 text-xs">✓</span>}
                     </button>
                   </li>
                 );
@@ -352,7 +350,7 @@ export default function InteriorMoodBoard({ layout, onComplete }: Props) {
           </div>
 
           {/* --- Right panel: room editor --- */}
-          <div className="flex-1 bg-base-200 rounded-xl p-4 space-y-5 overflow-y-auto max-h-[75vh]">
+          <div className="flex-1 bg-gray-100 rounded-xl p-4 space-y-5 overflow-y-auto max-h-[75vh]">
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-bold">{currentRoom.roomName}</h3>
               <span className="badge badge-sm">{currentRoom.roomType}</span>
@@ -387,7 +385,7 @@ export default function InteriorMoodBoard({ layout, onComplete }: Props) {
                         onChange={e => handlePaletteChange(key, e.target.value)}
                       />
                     </div>
-                    <span className="text-xs opacity-60 capitalize">{key}</span>
+                    <span className="text-xs opacity-80 capitalize">{key}</span>
                   </label>
                 ))}
               </div>
@@ -410,7 +408,7 @@ export default function InteriorMoodBoard({ layout, onComplete }: Props) {
                     <option value={currentRoom.flooring.name}>{currentRoom.flooring.name}</option>
                   )}
                 </select>
-                <span className="text-xs opacity-60">
+                <span className="text-xs opacity-80">
                   {currentRoom.flooring.finish} • {fmt(currentRoom.flooring.ratePerUnit)}/{currentRoom.flooring.unit}
                 </span>
               </div>
@@ -432,7 +430,7 @@ export default function InteriorMoodBoard({ layout, onComplete }: Props) {
                     <option value={currentRoom.wallFinish.name}>{currentRoom.wallFinish.name}</option>
                   )}
                 </select>
-                <span className="text-xs opacity-60">
+                <span className="text-xs opacity-80">
                   {currentRoom.wallFinish.finish} • {fmt(currentRoom.wallFinish.ratePerUnit)}/{currentRoom.wallFinish.unit}
                 </span>
               </div>
@@ -476,7 +474,7 @@ export default function InteriorMoodBoard({ layout, onComplete }: Props) {
                       const excluded = excludedFurniture[currentRoom.roomId];
                       const isExcluded = excluded ? excluded.has(f.id) : false;
                       return (
-                        <tr key={f.id} className={isExcluded ? 'opacity-40' : ''}>
+                        <tr key={f.id} className={isExcluded ? 'opacity-80' : ''}>
                           <td>
                             <input
                               type="checkbox"
@@ -564,7 +562,7 @@ export default function InteriorMoodBoard({ layout, onComplete }: Props) {
 
             {/* Progress hint */}
             {!allConfigured && (
-              <div className="text-xs opacity-50 mt-1">
+              <div className="text-xs opacity-80 mt-1">
                 Save all {roomInteriors.length} rooms to unlock the Mood Board preview
                 ({configuredSet.size}/{roomInteriors.length} done)
               </div>
@@ -589,7 +587,7 @@ export default function InteriorMoodBoard({ layout, onComplete }: Props) {
               const furnCost = includedFurniture.reduce((s, f) => s + f.estimatedCost, 0);
 
               return (
-                <div key={ri.roomId} className="card bg-base-200">
+                <div key={ri.roomId} className="card bg-gray-100">
                   <div className="card-body p-4">
                     <div className="flex items-center justify-between mb-1">
                       <h4 className="font-bold text-sm">{ri.roomName}</h4>
@@ -608,11 +606,11 @@ export default function InteriorMoodBoard({ layout, onComplete }: Props) {
                     </div>
 
                     <div className="text-xs space-y-0.5">
-                      <div><span className="opacity-60">Flooring:</span> {ri.flooring.name}</div>
-                      <div><span className="opacity-60">Wall:</span> {ri.wallFinish.name}</div>
-                      <div><span className="opacity-60">Ceiling:</span> {ri.ceilingType.replace(/_/g, ' ')}</div>
+                      <div><span className="opacity-80">Flooring:</span> {ri.flooring.name}</div>
+                      <div><span className="opacity-80">Wall:</span> {ri.wallFinish.name}</div>
+                      <div><span className="opacity-80">Ceiling:</span> {ri.ceilingType.replace(/_/g, ' ')}</div>
                       <div>
-                        <span className="opacity-60">Furniture:</span> {includedFurniture.length} items — {fmt(furnCost)}
+                        <span className="opacity-80">Furniture:</span> {includedFurniture.length} items — {fmt(furnCost)}
                       </div>
                     </div>
 
@@ -630,10 +628,10 @@ export default function InteriorMoodBoard({ layout, onComplete }: Props) {
           </div>
 
           {/* Summary bar */}
-          <div className="bg-base-200 rounded-xl p-4 mt-6 flex flex-wrap items-center justify-between gap-4">
+          <div className="bg-gray-100 rounded-xl p-4 mt-6 flex flex-wrap items-center justify-between gap-4">
             <div className="text-sm">
               <span className="font-semibold">{roomInteriors.length}</span> rooms &nbsp;•&nbsp;
-              Total Estimated Furniture Cost: <span className="font-bold text-primary">{fmt(totalEstimatedCost)}</span>
+              Total Estimated Furniture Cost: <span className="font-bold text-blue-600">{fmt(totalEstimatedCost)}</span>
             </div>
             <div className="flex gap-2">
               <button className="btn btn-ghost btn-sm" onClick={() => setSubStep('customize')}>

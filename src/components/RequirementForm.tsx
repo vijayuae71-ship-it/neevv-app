@@ -74,14 +74,14 @@ export const RequirementForm: React.FC<Props> = ({ onSubmit }) => {
   return (
     <div className="p-4 space-y-5 max-w-2xl mx-auto">
       {/* Location */}
-      <section className="card bg-base-200">
+      <section className="card bg-gray-100">
         <div className="card-body p-4 space-y-3">
           <h3 className="font-semibold flex items-center gap-2 text-sm">
-            <MapPin size={16} className="text-primary" /> Location
+            <MapPin size={16} className="text-blue-600" /> Location
           </h3>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs text-base-content/60 mb-1 block">City</label>
+              <label className="text-xs text-gray-600 mb-1 block">City</label>
               <input
                 className="input input-bordered input-sm w-full"
                 value={city}
@@ -90,7 +90,7 @@ export const RequirementForm: React.FC<Props> = ({ onSubmit }) => {
               />
             </div>
             <div>
-              <label className="text-xs text-base-content/60 mb-1 block">State</label>
+              <label className="text-xs text-gray-600 mb-1 block">State</label>
               <select
                 className="select select-bordered select-sm w-full"
                 value={state}
@@ -106,14 +106,14 @@ export const RequirementForm: React.FC<Props> = ({ onSubmit }) => {
       </section>
 
       {/* Plot */}
-      <section className="card bg-base-200">
+      <section className="card bg-gray-100">
         <div className="card-body p-4 space-y-3">
           <h3 className="font-semibold flex items-center gap-2 text-sm">
-            <Ruler size={16} className="text-primary" /> Plot Dimensions
+            <Ruler size={16} className="text-blue-600" /> Plot Dimensions
           </h3>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs text-base-content/60 mb-1 block">Width (ft)</label>
+              <label className="text-xs text-gray-600 mb-1 block">Width (ft)</label>
               <input
                 type="number"
                 className="input input-bordered input-sm w-full"
@@ -124,7 +124,7 @@ export const RequirementForm: React.FC<Props> = ({ onSubmit }) => {
               />
             </div>
             <div>
-              <label className="text-xs text-base-content/60 mb-1 block">Depth (ft)</label>
+              <label className="text-xs text-gray-600 mb-1 block">Depth (ft)</label>
               <input
                 type="number"
                 className="input input-bordered input-sm w-full"
@@ -135,11 +135,11 @@ export const RequirementForm: React.FC<Props> = ({ onSubmit }) => {
               />
             </div>
           </div>
-          <div className="text-xs text-base-content/50">
-            Plot Area: <span className="font-medium text-base-content/70">{plotAreaSqFt} sq.ft</span> ({plotAreaSqM.toFixed(1)} m²)
+          <div className="text-xs text-gray-500">
+            Plot Area: <span className="font-medium text-gray-700">{plotAreaSqFt} sq.ft</span> ({plotAreaSqM.toFixed(1)} m²)
           </div>
           <div>
-            <label className="text-xs text-base-content/60 mb-1 block">Plot Facing</label>
+            <label className="text-xs text-gray-600 mb-1 block">Plot Facing</label>
             <div className="flex gap-2">
               {FACINGS.map((f) => (
                 <button
@@ -156,10 +156,10 @@ export const RequirementForm: React.FC<Props> = ({ onSubmit }) => {
       </section>
 
       {/* Preferences */}
-      <section className="card bg-base-200">
+      <section className="card bg-gray-100">
         <div className="card-body p-4 space-y-3">
           <h3 className="font-semibold flex items-center gap-2 text-sm">
-            <Star size={16} className="text-primary" /> Preferences
+            <Star size={16} className="text-blue-600" /> Preferences
           </h3>
           <div className="flex items-center justify-between">
             <span className="text-sm">Vastu Compliance</span>
@@ -171,7 +171,7 @@ export const RequirementForm: React.FC<Props> = ({ onSubmit }) => {
             />
           </div>
           <div>
-            <label className="text-xs text-base-content/60 mb-1 block">
+            <label className="text-xs text-gray-600 mb-1 block">
               <Car size={12} className="inline mr-1" />
               Parking
             </label>
@@ -191,11 +191,11 @@ export const RequirementForm: React.FC<Props> = ({ onSubmit }) => {
       </section>
 
       {/* Floor Program */}
-      <section className="card bg-base-200">
+      <section className="card bg-gray-100">
         <div className="card-body p-4 space-y-3">
           <div className="flex items-center justify-between">
             <h3 className="font-semibold flex items-center gap-2 text-sm">
-              <Home size={16} className="text-primary" /> Floor-wise Program
+              <Home size={16} className="text-blue-600" /> Floor-wise Program
             </h3>
             <div className="flex gap-1">
               <button className="btn btn-ghost btn-xs" onClick={removeFloor} disabled={floors.length <= 1}>
@@ -211,11 +211,11 @@ export const RequirementForm: React.FC<Props> = ({ onSubmit }) => {
           </div>
 
           {floors.map((fp, idx) => (
-            <div key={idx} className="bg-base-300 rounded-lg p-3 space-y-2">
-              <div className="text-xs font-semibold text-primary">{fp.floorLabel}</div>
+            <div key={idx} className="bg-gray-200 rounded-lg p-3 space-y-2">
+              <div className="text-xs font-semibold text-blue-600">{fp.floorLabel}</div>
               <div className="grid grid-cols-3 gap-2">
                 <div>
-                  <label className="text-xs text-base-content/60 block">Bedrooms</label>
+                  <label className="text-xs text-gray-600 block">Bedrooms</label>
                   <select
                     className="select select-bordered select-xs w-full"
                     value={fp.bedrooms}
@@ -227,7 +227,7 @@ export const RequirementForm: React.FC<Props> = ({ onSubmit }) => {
                   </select>
                 </div>
                 <div>
-                  <label className="text-xs text-base-content/60 block">Hall/Living</label>
+                  <label className="text-xs text-gray-600 block">Hall/Living</label>
                   <select
                     className="select select-bordered select-xs w-full"
                     value={fp.halls}
@@ -239,7 +239,7 @@ export const RequirementForm: React.FC<Props> = ({ onSubmit }) => {
                   </select>
                 </div>
                 <div>
-                  <label className="text-xs text-base-content/60 block">Kitchen</label>
+                  <label className="text-xs text-gray-600 block">Kitchen</label>
                   <select
                     className="select select-bordered select-xs w-full"
                     value={fp.kitchens}

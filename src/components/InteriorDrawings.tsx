@@ -2,7 +2,6 @@
 
 import React, { useState, useMemo } from 'react';
 import { Layout, Room, RoomInterior, FurnitureItem } from '../types';
-import BrandWatermark from './BrandWatermark';
 
 /* ───────────────────── constants ───────────────────── */
 const SC = 50;          // 1 m = 50 px
@@ -657,7 +656,6 @@ function FurniturePlan({ layout, rooms }: Props) {
           </g>
         );
       })}
-      <BrandWatermark />
     </svg>
   );
 }
@@ -796,7 +794,6 @@ function CeilingPlan({ layout, rooms }: Props) {
           </g>
         );
       })()}
-      <BrandWatermark />
     </svg>
   );
 }
@@ -971,7 +968,6 @@ function ElectricalPlan({ layout, rooms }: Props) {
         y={MARGIN + 40}
         items={legendItems}
       />
-      <BrandWatermark />
     </svg>
   );
 }
@@ -1170,7 +1166,6 @@ function WoodworkDetails({ layout, rooms }: Props) {
           </g>
         );
       })}
-      <BrandWatermark />
     </svg>
   );
 }
@@ -1281,7 +1276,6 @@ function FlooringPlan({ layout, rooms }: Props) {
           </g>
         );
       })}
-      <BrandWatermark />
     </svg>
   );
 }
