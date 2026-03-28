@@ -463,6 +463,9 @@ const UnifiedWalls: React.FC<{
   const allH = mergeEdges(hEdges);
   const allV = mergeEdges(vEdges);
 
+  // At every T-junction / corner, walls must overlap by half-thickness
+  const ext = t * 0.5;
+
   return (
     <g>
       {allH.map((e, i) => {
@@ -470,7 +473,7 @@ const UnifiedWalls: React.FC<{
         const py = ty(e.coord);
         const pw = (e.end - e.start) * scale;
         const lw = e.ext ? 2 : 1;
-        return <rect key={`hw${i}`} x={px - t * 0.1} y={py - t / 2} width={pw + t * 0.2} height={t}
+        return <rect key={`hw${i}`} x={px - ext} y={py - t / 2} width={pw + ext * 2} height={t}
           fill="url(#wallHatch)" stroke={C.wall} strokeWidth={lw * 0.4} />;
       })}
       {allV.map((e, i) => {
@@ -478,7 +481,7 @@ const UnifiedWalls: React.FC<{
         const py = ty(e.start);
         const ph = (e.end - e.start) * scale;
         const lw = e.ext ? 2 : 1;
-        return <rect key={`vw${i}`} x={px - t / 2} y={py - t * 0.1} width={t} height={ph + t * 0.2}
+        return <rect key={`vw${i}`} x={px - t / 2} y={py - ext} width={t} height={ph + ext * 2}
           fill="url(#wallHatch)" stroke={C.wall} strokeWidth={lw * 0.4} />;
       })}
     </g>
