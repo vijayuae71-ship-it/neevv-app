@@ -217,10 +217,8 @@ export const FloorPlanView: React.FC<Props> = ({ layout, vastuEnabled, onProceed
             );
           })}
 
-          {/* ─── WALLS (thick double-line) ─── */}
-          {fl.rooms.map((room) => (
-            <WallDrawing key={`wall_${room.id}`} room={room} allRooms={fl.rooms} tx={tx} ty={ty} scale={SCALE} sb={layout.setbacks} bw={layout.buildableWidthM} bd={layout.buildableDepthM} />
-          ))}
+          {/* ─── WALLS (unified network – continuous lines, proper T-junctions) ─── */}
+          <UnifiedWalls rooms={fl.rooms} tx={tx} ty={ty} scale={SCALE} sb={layout.setbacks} bw={layout.buildableWidthM} bd={layout.buildableDepthM} />
 
           {/* ─── DOORS ─── */}
           {fl.rooms.map((room) => (
@@ -396,6 +394,100 @@ export const FloorPlanView: React.FC<Props> = ({ layout, vastuEnabled, onProceed
    WALL DRAWING – Double-line thick walls
    ══════════════════════════════════════════════ */
 
+/* ══════════════════════════════════════════════
+   UNIFIED WALLS – merges all room edges into continuous
+   wall segments with proper T-junctions, no gaps.
+   ══════════════════════════════════════════════ */
+const UnifiedWalls: React.FC<{
+  rooms: Room[];
+  tx: (m: number) => number; ty: (m: number) => number;
+  scale: number; sb: Setbacks; bw: number; bd: number;
+}> = ({ rooms, tx, ty, scale, sb, bw, bd }) => {
+  const t = WALL_T;
+  const SNAP = 0.08; // snap tolerance in meters
+
+  // Collect every wall edge from every room
+  interface Edge { coord: number; start: number; end: number; ext: boolean; }
+  const hEdges: Edge[] = [];
+  const vEdges: Edge[] = [];
+
+  rooms.forEach(r => {
+    const walls = getWalls(r);
+    walls.forEach(w => {
+      const ext = isExterior(w, sb, bw, bd);
+      if (w.side === 'top' || w.side === 'bottom') {
+        hEdges.push({ coord: w.side === 'top' ? r.y : r.y + r.depth, start: r.x, end: r.x + r.width, ext });
+      } else {
+        vEdges.push({ coord: w.side === 'left' ? r.x : r.x + r.width, start: r.y, end: r.y + r.depth, ext });
+      }
+    });
+  });
+
+  // Group edges by snapped coordinate, then merge overlapping/adjacent spans
+  function mergeEdges(edges: Edge[]): Edge[] {
+    if (!edges.length) return [];
+    // Sort by coord, then start
+    edges.sort((a, b) => a.coord - b.coord || a.start - b.start);
+
+    const groups: Edge[][] = [];
+    let cur: Edge[] = [edges[0]];
+    for (let i = 1; i < edges.length; i++) {
+      if (Math.abs(edges[i].coord - cur[0].coord) < SNAP) {
+        cur.push(edges[i]);
+      } else {
+        groups.push(cur);
+        cur = [edges[i]];
+      }
+    }
+    groups.push(cur);
+
+    const merged: Edge[] = [];
+    for (const g of groups) {
+      const coord = g.reduce((s, e) => s + e.coord, 0) / g.length; // average coord
+      g.sort((a, b) => a.start - b.start);
+      let m = { coord, start: g[0].start, end: g[0].end, ext: g[0].ext };
+      for (let i = 1; i < g.length; i++) {
+        if (g[i].start <= m.end + SNAP) {
+          m.end = Math.max(m.end, g[i].end);
+          m.ext = m.ext || g[i].ext;
+        } else {
+          merged.push({ ...m });
+          m = { coord, start: g[i].start, end: g[i].end, ext: g[i].ext };
+        }
+      }
+      merged.push({ ...m });
+    }
+    return merged;
+  }
+
+  const allH = mergeEdges(hEdges);
+  const allV = mergeEdges(vEdges);
+
+  return (
+    <g>
+      {allH.map((e, i) => {
+        const px = tx(e.start);
+        const py = ty(e.coord);
+        const pw = (e.end - e.start) * scale;
+        const lw = e.ext ? 2 : 1;
+        return <rect key={`hw${i}`} x={px - t * 0.1} y={py - t / 2} width={pw + t * 0.2} height={t}
+          fill="url(#wallHatch)" stroke={C.wall} strokeWidth={lw * 0.4} />;
+      })}
+      {allV.map((e, i) => {
+        const px = tx(e.coord);
+        const py = ty(e.start);
+        const ph = (e.end - e.start) * scale;
+        const lw = e.ext ? 2 : 1;
+        return <rect key={`vw${i}`} x={px - t / 2} y={py - t * 0.1} width={t} height={ph + t * 0.2}
+          fill="url(#wallHatch)" stroke={C.wall} strokeWidth={lw * 0.4} />;
+      })}
+    </g>
+  );
+};
+
+/* ══════════════════════════════════════════════
+   WALL DRAWING (kept for door/window placement logic)
+   ══════════════════════════════════════════════ */
 const WallDrawing: React.FC<{
   room: Room; allRooms: Room[];
   tx: (m: number) => number; ty: (m: number) => number;
