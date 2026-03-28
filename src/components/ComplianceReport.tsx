@@ -21,6 +21,7 @@ import {
 interface Props {
   layout: Layout;
   vastuEnabled: boolean;
+  facing?: string;
   onAutoFix?: (optimizedLayout: Layout) => void;
   boqTotal?: number;
   numFloors?: number;
@@ -33,7 +34,7 @@ const formatCurrency = (n: number): string => {
   return `₹${n.toLocaleString('en-IN')}`;
 };
 
-export const ComplianceReport: React.FC<Props> = ({ layout, vastuEnabled, onAutoFix, boqTotal, numFloors, customRates }) => {
+export const ComplianceReport: React.FC<Props> = ({ layout, vastuEnabled, facing = 'North', onAutoFix, boqTotal, numFloors, customRates }) => {
   const [expandNBC, setExpandNBC] = useState(false);
   const [expandVastu, setExpandVastu] = useState(false);
   const [expandFire, setExpandFire] = useState(false);
@@ -91,7 +92,7 @@ export const ComplianceReport: React.FC<Props> = ({ layout, vastuEnabled, onAuto
     setFixing(true);
     setTimeout(() => {
       try {
-        const optimized = autoFixLayout(layout, layout.facing || 'North', vastuEnabled);
+        const optimized = autoFixLayout(layout, facing as any);
         const floors = numFloors || 1;
         const beforeCost = boqTotal || calculateBOQ(layout, floors, customRates).totalCost;
         const afterBOQ = calculateBOQ(optimized, floors, customRates);
