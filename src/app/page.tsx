@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { AppStep, ProjectRequirements, Layout, BOQ } from '@/types';
+import { AppStep, ProjectRequirements, Layout, BOQ, CustomRateSheet } from '@/types';
 import { StepIndicator } from '@/components/StepIndicator';
 import { RequirementForm } from '@/components/RequirementForm';
 import { LayoutSelector } from '@/components/LayoutSelector';
@@ -9,6 +9,7 @@ import { FloorPlanView } from '@/components/FloorPlanView';
 import { IsometricView } from '@/components/IsometricView';
 import { WorkingDrawings } from '@/components/WorkingDrawings';
 import { BOQReport } from '@/components/BOQReport';
+import { ComplianceReport } from '@/components/ComplianceReport';
 import { InteriorDesign } from '@/components/InteriorDesign';
 import ApartmentForm from '@/components/ApartmentForm';
 import { generateLayouts } from '@/utils/layoutGenerator';
@@ -16,9 +17,11 @@ import { calculateBOQ } from '@/utils/boqCalculator';
 import { BRAND_LOGO_BASE64 } from '@/utils/brand';
 import { useAuth } from '@/hooks/useAuth';
 import { useProject } from '@/hooks/useProject';
-import { Home, Palette, ArrowRight } from 'lucide-react';
+import DrawingUpload from '@/components/DrawingUpload';
+import { RateSheet } from '@/components/RateSheet';
+import { Home, Palette, Upload, ArrowRight } from 'lucide-react';
 
-type AppMode = 'landing' | 'new_build' | 'interior_only';
+type AppMode = 'landing' | 'new_build' | 'interior_only' | 'upload_drawing';
 
 export default function HomePage() {
   const { user, loading: authLoading, signInWithGoogle, signOut } = useAuth();
@@ -30,6 +33,7 @@ export default function HomePage() {
   const [layouts, setLayouts] = useState<Layout[]>([]);
   const [selectedLayout, setSelectedLayout] = useState<Layout | null>(null);
   const [boq, setBOQ] = useState<BOQ | null>(null);
+  const [customRates, setCustomRates] = useState<CustomRateSheet | null>(null);
 
   const canNavigate = (target: AppStep): boolean => {
     if (mode === 'interior_only') {
@@ -38,9 +42,11 @@ export default function HomePage() {
     switch (target) {
       case 'requirements': return true;
       case 'layouts': return layouts.length > 0;
+      case 'compliance': return selectedLayout !== null;
       case 'floorplan': return selectedLayout !== null;
       case 'isometric': return selectedLayout !== null;
       case 'working': return selectedLayout !== null;
+      case 'rates': return selectedLayout !== null;
       case 'boq': return boq !== null;
       case 'interior': return selectedLayout !== null;
       default: return false;
@@ -59,10 +65,10 @@ export default function HomePage() {
   const handleLayoutSelect = (layout: Layout) => {
     setSelectedLayout(layout);
     if (requirements) {
-      const b = calculateBOQ(layout, requirements.floors.length);
+      const b = calculateBOQ(layout, requirements.floors.length, customRates);
       setBOQ(b);
     }
-    setStep('floorplan');
+    setStep('compliance');
   };
 
   const handleApartmentSubmit = (layout: Layout, req: ProjectRequirements) => {
@@ -79,6 +85,16 @@ export default function HomePage() {
     setLayouts([]);
     setSelectedLayout(null);
     setBOQ(null);
+  };
+
+  const handleUploadConversion = (layout: Layout, req: ProjectRequirements) => {
+    setRequirements(req);
+    setSelectedLayout(layout);
+    setLayouts([layout]);
+    const b = calculateBOQ(layout, req.floors.length, customRates);
+    setBOQ(b);
+    setMode('new_build');
+    setStep('compliance');
   };
 
   const handleSave = async () => {
@@ -148,8 +164,8 @@ export default function HomePage() {
               <p className="text-sm text-gray-500">AI-powered residential design studio for Indian home builders</p>
             </div>
 
-            {/* Entry Cards - exactly 2 */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Entry Cards - 3 options */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               {/* Card 1: Build a New Home */}
               <div
                 role="button"
@@ -201,6 +217,32 @@ export default function HomePage() {
                   Get Started <ArrowRight size={14} />
                 </div>
               </div>
+
+              {/* Card 3: Upload Drawing */}
+              <div
+                role="button"
+                tabIndex={0}
+                className="bg-white border border-gray-200 rounded-lg p-6 cursor-pointer hover:shadow-lg hover:border-green-500 transition-all"
+                onClick={() => setMode('upload_drawing')}
+              >
+                <div className="w-14 h-14 rounded-xl bg-green-50 flex items-center justify-center mb-4">
+                  <Upload size={28} className="text-green-600" />
+                </div>
+                <h2 className="text-xl font-semibold text-gray-900 mb-2">Upload Drawing</h2>
+                <p className="text-sm text-gray-600 leading-relaxed mb-4">
+                  Have an existing plan? Upload a photo, scan, or CAD screenshot — AI extracts rooms, generates plans &amp; cost estimation.
+                </p>
+                <div className="flex flex-wrap gap-2 mb-4">
+                  {['AI Extract', '2D Plans', '3D Views', 'BOQ', 'Cost'].map((label) => (
+                    <span key={label} className="text-xs px-2 py-1 rounded bg-gray-100 text-gray-700">
+                      {label}
+                    </span>
+                  ))}
+                </div>
+                <div className="flex items-center gap-1 text-green-600 text-sm font-medium">
+                  Upload Now <ArrowRight size={14} />
+                </div>
+              </div>
             </div>
 
             {/* Footer */}
@@ -211,6 +253,11 @@ export default function HomePage() {
         </div>
       </div>
     );
+  }
+
+  /* ============ UPLOAD DRAWING MODE ============ */
+  if (mode === 'upload_drawing') {
+    return <DrawingUpload onConversionComplete={handleUploadConversion} onBack={handleBackToLanding} />;
   }
 
   /* ============ MAIN APP ============ */
@@ -231,6 +278,9 @@ export default function HomePage() {
             {step === 'layouts' && requirements && (
               <LayoutSelector layouts={layouts} onSelect={handleLayoutSelect} vastuEnabled={requirements.vastuCompliance} />
             )}
+            {step === 'compliance' && selectedLayout && requirements && (
+              <ComplianceReport layout={selectedLayout} vastuEnabled={requirements.vastuCompliance} />
+            )}
             {step === 'floorplan' && selectedLayout && requirements && (
               <FloorPlanView layout={selectedLayout} vastuEnabled={requirements.vastuCompliance} onProceedToBOQ={() => setStep('isometric')} />
             )}
@@ -239,6 +289,25 @@ export default function HomePage() {
             )}
             {step === 'working' && selectedLayout && requirements && (
               <WorkingDrawings layout={selectedLayout} requirements={requirements} boq={boq} />
+            )}
+            {step === 'rates' && selectedLayout && requirements && (
+              <RateSheet
+                onSave={(rates) => {
+                  setCustomRates(rates);
+                  // Recalculate BOQ with new rates
+                  const b = calculateBOQ(selectedLayout, requirements.floors.length, rates);
+                  setBOQ(b);
+                  setStep('boq');
+                }}
+                onSkip={() => {
+                  // Use default rates
+                  setCustomRates(null);
+                  const b = calculateBOQ(selectedLayout, requirements.floors.length, null);
+                  setBOQ(b);
+                  setStep('boq');
+                }}
+                initialRateSheet={customRates || undefined}
+              />
             )}
             {step === 'boq' && boq && selectedLayout && (
               <BOQReport boq={boq} layout={selectedLayout} />

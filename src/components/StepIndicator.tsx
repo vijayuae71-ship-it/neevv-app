@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { AppStep } from '../types';
-import { ClipboardList, LayoutGrid, PenTool, Box, Ruler, Package, Palette } from 'lucide-react';
+import { ClipboardList, LayoutGrid, Shield, PenTool, Box, Ruler, Package, Palette, IndianRupee } from 'lucide-react';
 
 interface Props {
   current: AppStep;
@@ -13,9 +13,11 @@ interface Props {
 const STEPS: { id: AppStep; label: string; icon: React.ReactNode }[] = [
   { id: 'requirements', label: 'Requirements', icon: <ClipboardList size={14} /> },
   { id: 'layouts', label: 'Layouts', icon: <LayoutGrid size={14} /> },
+  { id: 'compliance', label: 'Compliance', icon: <Shield size={14} /> },
   { id: 'floorplan', label: '2D Plans', icon: <PenTool size={14} /> },
   { id: 'isometric', label: '3D View', icon: <Box size={14} /> },
   { id: 'working', label: 'Working Dwg', icon: <Ruler size={14} /> },
+  { id: 'rates', label: 'Rates', icon: <IndianRupee size={14} /> },
   { id: 'boq', label: 'BOQ & Cost', icon: <Package size={14} /> },
   { id: 'interior', label: 'Interior', icon: <Palette size={14} /> },
 ];

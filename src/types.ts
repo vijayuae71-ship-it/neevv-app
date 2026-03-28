@@ -64,7 +64,7 @@ export interface Setbacks {
 export interface NBCIssue {
   room: string;
   issue: string;
-  severity: 'error' | 'warning';
+  severity: 'error' | 'warning' | 'info';
 }
 
 export interface VastuDetail {
@@ -165,7 +165,35 @@ export interface BOQ {
   plasteringAreaSqM: number;
 }
 
-export type AppStep = 'requirements' | 'layouts' | 'floorplan' | 'isometric' | 'working' | 'boq' | 'interior';
+export type AppStep = 'requirements' | 'layouts' | 'compliance' | 'floorplan' | 'isometric' | 'working' | 'rates' | 'boq' | 'interior';
+
+/* ---------- Custom Rate Sheets ---------- */
+
+export interface MaterialRate {
+  id: string;
+  name: string;
+  unit: string;
+  defaultRate: number;
+  customRate?: number;
+  category: 'cement_concrete' | 'steel' | 'masonry' | 'sand_aggregate' | 'tiles_flooring' | 'paint_finish' | 'plumbing_fixtures' | 'electrical' | 'doors_windows' | 'waterproofing' | 'misc';
+  remark?: string;
+}
+
+export interface LabourRate {
+  id: string;
+  trade: string;
+  unit: string;        // 'per day', 'per m²', 'per point', etc.
+  defaultRate: number;
+  customRate?: number;
+  category: 'skilled' | 'semi_skilled' | 'unskilled' | 'specialist';
+  remark?: string;
+}
+
+export interface CustomRateSheet {
+  materials: MaterialRate[];
+  labour: LabourRate[];
+  lastUpdated?: string;
+}
 
 /* ========== INTERIOR DESIGN MODULE ========== */
 

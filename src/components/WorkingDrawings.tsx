@@ -4,7 +4,8 @@ import React, { useState } from 'react';
 import { Layout, ProjectRequirements, BOQ } from '../types';
 import {
   Layers, Grid3x3, ArrowUpDown, Building, Shovel, Columns3,
-  BarChart3, BrickWall, Zap, Droplets, Grid2x2, Ruler, Download
+  BarChart3, BrickWall, Zap, Droplets, Grid2x2, Ruler, Download,
+  Footprints, Container, ShieldCheck, Pipette
 } from 'lucide-react';
 import { exportToPDF, ExportProgress } from '../utils/pdfExport';
 
@@ -19,6 +20,10 @@ import { renderPlumbing } from '../utils/drawings/plumbing';
 import { renderTiling } from '../utils/drawings/tiling';
 import { renderRCCDetail } from '../utils/drawings/rccDetail';
 import { renderFootingDetail } from '../utils/drawings/footingDetail';
+import { renderStaircase } from '../utils/drawings/staircase';
+import { renderWaterTank } from '../utils/drawings/waterTank';
+import { renderWaterproofing } from '../utils/drawings/waterproofing';
+import { renderSTP } from '../utils/drawings/stp';
 
 interface Props {
   layout: Layout;
@@ -39,7 +44,11 @@ type DrawingType =
   | 'electrical'
   | 'plumbing'
   | 'tiling'
-  | 'footingDetail';
+  | 'footingDetail'
+  | 'staircase'
+  | 'waterTank'
+  | 'waterproofing'
+  | 'stp';
 
 /* ══════════════════════════════════════════ */
 /* ── SECTION A-A (inline — kept from original) ── */
@@ -470,6 +479,10 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq }) 
     { id: 'electrical', label: 'Electrical', icon: <Zap size={12} />, group: 'MEP' },
     { id: 'plumbing', label: 'Plumbing', icon: <Droplets size={12} />, group: 'MEP' },
     { id: 'tiling', label: 'Tiling', icon: <Grid2x2 size={12} />, group: 'Finishes' },
+    { id: 'staircase', label: 'Staircase', icon: <Footprints size={12} />, group: 'Structure' },
+    { id: 'waterTank', label: 'Water Tank', icon: <Container size={12} />, group: 'MEP' },
+    { id: 'waterproofing', label: 'Waterproofing', icon: <ShieldCheck size={12} />, group: 'Finishes' },
+    { id: 'stp', label: 'STP', icon: <Pipette size={12} />, group: 'MEP' },
   ];
 
   const groups = ['Site', 'Structure', 'Views', 'Finishes', 'MEP'];
@@ -489,6 +502,10 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq }) 
     case 'electrical': svgHtml = renderElectrical(layout, requirements); break;
     case 'plumbing': svgHtml = renderPlumbing(layout, requirements); break;
     case 'tiling': svgHtml = renderTiling(layout, requirements); break;
+    case 'staircase': svgHtml = renderStaircase(layout, requirements); break;
+    case 'waterTank': svgHtml = renderWaterTank(layout, requirements); break;
+    case 'waterproofing': svgHtml = renderWaterproofing(layout, requirements); break;
+    case 'stp': svgHtml = renderSTP(layout, requirements); break;
   }
 
   const descriptions: Record<DrawingType, string> = {
@@ -505,6 +522,10 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq }) 
     electrical: 'Electrical layout: room-wise light/fan/socket/AC points, DB & MSB positions, circuit runs (power/lighting/earth), load schedule.',
     plumbing: 'Plumbing layout: cold/hot water supply lines, drainage with slope, fixtures (WC/basin/shower/sink), OHT, sump, manholes, RWP.',
     tiling: 'Floor finish layout: room-wise tile type/size, wall tiles in wet areas, skirting, threshold details, material schedule.',
+    staircase: 'Dog-leg staircase detail: section and plan views with tread/riser dimensions, waist slab, handrail, landing, reinforcement per IS 456 / NBC 2016.',
+    waterTank: 'Underground sump and overhead tank details: section views with reinforcement, inlet/outlet pipes, waterproof coating, capacity calculations per IS 3370.',
+    waterproofing: 'Waterproofing details for roof terrace (APP membrane + brick bat coba) and bathroom (sunken floor + membrane) per IS 3067 / NBC Part 7.',
+    stp: 'Sewage Treatment Plant layout: bar screen, settling tank, anaerobic baffled reactor, filter media, chlorination chamber with flow direction per CPCB / NBC Part 9.',
   };
 
   return (
