@@ -262,54 +262,66 @@ function placeRoomsWithAdjacency(
 
   // --- MIDDLE ZONE: Kitchen + Dining + Puja ---
   if (hasMidZone && midDepth > 0) {
-    let midX = ox;
     const kitchenW = hasKitchen ? (hasDining ? effectiveW * 0.45 : effectiveW * 0.5) : 0;
     const diningW = hasDining ? (hasKitchen ? effectiveW * 0.35 : effectiveW * 0.5) : 0;
-    const pujaW = hasPuja ? effectiveW - kitchenW - diningW : 0;
+    const pujaW = hasPuja ? Math.max(0, effectiveW - kitchenW - diningW) : 0;
 
-    // Kitchen placement — Vastu: SE corner
-    if (hasKitchen) {
-      const kx = strategy === 'vastu' ? getVastuX(ox, effectiveW, kitchenW, 'SE', facing) : midX;
-      rooms.push({
-        id: `f${floor}_kitchen_0`,
-        name: 'Kitchen',
-        type: 'kitchen',
-        x: kx,
-        y: currentY,
-        width: kitchenW,
-        depth: midDepth,
-        floor,
-      });
-      midX = kx + kitchenW;
-    }
+    // For Vastu: kitchen goes to SE, other rooms fill remaining space from ox
+    const kitchenOnRight = strategy === 'vastu' && (facing === 'North' || facing === 'East');
 
-    // Dining — adjacent to kitchen
-    if (hasDining) {
-      rooms.push({
-        id: `f${floor}_dining_0`,
-        name: 'Dining',
-        type: 'dining',
-        x: midX,
-        y: currentY,
-        width: diningW,
-        depth: midDepth,
-        floor,
-      });
-      midX += diningW;
-    }
-
-    // Puja room — near kitchen/entrance
-    if (hasPuja && pujaW > 1.2) {
-      rooms.push({
-        id: `f${floor}_puja_0`,
-        name: 'Puja Room',
-        type: 'puja',
-        x: midX,
-        y: currentY,
-        width: pujaW,
-        depth: midDepth,
-        floor,
-      });
+    if (kitchenOnRight) {
+      // Kitchen at right side (SE), dining + puja fill from left
+      let leftX = ox;
+      if (hasDining) {
+        rooms.push({
+          id: `f${floor}_dining_0`, name: 'Dining', type: 'dining',
+          x: leftX, y: currentY, width: diningW, depth: midDepth, floor,
+        });
+        leftX += diningW;
+      }
+      if (hasPuja && pujaW > 1.2) {
+        rooms.push({
+          id: `f${floor}_puja_0`, name: 'Puja Room', type: 'puja',
+          x: leftX, y: currentY, width: pujaW, depth: midDepth, floor,
+        });
+      }
+      if (hasKitchen) {
+        rooms.push({
+          id: `f${floor}_kitchen_0`, name: 'Kitchen', type: 'kitchen',
+          x: ox + effectiveW - kitchenW, y: currentY, width: kitchenW, depth: midDepth, floor,
+        });
+      }
+    } else {
+      // Standard left-to-right: kitchen, dining, puja
+      let midX = ox;
+      if (hasKitchen) {
+        const kx = strategy === 'vastu' ? getVastuX(ox, effectiveW, kitchenW, 'SE', facing) : midX;
+        rooms.push({
+          id: `f${floor}_kitchen_0`, name: 'Kitchen', type: 'kitchen',
+          x: kx, y: currentY, width: kitchenW, depth: midDepth, floor,
+        });
+        midX = kx + kitchenW;
+      }
+      if (hasDining) {
+        // Clamp dining to not exceed buildable width
+        const clampedDiningW = Math.min(diningW, ox + effectiveW - midX);
+        if (clampedDiningW > 1.5) {
+          rooms.push({
+            id: `f${floor}_dining_0`, name: 'Dining', type: 'dining',
+            x: midX, y: currentY, width: clampedDiningW, depth: midDepth, floor,
+          });
+          midX += clampedDiningW;
+        }
+      }
+      if (hasPuja && pujaW > 1.2) {
+        const clampedPujaW = Math.min(pujaW, ox + effectiveW - midX);
+        if (clampedPujaW > 1.0) {
+          rooms.push({
+            id: `f${floor}_puja_0`, name: 'Puja Room', type: 'puja',
+            x: midX, y: currentY, width: clampedPujaW, depth: midDepth, floor,
+          });
+        }
+      }
     }
 
     currentY += midDepth;
@@ -543,6 +555,35 @@ function placeRoomsWithAdjacency(
           floor,
         });
       }
+    }
+  }
+
+  // --- BOUNDARY CLAMP: Ensure no room extends beyond buildable area ---
+  const maxX = ox + buildW; // full width including staircase zone
+  const maxY = oy + buildD;
+  for (const room of rooms) {
+    // Clamp X: room must not extend past right boundary
+    if (room.x + room.width > maxX + 0.01) {
+      room.x = Math.max(ox, maxX - room.width);
+    }
+    // Clamp X: room must not start before left boundary
+    if (room.x < ox - 0.01) {
+      room.x = ox;
+    }
+    // Clamp Y: room must not extend past rear boundary
+    if (room.y + room.depth > maxY + 0.01) {
+      room.y = Math.max(oy, maxY - room.depth);
+    }
+    // Clamp Y: room must not start before front boundary
+    if (room.y < oy - 0.01) {
+      room.y = oy;
+    }
+    // Final safety: shrink if still overflows
+    if (room.x + room.width > maxX + 0.01) {
+      room.width = maxX - room.x;
+    }
+    if (room.y + room.depth > maxY + 0.01) {
+      room.depth = maxY - room.y;
     }
   }
 

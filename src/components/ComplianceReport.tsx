@@ -1,7 +1,9 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Layout } from '../types';
+import { Layout, CustomRateSheet } from '../types';
+import { autoFixLayout } from '@/utils/vastuAutoFix';
+import { calculateBOQ } from '@/utils/boqCalculator';
 import {
   CheckCircle,
   AlertTriangle,
@@ -20,13 +22,31 @@ interface Props {
   layout: Layout;
   vastuEnabled: boolean;
   onAutoFix?: (optimizedLayout: Layout) => void;
+  boqTotal?: number;
+  numFloors?: number;
+  customRates?: CustomRateSheet | null;
 }
 
-export const ComplianceReport: React.FC<Props> = ({ layout, vastuEnabled, onAutoFix }) => {
+const formatCurrency = (n: number): string => {
+  if (n >= 10000000) return `₹${(n / 10000000).toFixed(2)} Cr`;
+  if (n >= 100000) return `₹${(n / 100000).toFixed(2)} L`;
+  return `₹${n.toLocaleString('en-IN')}`;
+};
+
+export const ComplianceReport: React.FC<Props> = ({ layout, vastuEnabled, onAutoFix, boqTotal, numFloors, customRates }) => {
   const [expandNBC, setExpandNBC] = useState(false);
   const [expandVastu, setExpandVastu] = useState(false);
   const [expandFire, setExpandFire] = useState(false);
   const [fixing, setFixing] = useState(false);
+  const [costPreview, setCostPreview] = useState<{
+    beforeCost: number;
+    afterCost: number;
+    beforeVastu: number;
+    afterVastu: number;
+    beforeNBCIssues: number;
+    afterNBCIssues: number;
+    optimizedLayout: Layout;
+  } | null>(null);
 
   const nbcErrors = layout.nbcIssues.filter((i) => i.severity === 'error');
   const nbcWarnings = layout.nbcIssues.filter((i) => i.severity === 'warning');
@@ -67,6 +87,50 @@ export const ComplianceReport: React.FC<Props> = ({ layout, vastuEnabled, onAuto
 
   const status = getOverallStatus();
 
+  const handleAutoFixPreview = () => {
+    setFixing(true);
+    setTimeout(() => {
+      try {
+        const optimized = autoFixLayout(layout, layout.facing || 'North', vastuEnabled);
+        const floors = numFloors || 1;
+        const beforeCost = boqTotal || calculateBOQ(layout, floors, customRates).totalCost;
+        const afterBOQ = calculateBOQ(optimized, floors, customRates);
+        const afterCost = afterBOQ.totalCost;
+        const beforeNBCIssues = nbcErrors.length + nbcWarnings.length;
+        const afterNBCIssues = optimized.nbcIssues.filter(
+          (i) => i.severity === 'error' || i.severity === 'warning'
+        ).length;
+
+        setCostPreview({
+          beforeCost,
+          afterCost,
+          beforeVastu: layout.vastuScore,
+          afterVastu: optimized.vastuScore,
+          beforeNBCIssues,
+          afterNBCIssues,
+          optimizedLayout: optimized,
+        });
+      } catch {
+        // If preview calc fails, just apply directly
+        if (onAutoFix) onAutoFix(layout);
+      }
+      setFixing(false);
+    }, 100);
+  };
+
+  const handleAcceptFix = () => {
+    if (costPreview && onAutoFix) {
+      onAutoFix(costPreview.optimizedLayout);
+      setCostPreview(null);
+    }
+  };
+
+  const handleRejectFix = () => {
+    setCostPreview(null);
+  };
+
+  const showAutoFix = onAutoFix && (nbcErrors.length > 0 || nbcWarnings.length > 0 || (vastuEnabled && layout.vastuScore < 90));
+
   return (
     <div className="p-4 space-y-4 max-w-2xl mx-auto">
       {/* Header */}
@@ -87,17 +151,98 @@ export const ComplianceReport: React.FC<Props> = ({ layout, vastuEnabled, onAuto
         </div>
       </div>
 
-      {/* Auto-Fix CTA Button */}
-      {onAutoFix && (nbcErrors.length > 0 || nbcWarnings.length > 0 || (vastuEnabled && layout.vastuScore < 90)) && (
+      {/* Cost Impact Preview Card */}
+      {costPreview && (
+        <div className="bg-white border-2 border-blue-300 rounded-xl p-4 space-y-3 shadow-lg">
+          <div className="text-sm font-bold text-gray-800 flex items-center gap-2">
+            <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+            </svg>
+            Auto-Fix Cost Impact Analysis
+          </div>
+
+          {/* Before vs After Grid */}
+          <div className="grid grid-cols-2 gap-3">
+            {/* Before */}
+            <div className="bg-gray-50 border rounded-lg p-3">
+              <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-2">Current Plan</div>
+              <div className="text-base font-bold text-gray-800">{formatCurrency(costPreview.beforeCost)}</div>
+              <div className="mt-2 space-y-1">
+                <div className="flex items-center gap-1.5 text-xs">
+                  <span className={`w-2 h-2 rounded-full ${costPreview.beforeNBCIssues > 0 ? 'bg-red-500' : 'bg-green-500'}`} />
+                  <span className="text-gray-600">{costPreview.beforeNBCIssues} NBC Issues</span>
+                </div>
+                {vastuEnabled && (
+                  <div className="flex items-center gap-1.5 text-xs">
+                    <span className={`w-2 h-2 rounded-full ${costPreview.beforeVastu < 60 ? 'bg-red-500' : costPreview.beforeVastu < 80 ? 'bg-amber-500' : 'bg-green-500'}`} />
+                    <span className="text-gray-600">Vastu {costPreview.beforeVastu}%</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* After */}
+            <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+              <div className="text-[10px] font-semibold text-green-700 uppercase tracking-wide mb-2">Optimized Plan</div>
+              <div className="text-base font-bold text-green-700">{formatCurrency(costPreview.afterCost)}</div>
+              <div className="mt-2 space-y-1">
+                <div className="flex items-center gap-1.5 text-xs">
+                  <span className={`w-2 h-2 rounded-full ${costPreview.afterNBCIssues > 0 ? 'bg-amber-500' : 'bg-green-500'}`} />
+                  <span className="text-green-700">{costPreview.afterNBCIssues} NBC Issues</span>
+                </div>
+                {vastuEnabled && (
+                  <div className="flex items-center gap-1.5 text-xs">
+                    <span className={`w-2 h-2 rounded-full ${costPreview.afterVastu >= 80 ? 'bg-green-500' : 'bg-amber-500'}`} />
+                    <span className="text-green-700">Vastu {costPreview.afterVastu}%</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Cost Difference */}
+          {(() => {
+            const diff = costPreview.afterCost - costPreview.beforeCost;
+            const pct = costPreview.beforeCost > 0 ? ((diff / costPreview.beforeCost) * 100).toFixed(1) : '0';
+            const isIncrease = diff > 0;
+            return (
+              <div className={`flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-sm font-semibold ${isIncrease ? 'bg-amber-50 text-amber-700 border border-amber-200' : 'bg-green-50 text-green-700 border border-green-200'}`}>
+                <span>{isIncrease ? '📈' : '📉'}</span>
+                <span>
+                  Cost {isIncrease ? 'Increase' : 'Savings'}: {formatCurrency(Math.abs(diff))} ({isIncrease ? '+' : '-'}{Math.abs(Number(pct))}%)
+                </span>
+              </div>
+            );
+          })()}
+
+          {/* Rework Savings Note */}
+          <div className="text-[10px] text-gray-500 text-center">
+            💡 Compliant plans avoid ₹50K-₹2L rework costs from municipal rejections & structural fixes
+          </div>
+
+          {/* Accept / Reject Buttons */}
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              onClick={handleRejectFix}
+              className="py-2.5 px-4 rounded-lg border border-gray-300 text-gray-700 font-semibold text-sm hover:bg-gray-50 transition-all"
+            >
+              ✕ Keep Current Plan
+            </button>
+            <button
+              onClick={handleAcceptFix}
+              className="py-2.5 px-4 rounded-lg bg-green-600 hover:bg-green-700 text-white font-semibold text-sm transition-all shadow-md"
+            >
+              ✓ Apply Optimized Plan
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Auto-Fix CTA Button (hidden when preview shown) */}
+      {showAutoFix && !costPreview && (
         <button
           className="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-3 px-4 rounded-xl flex items-center justify-center gap-2 transition-all shadow-md hover:shadow-lg"
-          onClick={() => {
-            setFixing(true);
-            setTimeout(() => {
-              onAutoFix(layout);
-              setFixing(false);
-            }, 100);
-          }}
+          onClick={handleAutoFixPreview}
           disabled={fixing}
         >
           {fixing ? (
@@ -106,7 +251,7 @@ export const ComplianceReport: React.FC<Props> = ({ layout, vastuEnabled, onAuto
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
               </svg>
-              <span>Optimizing Layout...</span>
+              <span>Analyzing Cost Impact...</span>
             </>
           ) : (
             <>
@@ -354,7 +499,7 @@ export const ComplianceReport: React.FC<Props> = ({ layout, vastuEnabled, onAuto
 
       {/* BIM Export Note */}
       <div className="text-[10px] text-gray-400 text-center">
-        Wall weights: 0.50mm external, 0.25mm internal • NBC 2016 Part 3 & 4 • IS 456:2000
+        Wall weights: 0.50mm external, 0.25mm internal • NBC 2016 Part 3 &amp; 4 • IS 456:2000
       </div>
     </div>
   );

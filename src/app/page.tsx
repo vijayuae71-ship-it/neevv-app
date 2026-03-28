@@ -291,7 +291,7 @@ export default function HomePage() {
               <LayoutSelector layouts={layouts} onSelect={handleLayoutSelect} vastuEnabled={requirements.vastuCompliance} />
             )}
             {step === 'compliance' && selectedLayout && requirements && (
-              <ComplianceReport layout={selectedLayout} vastuEnabled={requirements.vastuCompliance} onAutoFix={handleAutoFix} />
+              <ComplianceReport layout={selectedLayout} vastuEnabled={requirements.vastuCompliance} onAutoFix={handleAutoFix} boqTotal={boq?.totalCost} numFloors={requirements.floors.length} customRates={customRates} />
             )}
             {step === 'floorplan' && selectedLayout && requirements && (
               <FloorPlanView layout={selectedLayout} vastuEnabled={requirements.vastuCompliance} onProceedToBOQ={() => setStep('isometric')} />
