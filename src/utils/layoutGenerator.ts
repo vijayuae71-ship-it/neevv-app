@@ -81,7 +81,7 @@ export function generateLayouts(req: ProjectRequirements): Layout[] {
     const allRooms = floors.flatMap((f) => f.rooms);
     const { score, details } = req.vastuCompliance
       ? calculateVastuScore(allRooms, plotW, plotD, req.facing)
-      : { score: 0, details: [], suggestions: [] };
+      : { score: 0, details: [] };
 
     const { compliant, issues } = checkNBCCompliance(allRooms, plotArea, totalBuiltUp, req.floors.length);
 
