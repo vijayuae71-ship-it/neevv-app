@@ -19,13 +19,14 @@ import {
 interface Props {
   layout: Layout;
   vastuEnabled: boolean;
+  onAutoFix?: (optimizedLayout: Layout) => void;
 }
 
-export const ComplianceReport: React.FC<Props> = ({ layout, vastuEnabled }) => {
-  const [expandNBC, setExpandNBC] = useState(true);
-  const [expandVastu, setExpandVastu] = useState(true);
-
-  const [expandFire, setExpandFire] = useState(true);
+export const ComplianceReport: React.FC<Props> = ({ layout, vastuEnabled, onAutoFix }) => {
+  const [expandNBC, setExpandNBC] = useState(false);
+  const [expandVastu, setExpandVastu] = useState(false);
+  const [expandFire, setExpandFire] = useState(false);
+  const [fixing, setFixing] = useState(false);
 
   const nbcErrors = layout.nbcIssues.filter((i) => i.severity === 'error');
   const nbcWarnings = layout.nbcIssues.filter((i) => i.severity === 'warning');
@@ -85,6 +86,38 @@ export const ComplianceReport: React.FC<Props> = ({ layout, vastuEnabled }) => {
           </div>
         </div>
       </div>
+
+      {/* Auto-Fix CTA Button */}
+      {onAutoFix && (nbcErrors.length > 0 || nbcWarnings.length > 0 || (vastuEnabled && layout.vastuScore < 90)) && (
+        <button
+          className="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-3 px-4 rounded-xl flex items-center justify-center gap-2 transition-all shadow-md hover:shadow-lg"
+          onClick={() => {
+            setFixing(true);
+            setTimeout(() => {
+              onAutoFix(layout);
+              setFixing(false);
+            }, 100);
+          }}
+          disabled={fixing}
+        >
+          {fixing ? (
+            <>
+              <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+              <span>Optimizing Layout...</span>
+            </>
+          ) : (
+            <>
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+              <span>⚡ Auto-Fix: Optimize Vastu &amp; NBC Compliance</span>
+            </>
+          )}
+        </button>
+      )}
 
       {/* Quick Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -264,6 +297,56 @@ export const ComplianceReport: React.FC<Props> = ({ layout, vastuEnabled }) => {
                   (e.g., fire ventilation requirements), NBC Safety takes priority.
                 </div>
               </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Fire Safety Section */}
+      {(fireErrors.length > 0 || fireWarnings.length > 0 || fireInfo.length > 0) && (
+        <div className="bg-white border rounded-xl overflow-hidden">
+          <button
+            className="w-full flex items-center justify-between p-3 hover:bg-gray-50"
+            onClick={() => setExpandFire(!expandFire)}
+          >
+            <div className="flex items-center gap-2">
+              <Flame size={16} className="text-orange-500" />
+              <span className="font-semibold text-sm text-gray-800">
+                Fire Safety ({fireErrors.length + fireWarnings.length} issues, {fireInfo.length} advisories)
+              </span>
+            </div>
+            {expandFire ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+          </button>
+
+          {expandFire && (
+            <div className="px-3 pb-3 space-y-2">
+              {fireErrors.map((issue, idx) => (
+                <div key={`fe-${idx}`} className="flex items-start gap-2 p-2 bg-red-50 rounded-lg">
+                  <XCircle size={14} className="text-red-600 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <div className="text-xs font-semibold text-red-700">{issue.room}</div>
+                    <div className="text-[11px] text-red-600">{issue.issue}</div>
+                  </div>
+                </div>
+              ))}
+              {fireWarnings.map((issue, idx) => (
+                <div key={`fw-${idx}`} className="flex items-start gap-2 p-2 bg-amber-50 rounded-lg">
+                  <AlertTriangle size={14} className="text-amber-600 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <div className="text-xs font-semibold text-amber-700">{issue.room}</div>
+                    <div className="text-[11px] text-amber-600">{issue.issue}</div>
+                  </div>
+                </div>
+              ))}
+              {fireInfo.map((issue, idx) => (
+                <div key={`fi-${idx}`} className="flex items-start gap-2 p-2 bg-blue-50 rounded-lg">
+                  <Info size={14} className="text-blue-600 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <div className="text-xs font-semibold text-blue-700">{issue.room}</div>
+                    <div className="text-[11px] text-blue-600">{issue.issue}</div>
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </div>

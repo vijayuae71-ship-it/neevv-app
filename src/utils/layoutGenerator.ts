@@ -81,9 +81,9 @@ export function generateLayouts(req: ProjectRequirements): Layout[] {
     const allRooms = floors.flatMap((f) => f.rooms);
     const { score, details } = req.vastuCompliance
       ? calculateVastuScore(allRooms, plotW, plotD, req.facing)
-      : { score: 0, details: [] };
+      : { score: 0, details: [], suggestions: [] };
 
-    const { compliant, issues } = checkNBCCompliance(allRooms);
+    const { compliant, issues } = checkNBCCompliance(allRooms, plotArea, totalBuiltUp, req.floors.length);
 
     layouts.push({
       id: strat.id,
@@ -190,7 +190,7 @@ function placeRoomsWithAdjacency(
   // Adjust for parking on ground floor
   let parkingW = 0;
   if (hasParking && !isStilt) {
-    parkingW = Math.min(effectiveW * 0.4, 3.5);
+    parkingW = Math.max(3.0, Math.min(effectiveW * 0.4, 4.0)); // NBC: min 3.0m for door clearance
   }
 
   // --- FRONT ZONE: Living/Hall + Parking ---
@@ -453,7 +453,11 @@ function placeRoomsWithAdjacency(
       floor,
     });
 
-    if (buildD - stairDepth > 1.5) {
+    // Space below staircase: Store/Utility capped at reasonable size
+    const remainBelowStair = buildD - stairDepth;
+    if (remainBelowStair > 1.5) {
+      // Cap store at 3m depth max (~7.5 m²), rest becomes passage
+      const storeDepth = Math.min(3.0, remainBelowStair);
       rooms.push({
         id: `f${floor}_utility`,
         name: floor === 0 ? 'Store' : 'Utility',
@@ -461,9 +465,23 @@ function placeRoomsWithAdjacency(
         x: ox + effectiveW,
         y: oy + stairDepth,
         width: staircaseW,
-        depth: buildD - stairDepth,
+        depth: storeDepth,
         floor,
       });
+      // If remaining space below store, add passage/circulation
+      const passageDepth = remainBelowStair - storeDepth;
+      if (passageDepth > 0.8) {
+        rooms.push({
+          id: `f${floor}_passage_stair`,
+          name: 'Passage',
+          type: 'passage',
+          x: ox + effectiveW,
+          y: oy + stairDepth + storeDepth,
+          width: staircaseW,
+          depth: passageDepth,
+          floor,
+        });
+      }
     }
   }
 

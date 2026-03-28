@@ -13,6 +13,7 @@ import { ComplianceReport } from '@/components/ComplianceReport';
 import { InteriorDesign } from '@/components/InteriorDesign';
 import ApartmentForm from '@/components/ApartmentForm';
 import { generateLayouts } from '@/utils/layoutGenerator';
+import { autoFixLayout } from '@/utils/vastuAutoFix';
 import { calculateBOQ } from '@/utils/boqCalculator';
 import { BRAND_LOGO_BASE64 } from '@/utils/brand';
 import { useAuth } from '@/hooks/useAuth';
@@ -85,6 +86,17 @@ export default function HomePage() {
     setLayouts([]);
     setSelectedLayout(null);
     setBOQ(null);
+  };
+
+  const handleAutoFix = (currentLayout: Layout) => {
+    if (!requirements) return;
+    const optimized = autoFixLayout(currentLayout, requirements.facing);
+    setSelectedLayout(optimized);
+    // Update layouts array with the optimized version
+    setLayouts(prev => prev.map(l => l.id === optimized.id ? optimized : l));
+    // Recalculate BOQ with optimized layout
+    const b = calculateBOQ(optimized, requirements.floors.length, customRates);
+    setBOQ(b);
   };
 
   const handleUploadConversion = (layout: Layout, req: ProjectRequirements) => {
@@ -279,7 +291,7 @@ export default function HomePage() {
               <LayoutSelector layouts={layouts} onSelect={handleLayoutSelect} vastuEnabled={requirements.vastuCompliance} />
             )}
             {step === 'compliance' && selectedLayout && requirements && (
-              <ComplianceReport layout={selectedLayout} vastuEnabled={requirements.vastuCompliance} />
+              <ComplianceReport layout={selectedLayout} vastuEnabled={requirements.vastuCompliance} onAutoFix={handleAutoFix} />
             )}
             {step === 'floorplan' && selectedLayout && requirements && (
               <FloorPlanView layout={selectedLayout} vastuEnabled={requirements.vastuCompliance} onProceedToBOQ={() => setStep('isometric')} />

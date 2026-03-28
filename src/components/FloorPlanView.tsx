@@ -750,22 +750,74 @@ const FurnitureDetail: React.FC<{
       );
     }
     case 'staircase': {
-      // Staircase treads with UP arrow
-      const steps = 8;
+      // Dog-leg staircase: two flights with mid-landing
+      const innerPad = 4;
+      const flightW = (w - innerPad * 2) / 2; // Two flights side by side
+      const landingH = Math.max(10, h * 0.12);
+      const flightH = (h - innerPad * 2 - landingH) / 2;
+      const steps1 = 5; // First flight going up
+      const steps2 = 5; // Second flight going up
+
+      // If room is too narrow for dog-leg, fallback to straight flight
+      if (flightW < 12) {
+        const steps = 10;
+        return (
+          <g>
+            {Array.from({ length: steps }, (_, i) => (
+              <line key={i}
+                x1={x + pad} y1={y + pad + (i + 1) * ((h - pad * 2) / (steps + 1))}
+                x2={x + w - pad} y2={y + pad + (i + 1) * ((h - pad * 2) / (steps + 1))}
+                stroke={s} strokeWidth="0.4"
+              />
+            ))}
+            <line x1={x + w / 2} y1={y + h - pad} x2={x + w / 2} y2={y + pad + 5} stroke={s} strokeWidth="0.6" />
+            <line x1={x + w / 2 - 3} y1={y + pad + 10} x2={x + w / 2} y2={y + pad + 5} stroke={s} strokeWidth="0.6" />
+            <line x1={x + w / 2 + 3} y1={y + pad + 10} x2={x + w / 2} y2={y + pad + 5} stroke={s} strokeWidth="0.6" />
+            <text x={x + w / 2 + 6} y={y + h / 2} fontSize="5" fill={s} fontStyle="italic">UP</text>
+          </g>
+        );
+      }
+
+      const fx = x + innerPad; // First flight x
+      const fy = y + innerPad; // First flight y
+      const sx = x + innerPad + flightW; // Second flight x
+      const landY = fy + flightH; // Landing y
+
       return (
         <g>
-          {Array.from({ length: steps }, (_, i) => (
-            <line key={i}
-              x1={x + pad} y1={y + pad + (i + 1) * ((h - pad * 2) / (steps + 1))}
-              x2={x + w - pad} y2={y + pad + (i + 1) * ((h - pad * 2) / (steps + 1))}
+          {/* First flight (bottom, going up) - treads */}
+          {Array.from({ length: steps1 }, (_, i) => (
+            <line key={`f1_${i}`}
+              x1={fx} y1={fy + (i + 1) * (flightH / (steps1 + 1))}
+              x2={fx + flightW} y2={fy + (i + 1) * (flightH / (steps1 + 1))}
               stroke={s} strokeWidth="0.4"
             />
           ))}
-          {/* UP arrow */}
-          <line x1={x + w / 2} y1={y + h - pad} x2={x + w / 2} y2={y + pad + 5} stroke={s} strokeWidth="0.6" />
-          <line x1={x + w / 2 - 3} y1={y + pad + 10} x2={x + w / 2} y2={y + pad + 5} stroke={s} strokeWidth="0.6" />
-          <line x1={x + w / 2 + 3} y1={y + pad + 10} x2={x + w / 2} y2={y + pad + 5} stroke={s} strokeWidth="0.6" />
-          <text x={x + w / 2 + 6} y={y + h / 2} fontSize="5" fill={s} fontStyle="italic">UP</text>
+          {/* First flight outline */}
+          <rect x={fx} y={fy} width={flightW} height={flightH} fill="none" stroke={s} strokeWidth="0.3" />
+
+          {/* Mid-landing */}
+          <rect x={fx} y={landY} width={w - innerPad * 2} height={landingH} fill="none" stroke={s} strokeWidth="0.4" strokeDasharray="2,1" />
+          <text x={fx + (w - innerPad * 2) / 2} y={landY + landingH / 2 + 2} textAnchor="middle" fontSize="4" fill={s}>LANDING</text>
+
+          {/* Second flight (top, continuing up) - treads */}
+          {Array.from({ length: steps2 }, (_, i) => (
+            <line key={`f2_${i}`}
+              x1={sx} y1={landY + landingH + (i + 1) * (flightH / (steps2 + 1))}
+              x2={sx + flightW} y2={landY + landingH + (i + 1) * (flightH / (steps2 + 1))}
+              stroke={s} strokeWidth="0.4"
+            />
+          ))}
+          {/* Second flight outline */}
+          <rect x={sx} y={landY + landingH} width={flightW} height={flightH} fill="none" stroke={s} strokeWidth="0.3" />
+
+          {/* UP arrow on first flight */}
+          <line x1={fx + flightW / 2} y1={fy + flightH - 3} x2={fx + flightW / 2} y2={fy + 5} stroke={s} strokeWidth="0.5" />
+          <line x1={fx + flightW / 2 - 2} y1={fy + 8} x2={fx + flightW / 2} y2={fy + 5} stroke={s} strokeWidth="0.5" />
+          <line x1={fx + flightW / 2 + 2} y1={fy + 8} x2={fx + flightW / 2} y2={fy + 5} stroke={s} strokeWidth="0.5" />
+
+          {/* UP label */}
+          <text x={sx + flightW / 2} y={landY + landingH + flightH / 2} textAnchor="middle" fontSize="4.5" fill={s} fontStyle="italic">UP</text>
         </g>
       );
     }
@@ -784,6 +836,28 @@ const FurnitureDetail: React.FC<{
       return (
         <g>
           <line x1={x + pad} y1={y + h / 2} x2={x + w - pad} y2={y + h / 2} stroke={s} strokeWidth="0.3" strokeDasharray="4,2" />
+        </g>
+      );
+    }
+    case 'store':
+    case 'utility': {
+      // Shelving units along walls
+      return (
+        <g>
+          <rect x={x + pad} y={y + pad} width={w - pad * 2} height={3} fill="none" stroke={s} strokeWidth="0.3" />
+          <rect x={x + pad} y={y + pad + 5} width={w - pad * 2} height={3} fill="none" stroke={s} strokeWidth="0.3" />
+          {/* Diagonal cross indicating storage */}
+          <line x1={x + pad} y1={y + h * 0.5} x2={x + w - pad} y2={y + h - pad} stroke={s} strokeWidth="0.2" strokeDasharray="3,2" />
+          <line x1={x + w - pad} y1={y + h * 0.5} x2={x + pad} y2={y + h - pad} stroke={s} strokeWidth="0.2" strokeDasharray="3,2" />
+        </g>
+      );
+    }
+    case 'passage': {
+      // Arrow indicating circulation direction
+      const midY = y + h / 2;
+      return (
+        <g>
+          <line x1={x + pad} y1={midY} x2={x + w - pad} y2={midY} stroke={s} strokeWidth="0.3" strokeDasharray="3,2" />
         </g>
       );
     }
