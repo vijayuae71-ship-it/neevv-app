@@ -329,11 +329,16 @@ function placeRoomsWithAdjacency(
 
   // --- REAR ZONE: Bedrooms with attached toilets ---
   if (numBedrooms > 0 && rearDepth > 0) {
-    // Distribute bedrooms across width
-    const bedroomCols = Math.min(numBedrooms, effectiveW > 7 ? 3 : 2);
+    // NBC minimum: bedroom ≥ 9.5 m², min width 3.0m
+    // Determine max columns that still allow 3.0m bedroom + 1.2m toilet
+    const MIN_BED_W = 3.0;  // NBC minimum habitable room width
+    const MIN_TOILET_W = 1.2;
+    const minColW = MIN_BED_W + MIN_TOILET_W; // 4.2m per bedroom column
+    const maxFitCols = Math.max(1, Math.floor(effectiveW / minColW));
+    const bedroomCols = Math.min(numBedrooms, maxFitCols);
     const bedroomColW = effectiveW / bedroomCols;
-    // Toilet strip: carved from bedroom on interior side (not exterior)
-    const toiletW = Math.max(1.5, bedroomColW * 0.28);
+    // Toilet strip: carved from bedroom, sized proportionally but respecting minimums
+    const toiletW = Math.max(MIN_TOILET_W, Math.min(1.8, bedroomColW * 0.28));
     const toiletD = Math.min(2.5, rearDepth * 0.45);
 
     let bedIdx = 0;
@@ -584,6 +589,37 @@ function placeRoomsWithAdjacency(
     }
     if (room.y + room.depth > maxY + 0.01) {
       room.depth = maxY - room.y;
+    }
+  }
+
+  // --- MINIMUM SIZE ENFORCEMENT: NBC requires habitable rooms ≥ 2.4m width ---
+  // Expand undersized rooms by borrowing from adjacent rooms
+  const MIN_WIDTHS: Record<string, number> = {
+    master_bedroom: 3.0, bedroom: 3.0, hall: 3.0,
+    kitchen: 2.4, dining: 2.4, toilet: 1.2, store: 1.5,
+    puja: 1.2, utility: 1.2, staircase: 2.0, passage: 1.0,
+    parking: 3.0, balcony: 1.0, entrance: 1.0,
+  };
+  for (const room of rooms) {
+    const minW = MIN_WIDTHS[room.type] || 2.4;
+    if (room.width < minW && room.type !== 'balcony' && room.type !== 'passage') {
+      // Try to expand: first check if there's space within boundary
+      const spaceRight = maxX - (room.x + room.width);
+      if (spaceRight >= minW - room.width) {
+        room.width = minW;
+      } else {
+        // Shift left and expand
+        const deficit = minW - room.width;
+        room.x = Math.max(ox, room.x - deficit / 2);
+        room.width = Math.min(minW, maxX - room.x);
+      }
+    }
+    // Also enforce minimum depth for habitable rooms
+    if (room.depth < 2.4 && ['master_bedroom', 'bedroom', 'hall', 'kitchen', 'dining'].includes(room.type)) {
+      const spaceDown = maxY - (room.y + room.depth);
+      if (spaceDown >= 2.4 - room.depth) {
+        room.depth = 2.4;
+      }
     }
   }
 

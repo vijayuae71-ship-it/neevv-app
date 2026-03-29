@@ -404,7 +404,7 @@ const UnifiedWalls: React.FC<{
   scale: number; sb: Setbacks; bw: number; bd: number;
 }> = ({ rooms, tx, ty, scale, sb, bw, bd }) => {
   const t = WALL_T;
-  const SNAP = 0.08; // snap tolerance in meters
+  const SNAP = 0.20; // snap tolerance in meters – generous to merge shared edges
 
   // Collect every wall edge from every room
   interface Edge { coord: number; start: number; end: number; ext: boolean; }
