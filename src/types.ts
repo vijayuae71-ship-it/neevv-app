@@ -165,7 +165,7 @@ export interface BOQ {
   plasteringAreaSqM: number;
 }
 
-export type AppStep = 'requirements' | 'layouts' | 'compliance' | 'floorplan' | 'isometric' | 'working' | 'rates' | 'boq' | 'interior';
+export type AppStep = 'requirements' | 'layouts' | 'compliance' | 'floorplan' | 'isometric' | 'drawings' | 'working' | 'rates' | 'boq' | 'interior';
 
 /* ---------- Custom Rate Sheets ---------- */
 
