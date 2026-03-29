@@ -6,9 +6,9 @@ import { buildArchitecturalPrompt } from '../utils/aiRenderPrompt';
 import { Camera, RefreshCw, Download, AlertTriangle, Sparkles, Eye } from 'lucide-react';
 
 const MODELS = [
-  { id: 'nano-banana', label: 'Nano Banana' },
-  { id: 'nano-banana-2', label: 'Nano Banana 2' },
-  { id: 'nano-banana-pro', label: 'Nano Banana Pro' },
+  { id: 'neevv-gen', label: 'neevv Gen' },
+  { id: 'neevv-gen-2', label: 'neevv Gen 2' },
+  { id: 'neevv-gen-pro', label: 'neevv Gen Pro' },
 ];
 
 const VIEW_ANGLES = [
@@ -46,7 +46,7 @@ export const AIRenderView: React.FC<Props> = ({ layout, requirements }) => {
     try {
       const prompt = buildArchitecturalPrompt(layout, requirements, selectedView);
       
-      setProgress('Calling Gemini AI image generation...');
+      setProgress('neevv Generation Pro rendering...');
 
       const response = await fetch('/api/generate-render', {
         method: 'POST',
@@ -229,11 +229,11 @@ export const AIRenderView: React.FC<Props> = ({ layout, requirements }) => {
             <Camera size={48} className="mb-4 opacity-80" />
             <p className="text-lg font-medium text-gray-700">AI Photorealistic Render</p>
             <p className="text-sm mt-2 max-w-md text-center text-gray-600">
-              Generate a professional V-Ray quality architectural render from your floor plan using Google Gemini AI.
+              Generate a professional V-Ray quality architectural render from your floor plan using neevv Generation Pro.
               Select a view angle and click <strong>Generate</strong>.
             </p>
             <p className="text-xs mt-4 text-gray-400">
-              Powered by Google Gemini Imagen • Free tier: ~50 images/day
+              Powered by neevv Generation Pro Engine
             </p>
           </div>
         )}

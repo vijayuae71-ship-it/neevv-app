@@ -6,24 +6,24 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
 const GCS_BUCKET = process.env.GCS_BUCKET_NAME || '';
 
 const MODELS: Record<string, string> = {
-  'nano-banana': 'gemini-2.5-flash-image',
-  'nano-banana-2': 'gemini-3.1-flash-image-preview',
-  'nano-banana-pro': 'gemini-3-pro-image-preview',
+  'neevv-gen': 'gemini-2.5-flash-image',
+  'neevv-gen-2': 'gemini-2.5-flash-image',
+  'neevv-gen-pro': 'gemini-2.5-flash-image',
 };
 
 export async function POST(request: NextRequest) {
   try {
     if (!GEMINI_API_KEY) {
-      return NextResponse.json({ error: 'Gemini API key not configured' }, { status: 500 });
+      return NextResponse.json({ error: 'neevv Generation Pro engine not configured' }, { status: 500 });
     }
 
-    const { prompt, model = 'nano-banana', projectId, renderType } = await request.json();
+    const { prompt, model = 'neevv-gen', projectId, renderType } = await request.json();
 
     if (!prompt) {
       return NextResponse.json({ error: 'Prompt is required' }, { status: 400 });
     }
 
-    const modelId = MODELS[model] || MODELS['nano-banana'];
+    const modelId = MODELS[model] || MODELS['neevv-gen'];
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${GEMINI_API_KEY}`;
 
     const response = await fetch(url, {
@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
       const errorText = await response.text();
       console.error('Gemini API error:', errorText);
       return NextResponse.json(
-        { error: 'Gemini API call failed', details: errorText },
+        { error: 'neevv Generation Pro render failed', details: errorText },
         { status: response.status }
       );
     }
