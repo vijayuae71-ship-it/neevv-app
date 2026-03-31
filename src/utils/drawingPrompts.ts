@@ -72,6 +72,73 @@ function formatRoomList(rooms: any[]): string {
   }).join('. ');
 }
 
+// Derive architectural consistency brief from layout data
+function buildArchitecturalBrief(layout: any, requirements: any): string {
+  const { plotW, plotD } = getPlotDimensions(layout);
+  const facing = requirements?.facing || 'East';
+  const floors = layout?.floors || [];
+  
+  // Determine which rooms touch each external wall
+  const wallRooms: Record<string, string[]> = { front: [], rear: [], left: [], right: [] };
+  const wetAreas: string[] = [];
+  let staircasePos = '';
+  let entranceWall = facing;
+  
+  for (let fi = 0; fi < floors.length; fi++) {
+    const floorLabel = fi === 0 ? 'GF' : fi === 1 ? 'FF' : `${fi}F`;
+    const rooms = floors[fi]?.rooms || [];
+    const buildW = layout?.buildableWidthM || plotW * 0.3048;
+    const buildD = layout?.buildableDepthM || plotD * 0.3048;
+    
+    for (const room of rooms) {
+      const rx = room.x || 0;
+      const ry = room.y || 0;
+      const rw = room.width || 0;
+      const rd = room.depth || 0;
+      const rName = `${room.name || room.type} (${floorLabel})`;
+      
+      // Check which external walls this room touches
+      if (ry <= 0.5) wallRooms.front.push(rName);
+      if (ry + rd >= buildD - 0.5) wallRooms.rear.push(rName);
+      if (rx <= 0.5) wallRooms.left.push(rName);
+      if (rx + rw >= buildW - 0.5) wallRooms.right.push(rName);
+      
+      // Track wet areas for plumbing stacks
+      const rType = (room.type || room.name || '').toLowerCase();
+      if (['kitchen', 'bathroom', 'toilet', 'wc', 'utility', 'wash'].some(t => rType.includes(t))) {
+        wetAreas.push(`${rName} at (${rx.toFixed(1)}, ${ry.toFixed(1)})`);
+      }
+      
+      // Track staircase position
+      if (rType.includes('stair')) {
+        staircasePos = `${rName} at (${rx.toFixed(1)}, ${ry.toFixed(1)}), size ${rw.toFixed(1)}m × ${rd.toFixed(1)}m`;
+      }
+    }
+  }
+  
+  // Map wall positions to compass based on facing
+  const compassMap: Record<string, Record<string, string>> = {
+    'North': { front: 'North', rear: 'South', left: 'West', right: 'East' },
+    'South': { front: 'South', rear: 'North', left: 'East', right: 'West' },
+    'East':  { front: 'East', rear: 'West', left: 'North', right: 'South' },
+    'West':  { front: 'West', rear: 'East', left: 'South', right: 'North' },
+  };
+  const compass = compassMap[facing] || compassMap['East'];
+  
+  let brief = `\nARCHITECTURAL CONSISTENCY BRIEF (all drawings MUST match this layout):`;
+  brief += `\n- FRONT WALL (${compass.front}-facing): ${wallRooms.front.join(', ') || 'None'} → windows/openings here visible in Front Elevation`;
+  brief += `\n- REAR WALL (${compass.rear}-facing): ${wallRooms.rear.join(', ') || 'None'}`;
+  brief += `\n- LEFT WALL (${compass.left}-facing): ${wallRooms.left.join(', ') || 'None'} → visible in Side Elevation`;
+  brief += `\n- RIGHT WALL (${compass.right}-facing): ${wallRooms.right.join(', ') || 'None'}`;
+  if (staircasePos) brief += `\n- STAIRCASE: ${staircasePos} → staircase window must appear on corresponding external wall in elevations`;
+  if (wetAreas.length > 0) brief += `\n- WET AREAS (plumbing stacks): ${wetAreas.join('; ')} → must align vertically across floors`;
+  brief += `\n- ENTRANCE: Main door on ${compass.front} wall (${facing}-facing)`;
+  brief += `\n- BUILDING PROFILE: Plinth +450mm, GF ceiling 3.0m, FF ceiling 3.0m, Parapet 0.9m, Total height ~7.35m`;
+  brief += `\n- ALL drawings must show the SAME room arrangement, wall positions, and opening locations.\n`;
+  
+  return brief;
+}
+
 function getColumnPositions(layout: any): string {
   if (!layout?.columns || layout.columns.length === 0) return 'Standard column grid';
   return layout.columns.map((col: any, i: number) => {
@@ -143,9 +210,12 @@ NBC 2016 COMPLIANCE:
 - Fire safety: NBC Part 4 compliance
 `;
 
+  // Architectural consistency brief — ensures all drawings match the plan
+  const architecturalBrief = buildArchitecturalBrief(layout, requirements);
+
   // Dynamic context injected into every prompt
   const projectContext = `
-PROJECT: ${plotW}ft × ${plotD}ft (${plotArea} sq.ft) ${facing}-facing ${floorLabel} Residential Building.${vastuContext}${nbcContext}`;
+PROJECT: ${plotW}ft × ${plotD}ft (${plotArea} sq.ft) ${facing}-facing ${floorLabel} Residential Building.${vastuContext}${nbcContext}${architecturalBrief}`;
 
   const prompts: Record<DrawingType, string> = {
     ground_floor: `${BASE_PROMPT}${projectContext}
