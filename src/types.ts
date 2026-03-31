@@ -1,5 +1,7 @@
 export type Facing = 'North' | 'South' | 'East' | 'West';
 export type ParkingType = 'Stilt' | 'Open' | 'None';
+export type BudgetRange = 'economy' | 'standard' | 'premium' | 'luxury';
+export type ArchitecturalStyle = 'modern_minimalist' | 'contemporary_indian' | 'traditional' | 'tropical' | 'industrial';
 export type RoomType =
   | 'bedroom'
   | 'master_bedroom'
@@ -33,6 +35,8 @@ export interface ProjectRequirements {
   facing: Facing;
   vastuCompliance: boolean;
   parkingType: ParkingType;
+  budget: BudgetRange;
+  architecturalStyle: ArchitecturalStyle;
   floors: FloorProgram[];
 }
 

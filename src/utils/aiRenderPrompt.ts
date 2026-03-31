@@ -97,13 +97,27 @@ ARCHITECTURAL CONSISTENCY (3D render MUST match floor plan layout):
 - Window positions, door placement, and balcony location MUST match the floor plan exactly.
 - Entrance door on ${compass.front} wall (${facing}-facing).`;
 
-  // Determine facade description based on facing
-  let facadeDesc = '';
-  if (facing === 'North' || facing === 'East') {
-    facadeDesc = 'bright mustard saffron (#D49428) front facade with terracotta orange (#E07030) accent band near entrance, sky blue (#70B8D8) left side wall, mint green (#88C898) right side wall';
-  } else {
-    facadeDesc = 'warm terracotta orange (#E07030) front facade with mustard saffron (#D49428) accent panel, sky blue (#70B8D8) left side wall, mint green (#88C898) right side wall';
-  }
+  // Dynamic facade based on architectural style + budget
+  const archStyle = requirements.architecturalStyle || 'contemporary_indian';
+  const budget = requirements.budget || 'standard';
+
+  const styleFacades: Record<string, string> = {
+    modern_minimalist: 'Clean white (#F5F5F5) plastered front facade with charcoal grey (#3A3A3A) accent panels, anthracite (#2C2C2C) window reveals, flush-mounted frameless glazing, no ornamental details, crisp shadow lines from cantilevered slabs, matte finish throughout',
+    contemporary_indian: 'Warm sandstone beige (#D4B896) front facade with terracotta (#C0704A) accent band, jali screen element in weathered brass finish, exposed brick feature panel near entrance, earth-tone palette with copper/bronze metalwork highlights',
+    traditional: 'Lime-washed cream (#FAF0DC) exterior with ornamental column capitals, carved wood door surround in dark teak (#5B3A1A), terracotta roof tiles visible, arched niches with recessed lighting, warm ochre (#C89440) accent borders around windows',
+    tropical: 'Laterite stone (#A0522D) base plinth with white lime-washed upper walls, exposed timber (#6B4226) columns and eave brackets, clay Mangalore tile roof in burnt orange, wide verandah with wooden railing, lush tropical planting integration',
+    industrial: 'Exposed fair-face concrete (#8C8C8C) front facade with Corten steel (#8B4513) panel accents, black powder-coated steel window mullions, visible structural steel elements painted matte black, concrete block feature wall, raw material aesthetic',
+  };
+
+  const budgetFinishes: Record<string, string> = {
+    economy: 'Cement plaster with acrylic emulsion paint, basic MS window grilles, PVC rainwater pipes visible, simple parapet without cladding',
+    standard: 'Double-coat plaster with premium emulsion, powder-coated aluminium windows, concealed plumbing, textured paint accent on feature wall',
+    premium: 'External stone cladding on feature walls, UPVC double-glazed windows, concealed services, designer entrance canopy with spot lighting, premium texture paint',
+    luxury: 'Italian stone/HPL cladding system, thermally-broken aluminium windows with Low-E glass, integrated LED facade lighting, designer landscape lighting, motorized gate, premium stone paving in driveway',
+  };
+
+  const facadeDesc = styleFacades[archStyle] || styleFacades.contemporary_indian;
+  const finishDesc = budgetFinishes[budget] || budgetFinishes.standard;
 
   // View description
   const viewDesc: Record<string, string> = {
@@ -134,15 +148,12 @@ BUILDING SPECIFICATIONS (ACTUAL MEASUREMENTS — render must be proportionally a
 - Doors: ${doorHeight}mm height, main door 1050mm wide, internal doors 900mm wide
 - Plinth height: 450mm above ground level
 
-FACADE & COLORS (Bold Indian Contemporary Style):
+FACADE & MATERIALS (Style: ${archStyle.replace(/_/g, ' ').toUpperCase()}, Budget: ${budget.toUpperCase()}):
 - ${facadeDesc}
-- Rich brown wood cladding panels (#7B5B3A) with decorative horizontal slats on front facade accent zone
-- Color-coordinated parapets matching each wall face
-- Dark brown (#4A3520) window frames and door surrounds
-- White UPVC window frames with 4-pane glass mullion grid, clearly visible glass panels with subtle blue-green tint
-- Solid wood main entrance door with raised panels and granite threshold
-- Concrete chajja (sunshade projection) above every window in matching wall color
-- Protruding window sills
+- ${finishDesc}
+- Chajja/sunshade projection above every window appropriate to the architectural style
+- Main entrance door and threshold matching the chosen style
+- Parapet/roof edge detailing consistent with the architectural style
 - Plinth band and slab-level horizontal bands in contrasting color
 
 ARCHITECTURAL DETAILS:

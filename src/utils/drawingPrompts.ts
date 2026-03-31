@@ -179,8 +179,62 @@ export function buildDrawingPrompt(drawingType: DrawingType, layout: any, requir
   const vastuCompliant = requirements?.vastuCompliance !== false;
   const numFloors = requirements?.floors?.length || layout?.floors?.length || 2;
   const floorLabel = numFloors === 1 ? 'G' : numFloors === 2 ? 'G+1' : numFloors === 3 ? 'G+2' : `G+${numFloors - 1}`;
-  const budget = requirements?.budget || '';
+  const budget = requirements?.budget || 'standard';
+  const archStyle = requirements?.architecturalStyle || 'contemporary_indian';
+  const city = requirements?.city || '';
+  const state = requirements?.state || '';
   const plotArea = Math.round(parseFloat(plotW) * parseFloat(plotD));
+
+  // Budget-driven material specifications — makes every budget tier look different
+  const budgetMaterials: Record<string, string> = {
+    economy: `MATERIAL SPEC (Economy ₹1200-1500/sqft): ACC/Ultratech OPC 43 cement, Fe500 TMT bars, first-quality country burnt bricks, basic vitrified tiles 2x2ft, Asian Tractor Emulsion paint, PVC doors for wet areas, MS window frames, basic CP fittings, MCB-based distribution board.`,
+    standard: `MATERIAL SPEC (Standard ₹1500-2000/sqft): Ultratech/Ambuja PPC cement, Fe500D TMT bars, AAC blocks 200mm, double-charge vitrified tiles 600x600, Asian Royale Luxury Emulsion, WPC door frames with flush doors, powder-coated aluminium sliding windows, Jaquar/Hindware CP fittings, ELCB+MCB board with copper wiring.`,
+    premium: `MATERIAL SPEC (Premium ₹2000-2800/sqft): Ultratech Premium cement, Fe500D Tata Tiscon bars, AAC blocks with external stone cladding, Italian marble/large-format porcelain 800x1600, Dulux Velvet Touch paint with texture feature walls, teak wood door frames, UPVC double-glazed windows, Grohe/Kohler premium fittings, smart home-ready electrical with modular Legrand switches.`,
+    luxury: `MATERIAL SPEC (Luxury ₹2800+/sqft): Premium cement with admixtures, Fe500D CRS bars, RCC frame with ALC infill + Italian stone/HPL cladding, imported marble flooring + designer accent tiles, premium texture paint + PU finish feature walls, solid teak/mahogany doors, thermally-broken aluminium windows with Low-E glass, Duravit/Hansgrohe designer fittings, full home automation (KNX/C-Bus), VRV HVAC ready, landscape-integrated design.`,
+  };
+
+  // Architectural style — changes how the building LOOKS
+  const styleContext: Record<string, string> = {
+    modern_minimalist: `ARCHITECTURAL STYLE: Modern Minimalist — Clean geometric forms, flat roof with concealed parapet, large unframed glass openings, cantilevered concrete elements, monochrome palette (white/grey/charcoal) with one accent material (wood/corten). No ornamental details. Shadow gaps instead of mouldings. Flush-mounted fixtures.`,
+    contemporary_indian: `ARCHITECTURAL STYLE: Contemporary Indian — Blend of modern lines with Indian elements. Projected chajjas over windows, jaali/perforated screen as privacy element, exposed brick or stone accent feature, warm earth tones (terracotta/sandstone/cream). Sit-out or verandah integrated. Pitched or combination roof with modern profile.`,
+    traditional: `ARCHITECTURAL STYLE: Traditional Indian — Sloped clay/Mangalore tile roof with visible rafters, ornamental columns at porch, carved wood door frame with brass fittings, courtyard influence, arched openings or niches, lime-washed or textured plaster walls in warm colours. Tulsi vrindavan in courtyard. Classic proportions.`,
+    tropical: `ARCHITECTURAL STYLE: Tropical/Kerala — Steep sloped roof with clay tiles, wide overhanging eaves (900mm+), open verandahs with timber columns, laterite stone base plinth, large openings for cross-ventilation, courtyard/nadumuttam influence, jackwood/teak ceiling, rain-chain detailing. Lush landscape integration.`,
+    industrial: `ARCHITECTURAL STYLE: Industrial — Exposed concrete/fair-face finish, steel I-beam/channel visible elements, metal cladding panels, large factory-style steel windows with multiple panes, flat roof with exposed services, muted palette (concrete grey/black/rust), open-plan feel with double-height spaces where possible.`,
+  };
+
+  // Regional climate adaptation — makes a Kerala house look different from a Rajasthan house
+  const regionMap: Record<string, string> = {
+    'Kerala': 'CLIMATE: Hot-humid tropical. Steep pitched roof (min 30°) for monsoon drainage, wide overhangs 750mm+, cross-ventilation mandatory, raised plinth 600mm+ for flooding, laterite stone locally available.',
+    'Karnataka': 'CLIMATE: Moderate/warm. Combination roof suitable, 450-600mm overhangs, good ventilation design, standard plinth 450mm.',
+    'Tamil Nadu': 'CLIMATE: Hot-humid coastal. Flat/low-pitch RCC roof with waterproofing, 600mm overhangs on south/west, rain water harvesting mandatory, terrace garden potential.',
+    'Rajasthan': 'CLIMATE: Hot-arid desert. Thick walls 300mm+ for thermal mass, small windows on west, jaali screens for ventilation without heat, lime plaster exterior, light colours to reflect heat, internal courtyard essential.',
+    'Maharashtra': 'CLIMATE: Varied (coastal to semi-arid). Sloped roof for Konkan, flat for Pune/Nashik. Monsoon-resistant detailing, 450mm overhangs, good drainage design.',
+    'Gujarat': 'CLIMATE: Hot semi-arid to arid. Earthquake Zone III-IV — seismic detailing required. Thick walls, shaded openings, internal courtyard tradition.',
+    'Uttar Pradesh': 'CLIMATE: Composite (hot summers, cold winters). Insulated roof, operable windows for seasonal control, 450mm overhangs south/west, fog-resistant materials.',
+    'West Bengal': 'CLIMATE: Hot-humid. High rainfall design, steep drainage slopes, raised plinth 450mm+, wide verandahs, cross-ventilation priority.',
+    'Telangana': 'CLIMATE: Hot semi-arid. Double roof/filler slab for insulation, light-coloured exterior, shaded west windows, rainwater harvesting.',
+    'Punjab': 'CLIMATE: Composite (extreme summers, cold winters). Insulated cavity walls, orientation for winter sun, operable fenestration, 300mm overhangs.',
+    'Delhi': 'CLIMATE: Composite extreme. Earthquake Zone IV — seismic design critical. Insulated roof + walls, solar shading devices on south/west, air-tight construction for pollution.',
+    'Goa': 'CLIMATE: Tropical coastal. Portuguese influence appropriate, laterite stone, pitched tile roof, wide balcaos (verandahs), monsoon detailing, salt-resistant materials.',
+  };
+  const regionalContext = regionMap[state] || `CLIMATE: Design for local ${state} conditions — appropriate roof form, overhang depth, ventilation strategy, and locally available materials.`;
+
+  // IS Code professional standards
+  const isCodeStandards = `
+PROFESSIONAL DRAFTING STANDARDS (IS 962:1989, SP 46:2003):
+- Line weights: External walls 0.7mm, internal partitions 0.4mm, dimensions 0.18mm, hatching 0.13mm
+- External walls: 230mm double-line, internal partitions: 150mm
+- Columns: Crosshatched with ID label (C1, C2...) and size (230×300mm)
+- Door swings: 90° arc, hinge anchored on wall
+- All dimensions in mm (e.g., 3000mm × 3800mm)
+- North arrow with compass orientation on every plan
+- Scale bar and ratio on every drawing
+- Section marks with directional arrows
+- Grid lines with alphanumeric labels (A,B,C... / 1,2,3...)
+- Room labels at geometric centroid, 300mm clear from walls`;
+
+  const materialSpec = budgetMaterials[budget] || budgetMaterials.standard;
+  const styleSpec = styleContext[archStyle] || styleContext.contemporary_indian;
 
   // Vastu placement rules (only if customer opted for Vastu)
   const vastuContext = vastuCompliant ? `
@@ -213,9 +267,13 @@ NBC 2016 COMPLIANCE:
   // Architectural consistency brief — ensures all drawings match the plan
   const architecturalBrief = buildArchitecturalBrief(layout, requirements);
 
-  // Dynamic context injected into every prompt
+  // Dynamic context injected into every prompt — this makes every client's output UNIQUE
   const projectContext = `
-PROJECT: ${plotW}ft × ${plotD}ft (${plotArea} sq.ft) ${facing}-facing ${floorLabel} Residential Building.${vastuContext}${nbcContext}${architecturalBrief}`;
+PROJECT: ${plotW}ft × ${plotD}ft (${plotArea} sq.ft) ${facing}-facing ${floorLabel} Residential Building, ${city || 'India'}, ${state || 'India'}.
+${materialSpec}
+${styleSpec}
+${regionalContext}
+${isCodeStandards}${vastuContext}${nbcContext}${architecturalBrief}`;
 
   const prompts: Record<DrawingType, string> = {
     ground_floor: `${BASE_PROMPT}${projectContext}

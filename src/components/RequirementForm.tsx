@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useState } from 'react';
-import { ProjectRequirements, FloorProgram, Facing, ParkingType } from '../types';
-import { MapPin, Ruler, Home, Compass, Car, Star, Plus, Minus } from 'lucide-react';
+import { ProjectRequirements, FloorProgram, Facing, ParkingType, BudgetRange, ArchitecturalStyle } from '../types';
+import { MapPin, Ruler, Home, Compass, Car, Star, Plus, Minus, IndianRupee, Palette } from 'lucide-react';
 
 interface Props {
   onSubmit: (req: ProjectRequirements) => void;
@@ -17,6 +17,21 @@ const STATES = [
 
 const FACINGS: Facing[] = ['North', 'South', 'East', 'West'];
 const PARKING_TYPES: ParkingType[] = ['None', 'Open', 'Stilt'];
+
+const BUDGET_OPTIONS: { value: BudgetRange; label: string; desc: string }[] = [
+  { value: 'economy', label: '₹1200-1500/sqft', desc: 'Economy' },
+  { value: 'standard', label: '₹1500-2000/sqft', desc: 'Standard' },
+  { value: 'premium', label: '₹2000-2800/sqft', desc: 'Premium' },
+  { value: 'luxury', label: '₹2800+/sqft', desc: 'Luxury' },
+];
+
+const STYLE_OPTIONS: { value: ArchitecturalStyle; label: string; emoji: string }[] = [
+  { value: 'modern_minimalist', label: 'Modern Minimalist', emoji: '🏢' },
+  { value: 'contemporary_indian', label: 'Contemporary Indian', emoji: '🏠' },
+  { value: 'traditional', label: 'Traditional', emoji: '🛕' },
+  { value: 'tropical', label: 'Tropical / Kerala', emoji: '🌴' },
+  { value: 'industrial', label: 'Industrial', emoji: '🏗️' },
+];
 
 const defaultFloor = (label: string): FloorProgram => ({
   floorLabel: label,
@@ -35,6 +50,8 @@ export const RequirementForm: React.FC<Props> = ({ onSubmit }) => {
   const [facing, setFacing] = useState<Facing>('North');
   const [vastu, setVastu] = useState(true);
   const [parking, setParking] = useState<ParkingType>('Open');
+  const [budget, setBudget] = useState<BudgetRange>('standard');
+  const [style, setStyle] = useState<ArchitecturalStyle>('contemporary_indian');
   const [floors, setFloors] = useState<FloorProgram[]>([
     defaultFloor('Ground Floor'),
     defaultFloor('First Floor'),
@@ -64,6 +81,8 @@ export const RequirementForm: React.FC<Props> = ({ onSubmit }) => {
       facing,
       vastuCompliance: vastu,
       parkingType: parking,
+      budget,
+      architecturalStyle: style,
       floors,
     });
   };
@@ -186,6 +205,48 @@ export const RequirementForm: React.FC<Props> = ({ onSubmit }) => {
                 </button>
               ))}
             </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Budget */}
+      <section className="card bg-gray-100">
+        <div className="card-body p-4 space-y-3">
+          <h3 className="font-semibold flex items-center gap-2 text-sm">
+            <IndianRupee size={16} className="text-blue-600" /> Budget Range
+          </h3>
+          <div className="grid grid-cols-2 gap-2">
+            {BUDGET_OPTIONS.map((b) => (
+              <button
+                key={b.value}
+                className={`btn btn-sm justify-start gap-2 ${budget === b.value ? 'btn-primary' : 'btn-outline'}`}
+                onClick={() => setBudget(b.value)}
+              >
+                <span className="text-xs">{b.desc}</span>
+                <span className="text-xs opacity-70">{b.label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Architectural Style */}
+      <section className="card bg-gray-100">
+        <div className="card-body p-4 space-y-3">
+          <h3 className="font-semibold flex items-center gap-2 text-sm">
+            <Palette size={16} className="text-blue-600" /> Architectural Style
+          </h3>
+          <div className="grid grid-cols-2 gap-2">
+            {STYLE_OPTIONS.map((s) => (
+              <button
+                key={s.value}
+                className={`btn btn-sm justify-start gap-2 ${style === s.value ? 'btn-primary' : 'btn-outline'}`}
+                onClick={() => setStyle(s.value)}
+              >
+                <span>{s.emoji}</span>
+                <span className="text-xs">{s.label}</span>
+              </button>
+            ))}
           </div>
         </div>
       </section>
