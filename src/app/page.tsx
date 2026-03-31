@@ -8,7 +8,6 @@ import { LayoutSelector } from '@/components/LayoutSelector';
 import { FloorPlanView } from '@/components/FloorPlanView';
 import { IsometricView } from '@/components/IsometricView';
 import { WorkingDrawings } from '@/components/WorkingDrawings';
-import AIDrawingView from '@/components/AIDrawingView';
 import { BOQReport } from '@/components/BOQReport';
 import { ComplianceReport } from '@/components/ComplianceReport';
 import { InteriorDesign } from '@/components/InteriorDesign';
@@ -47,7 +46,6 @@ export default function HomePage() {
       case 'compliance': return selectedLayout !== null;
       case 'floorplan': return selectedLayout !== null;
       case 'isometric': return selectedLayout !== null;
-      case 'drawings': return selectedLayout !== null;
       case 'working': return selectedLayout !== null;
       case 'rates': return selectedLayout !== null;
       case 'boq': return boq !== null;
@@ -300,9 +298,6 @@ export default function HomePage() {
             )}
             {step === 'isometric' && selectedLayout && requirements && (
               <IsometricView layout={selectedLayout} requirements={requirements} />
-            )}
-            {step === 'drawings' && selectedLayout && requirements && (
-              <AIDrawingView layout={selectedLayout} requirements={requirements} />
             )}
             {step === 'working' && selectedLayout && requirements && (
               <WorkingDrawings layout={selectedLayout} requirements={requirements} boq={boq} />

@@ -5,7 +5,7 @@ import { Layout, ProjectRequirements, BOQ } from '../types';
 import {
   Layers, Grid3x3, ArrowUpDown, Building, Shovel, Columns3,
   BarChart3, BrickWall, Zap, Droplets, Grid2x2, Ruler, Download,
-  Footprints, Container, ShieldCheck, Pipette
+  Footprints, Container, ShieldCheck, Pipette, Sparkles, Image as ImageIcon
 } from 'lucide-react';
 import { exportToPDF, ExportProgress } from '../utils/pdfExport';
 
@@ -443,6 +443,9 @@ function renderStructural(layout: Layout): string {
 export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq }) => {
   const [activeDrawing, setActiveDrawing] = useState<DrawingType>('excavation');
   const [zoom, setZoom] = useState(100);
+  const [aiImages, setAiImages] = useState<Record<string, string>>({});
+  const [aiLoading, setAiLoading] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<'svg' | 'ai'>('svg');
   const [exporting, setExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState<ExportProgress | null>(null);
   const [exportResult, setExportResult] = useState<string | null>(null);
@@ -463,6 +466,60 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq }) 
       setExportProgress(null);
     }
   };
+  const aiDrawingMap: Partial<Record<DrawingType, string>> = {
+    excavation: 'excavation',
+    foundation: 'column_layout',
+    footingDetail: 'footing_detail',
+    rccDetail: 'beam_slab',
+    structural: 'column_layout',
+    reinforcement: 'column_detail',
+    barBending: 'bar_bending',
+    section: 'section_aa',
+    elevation: 'front_elevation',
+    brickwork: 'ground_floor',
+    electrical: 'electrical',
+    plumbing: 'plumbing',
+    staircase: 'ground_floor',
+    waterTank: 'plumbing',
+    waterproofing: 'footing_detail',
+    stp: 'plumbing',
+    tiling: 'ground_floor',
+  };
+
+  const generateAI = async () => {
+    const aiType = aiDrawingMap[activeDrawing];
+    if (!aiType || aiLoading) return;
+    
+    // If already cached, just switch view
+    if (aiImages[activeDrawing]) {
+      setViewMode('ai');
+      return;
+    }
+    
+    setAiLoading(activeDrawing);
+    try {
+      const res = await fetch('/api/generate-drawing', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          drawingType: aiType,
+          layout,
+          requirements,
+        }),
+      });
+      if (!res.ok) throw new Error('Generation failed');
+      const data = await res.json();
+      if (data.image) {
+        setAiImages(prev => ({ ...prev, [activeDrawing]: data.image }));
+        setViewMode('ai');
+      }
+    } catch (e) {
+      console.error('AI generation error:', e);
+    } finally {
+      setAiLoading(null);
+    }
+  };
+
   const numFloors = requirements.floors.length;
 
   const tabs: { id: DrawingType; label: string; icon: React.ReactNode; group: string }[] = [
@@ -557,6 +614,35 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq }) 
         <span className="text-xs font-mono w-10 text-center">{zoom}%</span>
         <button className="btn btn-xs btn-ghost font-mono" onClick={() => setZoom(z => Math.min(200, z + 25))}>+</button>
         <button className="btn btn-xs btn-ghost font-mono" onClick={() => setZoom(100)}>Fit</button>
+
+        {/* View mode toggle */}
+        <div className="join ml-2">
+          <button className={`join-item btn btn-xs ${viewMode === 'svg' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setViewMode('svg')}>
+            <Ruler size={10} /> SVG
+          </button>
+          <button 
+            className={`join-item btn btn-xs ${viewMode === 'ai' ? 'btn-primary' : 'btn-ghost'} ${!aiImages[activeDrawing] && !aiLoading ? 'btn-ghost' : ''}`} 
+            onClick={() => aiImages[activeDrawing] ? setViewMode('ai') : generateAI()}
+          >
+            <ImageIcon size={10} /> AI
+          </button>
+        </div>
+
+        {/* Generate AI button */}
+        {aiDrawingMap[activeDrawing] && !aiImages[activeDrawing] && (
+          <button 
+            className={`btn btn-xs btn-accent gap-1 ml-1 ${aiLoading ? 'btn-disabled' : ''}`}
+            onClick={generateAI}
+            disabled={!!aiLoading}
+          >
+            {aiLoading === activeDrawing ? (
+              <><span className="loading loading-spinner loading-xs" /> Generating...</>
+            ) : (
+              <><Sparkles size={10} /> Generate AI</>
+            )}
+          </button>
+        )}
+
         <div className="flex-1" />
         {exporting ? (
           <span className="text-[10px] font-mono text-blue-600 flex items-center gap-1">
@@ -581,16 +667,27 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq }) 
 
       {/* Canvas — scrollable container */}
       <div className="flex-1 overflow-auto min-h-0 bg-neutral-100 p-4">
-        <div
-          data-drawing={activeDrawing}
-          className="svg-container"
-          style={{
-            width: zoom === 100 ? '100%' : `${zoom}%`,
-            minWidth: zoom < 100 ? `${zoom}%` : '100%',
-            margin: zoom <= 100 ? '0 auto' : undefined,
-          }}
-          dangerouslySetInnerHTML={{ __html: svgHtml }}
-        />
+        {viewMode === 'ai' && aiImages[activeDrawing] ? (
+          <div className="flex justify-center">
+            <img 
+              src={aiImages[activeDrawing]} 
+              alt={tabs.find(t => t.id === activeDrawing)?.label || activeDrawing}
+              className="max-w-full rounded shadow-lg"
+              style={{ maxHeight: '80vh' }}
+            />
+          </div>
+        ) : (
+          <div
+            data-drawing={activeDrawing}
+            className="svg-container"
+            style={{
+              width: zoom === 100 ? '100%' : `${zoom}%`,
+              minWidth: zoom < 100 ? `${zoom}%` : '100%',
+              margin: zoom <= 100 ? '0 auto' : undefined,
+            }}
+            dangerouslySetInnerHTML={{ __html: svgHtml }}
+          />
+        )}
       </div>
 
       {/* Description */}

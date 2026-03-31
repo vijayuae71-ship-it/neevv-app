@@ -232,7 +232,7 @@ export default function InteriorMoodBoard({ layout, onComplete }: Props) {
      ================================================================ */
 
   return (
-    <div className="relative w-full">
+    <div className="relative w-full p-4">
 
       {/* ---------- STEP INDICATOR ---------- */}
       <div className="flex items-center gap-2 mb-6">
