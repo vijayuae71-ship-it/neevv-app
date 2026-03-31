@@ -63,6 +63,40 @@ export function buildArchitecturalPrompt(
     }));
   });
 
+  // Derive which rooms face each wall for consistency with floor plans
+  const wallRooms: Record<string, string[]> = { front: [], rear: [], left: [], right: [] };
+  for (const floor of layout.floors) {
+    const floorLabel = floor.floorLabel || `Floor ${floor.floor}`;
+    for (const room of floor.rooms) {
+      const rx = room.x || 0;
+      const ry = room.y || 0;
+      const rw = room.width || 0;
+      const rd = room.depth || 0;
+      const rName = `${room.name} (${floorLabel})`;
+      if (ry <= 0.5) wallRooms.front.push(rName);
+      if (ry + rd >= buildingDepthM - 0.5) wallRooms.rear.push(rName);
+      if (rx <= 0.5) wallRooms.left.push(rName);
+      if (rx + rw >= buildingWidthM - 0.5) wallRooms.right.push(rName);
+    }
+  }
+
+  const compassMap: Record<string, Record<string, string>> = {
+    'North': { front: 'North', rear: 'South', left: 'West', right: 'East' },
+    'South': { front: 'South', rear: 'North', left: 'East', right: 'West' },
+    'East':  { front: 'East', rear: 'West', left: 'North', right: 'South' },
+    'West':  { front: 'West', rear: 'East', left: 'South', right: 'North' },
+  };
+  const compass = compassMap[facing] || compassMap['East'];
+
+  const architecturalBrief = `
+ARCHITECTURAL CONSISTENCY (3D render MUST match floor plan layout):
+- FRONT WALL (${compass.front}-facing): ${wallRooms.front.join(', ') || 'N/A'} → windows visible here
+- REAR WALL (${compass.rear}-facing): ${wallRooms.rear.join(', ') || 'N/A'}
+- LEFT WALL (${compass.left}-facing): ${wallRooms.left.join(', ') || 'N/A'}
+- RIGHT WALL (${compass.right}-facing): ${wallRooms.right.join(', ') || 'N/A'}
+- Window positions, door placement, and balcony location MUST match the floor plan exactly.
+- Entrance door on ${compass.front} wall (${facing}-facing).`;
+
   // Determine facade description based on facing
   let facadeDesc = '';
   if (facing === 'North' || facing === 'East') {
@@ -80,6 +114,8 @@ export function buildArchitecturalPrompt(
   };
 
   const prompt = `Professional photorealistic architectural exterior render of a modern Indian residential house WITH DIMENSION ANNOTATIONS.
+
+${architecturalBrief}
 
 BUILDING SPECIFICATIONS (ACTUAL MEASUREMENTS — render must be proportionally accurate):
 - Plot size: ${plotW}' × ${plotD}' (${layout.plotWidthM.toFixed(1)}m × ${layout.plotDepthM.toFixed(1)}m)

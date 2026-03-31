@@ -58,7 +58,7 @@ export const DRAWING_TYPES: DrawingTypeInfo[] = [
   { id: 'brickwork_detail', label: 'Brickwork Detail', icon: 'Landmark', description: 'Brick masonry bonding pattern and wall section', category: 'Structural' },
 ];
 
-const BASE_PROMPT = 'Generate a professional architectural drawing. Black and white, clean lines, proper architectural conventions. Scale 1:100. Title block at bottom with: neevv | Architecture • Structure • MEP • Interiors. NBC 2016 Compliant badge. ';
+const BASE_PROMPT = 'Generate a professional architectural drawing. Black and white, clean lines, proper architectural conventions. Scale 1:100. Title block at bottom with: neevv | Architecture • Structure • MEP • Interiors. NBC 2016 Compliant badge. CRITICAL SPELLING RULE: Every text label, room name, dimension, and annotation must be spelled PERFECTLY. Common words to get RIGHT: "Reinforcement" (not Reinfrocement), "Electrical" (not Eletrical), "Plumbing" (not Plumbling), "Foundation" (not Foundaton), "Staircase" (not Staricase), "Waterproofing" (not Waterprooing), "Excavation" (not Excvation), "Structural" (not Structral), "Elevation" (not Elevaton), "Building" (not Buidling), "Schedule" (not Schedul), "Residential" (not Residnetial), "Distribution" (not Distrubution), "Drainage" (not Drainange), "Treatment" (not Treatement), "Ceiling" (not Cieling), "Exhaust" (not Exhuast), "Kitchen" (not Kichen), "Bathroom" (not Bathrom), "Bedroom" (not Bedrom), "Dining" (not Dinning), "Living" (not Livng). Triple-check all text before rendering. ';
 
 function formatRoomList(rooms: any[]): string {
   if (!rooms || rooms.length === 0) return 'Standard residential rooms';
