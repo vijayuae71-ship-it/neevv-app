@@ -14,7 +14,13 @@ export type DrawingType =
   | 'bar_bending'
   | 'electrical'
   | 'plumbing'
-  | '3d_exterior';
+  | '3d_exterior'
+  | 'staircase_detail'
+  | 'water_tank'
+  | 'waterproofing'
+  | 'stp_detail'
+  | 'tiling_layout'
+  | 'brickwork_detail';
 
 export interface DrawingTypeInfo {
   id: DrawingType;
@@ -43,6 +49,13 @@ export const DRAWING_TYPES: DrawingTypeInfo[] = [
   // MEP
   { id: 'electrical', label: 'Electrical Layout', icon: 'Zap', description: 'Light points, switches, sockets, and circuit routing', category: 'MEP' },
   { id: 'plumbing', label: 'Plumbing Layout', icon: 'Droplets', description: 'Water supply, drainage, and fixture locations', category: 'MEP' },
+  // Working Drawing Details
+  { id: 'staircase_detail', label: 'Staircase Detail', icon: 'Layers', description: 'Staircase plan, section, riser/tread detail with reinforcement', category: 'Structural' },
+  { id: 'water_tank', label: 'Water Tank Detail', icon: 'Droplets', description: 'Overhead and underground water tank design with reinforcement', category: 'Structural' },
+  { id: 'waterproofing', label: 'Waterproofing Detail', icon: 'Layers', description: 'Waterproofing layers for bathroom, terrace, and basement', category: 'Structural' },
+  { id: 'stp_detail', label: 'STP Detail', icon: 'Droplets', description: 'Sewage treatment plant layout and section', category: 'MEP' },
+  { id: 'tiling_layout', label: 'Tiling Layout', icon: 'Grid3x3', description: 'Floor and wall tiling pattern with cutting plan', category: 'Structural' },
+  { id: 'brickwork_detail', label: 'Brickwork Detail', icon: 'Landmark', description: 'Brick masonry bonding pattern and wall section', category: 'Structural' },
 ];
 
 const BASE_PROMPT = 'Generate a professional architectural drawing. Black and white, clean lines, proper architectural conventions. Scale 1:100. Title block at bottom with: neevv | Architecture • Structure • MEP • Interiors. NBC 2016 Compliant badge. ';
@@ -161,6 +174,18 @@ NBC 2016 Compliant badge and neevv Architecture • Structure • MEP • Interi
     plumbing: `${BASE_PROMPT}Plumbing Layout Plan for Ground Floor. Show room outlines with: water supply lines (solid blue), drainage lines (dashed green), floor traps (circle), fixtures: WC, wash basin, kitchen sink, washing machine point. Inlet from municipal supply. Overhead tank connection. Soil pipe stack location. Vent pipe. STP connection. Plumbing Stack A1: Kitchen (GF) to Master Toilet (FF) vertically aligned. Pipe sizes annotated.`,
 
     '3d_exterior': `${BASE_PROMPT}3D Perspective Rendering of a G+1 residential house, Contemporary Modern style (Dubai-Bangalore Hybrid aesthetic). White stone facade, wood louvers on windows, glass balcony railings, flat roof with hidden parapet. Main entrance on east side with canopy. First floor balcony on west. Warm LED strip lighting at parapet. Landscaping with minimal garden. Car parking visible at ground floor NW corner. Photorealistic render, golden hour lighting, slight upward camera angle.`,
+
+    staircase_detail: `${BASE_PROMPT}Staircase Detail Drawing for a G+1 residential building. PLAN VIEW: Dog-leg staircase in a ${plotW > 25 ? '3.0m x 5.5m' : '2.5m x 4.5m'} stairwell. Show: two flights with mid-landing, 10 risers per flight (150mm each), tread width 250mm, landing 1200mm wide, handrail on both sides. SECTION VIEW: Show waist slab 150mm thick, reinforcement 12mm bars at 150mm c/c main + 8mm at 200mm c/c distribution. Headroom clearance 2100mm minimum marked. Level markings: Ground +0.000, Mid-landing +1.500, First Floor +3.000. Nosing detail 25mm. Anti-skid groove on treads. M20 concrete, Fe500D steel. All dimensions annotated.`,
+
+    water_tank: `${BASE_PROMPT}Water Tank Detail Drawing. OVERHEAD TANK (OHT): Plan and section of rectangular RCC tank ${plotW > 25 ? '2.0m x 2.0m x 1.2m' : '1.5m x 1.5m x 1.0m'} capacity ${plotW > 25 ? '4800L' : '2250L'}. Wall thickness 200mm, base slab 200mm, top slab 120mm. Reinforcement: 10mm bars at 150mm c/c both ways in walls and base. Haunches at wall-base junction. Inlet pipe, outlet pipe, overflow pipe, drain valve, manhole 600x600mm. Waterproofing membrane layer shown. UNDERGROUND SUMP: Plan and section 2.0m x 2.0m x 1.5m deep. 300mm thick walls, 300mm base with PCC bed. Level indicators. M25 concrete for water-retaining structures. All dimensions and bar details annotated.`,
+
+    waterproofing: `${BASE_PROMPT}Waterproofing Detail Drawing. Show THREE detail sections: 1) BATHROOM WATERPROOFING: Floor section showing tiles → tile adhesive → waterproofing membrane (APP/SBS) → screed 40mm → RCC slab 150mm. Membrane turned up 200mm on walls (chase detail). Floor slope 1:40 towards drain. 2) TERRACE WATERPROOFING: Section showing weather coat → China mosaic tiles → waterproofing membrane → screed with slope 1:100 → RCC slab. Parapet junction detail with cove fillet. Drain outlet detail. 3) BASEMENT/PLINTH: Section showing DPC (damp proof course) at plinth level +450mm. Bituminous coating on external face of basement wall. Weep holes at 1.0m spacing. Each detail fully dimensioned with material callouts and layer thicknesses.`,
+
+    stp_detail: `${BASE_PROMPT}Sewage Treatment Plant (STP) Detail for residential building. PLAN VIEW: Compact STP layout showing: Inlet chamber → Bar screen → Anaerobic baffled reactor (2 chambers) → Settling tank → Planted gravel filter → Treated water tank. All chambers with dimensions. SECTION A-A: Vertical section through all chambers showing water levels, baffle walls, gravel media, pipe inverts. Inlet invert level, outlet invert level. Chamber depths: 1.5m to 2.0m. Wall thickness 200mm RCC. FLOW DIAGRAM: Schematic showing treatment stages with arrows. Capacity: 1000-2000 LPD for residential use. Treated water quality: BOD < 30mg/L, TSS < 50mg/L per CPCB norms. All dimensions annotated.`,
+
+    tiling_layout: `${BASE_PROMPT}Tiling Layout Plan for Ground Floor of ${plotW}ft x ${plotD}ft house. Show room outlines with tiling patterns: LIVING/DINING: 600x600mm vitrified tiles in stack bond pattern with tile layout grid, show cut tiles at edges with dimensions. KITCHEN: 600x600mm anti-skid tiles, 300x450mm wall tiles up to 600mm dado height. BATHROOM: 300x300mm anti-skid floor tiles with slope towards drain, 300x600mm wall tiles floor to ceiling (2.4m). BEDROOM: 600x600mm vitrified tiles. Show: tile starting point (center of room), cut tile widths at edges, threshold strips at door openings, skirting 100mm height. Tile quantity table: Room, Floor Area, Wall Area, Tile Size, Quantity (add 10% wastage). All dimensions in mm.`,
+
+    brickwork_detail: `${BASE_PROMPT}Brickwork Detail Drawing for residential building. WALL SECTION: Show 230mm external wall (English bond) and 115mm internal partition (stretcher bond). Layer detail: External plaster 20mm → Brick masonry 230mm → Internal plaster 15mm. Brick size: 230mm x 115mm x 75mm with 10mm mortar joints (1:6 cement:sand). BONDING PATTERNS: Plan view of English bond showing alternate header and stretcher courses. T-junction detail where internal wall meets external wall. LINTEL DETAIL: RCC lintel 230mm x 150mm over openings, bearing 150mm each side, 2-12mm bars top + 2-12mm bottom, 6mm stirrups at 150mm c/c. SILL DETAIL: Brick on edge sill with weathering slope and drip groove. Wall quantities per floor in table format. All dimensions annotated.`,
   };
 
   return prompts[drawingType] || `${BASE_PROMPT}Architectural drawing for ${drawingType}.`;
