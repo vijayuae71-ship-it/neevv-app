@@ -5,7 +5,7 @@ import { AppStep, ProjectRequirements, Layout, BOQ, CustomRateSheet } from '@/ty
 import { StepIndicator } from '@/components/StepIndicator';
 import { RequirementForm } from '@/components/RequirementForm';
 import { LayoutSelector } from '@/components/LayoutSelector';
-import { FloorPlanView } from '@/components/FloorPlanView';
+
 import { IsometricView } from '@/components/IsometricView';
 import { WorkingDrawings } from '@/components/WorkingDrawings';
 import { BOQReport } from '@/components/BOQReport';
@@ -44,7 +44,7 @@ export default function HomePage() {
       case 'requirements': return true;
       case 'layouts': return layouts.length > 0;
       case 'compliance': return selectedLayout !== null;
-      case 'floorplan': return selectedLayout !== null;
+
       case 'isometric': return selectedLayout !== null;
       case 'working': return selectedLayout !== null;
       case 'rates': return selectedLayout !== null;
@@ -293,9 +293,7 @@ export default function HomePage() {
             {step === 'compliance' && selectedLayout && requirements && (
               <ComplianceReport layout={selectedLayout} vastuEnabled={requirements.vastuCompliance} facing={requirements.facing} onAutoFix={handleAutoFix} boqTotal={boq?.totalCost} numFloors={requirements.floors.length} customRates={customRates} />
             )}
-            {step === 'floorplan' && selectedLayout && requirements && (
-              <FloorPlanView layout={selectedLayout} vastuEnabled={requirements.vastuCompliance} onProceedToBOQ={() => setStep('isometric')} />
-            )}
+
             {step === 'isometric' && selectedLayout && requirements && (
               <IsometricView layout={selectedLayout} requirements={requirements} />
             )}

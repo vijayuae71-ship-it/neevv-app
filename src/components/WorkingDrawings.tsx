@@ -445,6 +445,7 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq }) 
   const [zoom, setZoom] = useState(100);
   const [aiImages, setAiImages] = useState<Record<string, string>>({});
   const [aiLoading, setAiLoading] = useState<string | null>(null);
+  const [aiError, setAiError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'svg' | 'ai'>('svg');
   const [exporting, setExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState<ExportProgress | null>(null);
@@ -497,6 +498,7 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq }) 
     }
     
     setAiLoading(activeDrawing);
+    setAiError(null);
     try {
       const res = await fetch('/api/generate-drawing', {
         method: 'POST',
@@ -507,14 +509,20 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq }) 
           requirements,
         }),
       });
-      if (!res.ok) throw new Error('Generation failed');
       const data = await res.json();
-      if (data.image) {
-        setAiImages(prev => ({ ...prev, [activeDrawing]: data.image }));
-        setViewMode('ai');
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || `Generation failed (${res.status})`);
       }
-    } catch (e) {
+      const img = data.imageDataUri;
+      if (img) {
+        setAiImages(prev => ({ ...prev, [activeDrawing]: img }));
+        setViewMode('ai');
+      } else {
+        throw new Error('No image in response');
+      }
+    } catch (e: any) {
       console.error('AI generation error:', e);
+      setAiError(e.message || 'Generation failed');
     } finally {
       setAiLoading(null);
     }
@@ -641,6 +649,9 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq }) 
               <><Sparkles size={10} /> Generate AI</>
             )}
           </button>
+        )}
+        {aiError && !aiLoading && (
+          <span className="text-[10px] text-red-600 ml-1">{aiError}</span>
         )}
 
         <div className="flex-1" />
