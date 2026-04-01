@@ -23,6 +23,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Prompt is required' }, { status: 400 });
     }
 
+    // Rate limiting: 10 renders per minute per IP
+    const { rateLimit: checkRate, getClientIP } = await import('@/utils/rateLimit');
+    const clientIP = getClientIP(request);
+    const { allowed, remaining, resetIn } = checkRate(clientIP, 10, 60000);
+    
+    if (!allowed) {
+      return Response.json(
+        { success: false, error: `Rate limit exceeded. Try again in ${Math.ceil(resetIn / 1000)} seconds.` },
+        { status: 429, headers: { 'Retry-After': String(Math.ceil(resetIn / 1000)) } }
+      );
+    }
+
     const modelId = MODELS[model] || MODELS['neevv-gen'];
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${GEMINI_API_KEY}`;
 

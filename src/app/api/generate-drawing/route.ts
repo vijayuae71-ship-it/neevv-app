@@ -25,6 +25,18 @@ export async function POST(request: NextRequest) {
     const body: GenerateDrawingRequest = await request.json();
     const { drawingType, layout, requirements } = body;
 
+    // Rate limiting: 15 drawings per minute per IP
+    const { rateLimit: checkRate, getClientIP } = await import('@/utils/rateLimit');
+    const clientIP = getClientIP(request);
+    const { allowed, remaining, resetIn } = checkRate(clientIP, 15, 60000);
+    
+    if (!allowed) {
+      return Response.json(
+        { success: false, error: `Rate limit exceeded. Try again in ${Math.ceil(resetIn / 1000)} seconds.` },
+        { status: 429, headers: { 'Retry-After': String(Math.ceil(resetIn / 1000)) } }
+      );
+    }
+
     // Validate drawing type
     const validTypes = DRAWING_TYPES.map((dt) => dt.id);
     if (!validTypes.includes(drawingType)) {
