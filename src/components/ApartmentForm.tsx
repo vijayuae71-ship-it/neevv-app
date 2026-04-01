@@ -213,6 +213,8 @@ export default function ApartmentForm({ onSubmit, onBack }: Props) {
       facing: 'North' as Facing,
       vastuCompliance: false,
       parkingType: 'None',
+      budget: 'standard',
+      architecturalStyle: 'modern_minimalist',
       floors: [
         {
           floorLabel: 'Main Floor',

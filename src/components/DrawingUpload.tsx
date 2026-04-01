@@ -169,6 +169,8 @@ export default function DrawingUpload({ onConversionComplete, onBack }: DrawingU
       facing,
       vastuCompliance: true,
       parkingType: extracted.floors[0]?.rooms.some(r => r.type === 'parking') ? 'Stilt' : 'None',
+      budget: 'standard',
+      architecturalStyle: 'modern_minimalist',
       floors: floorPrograms,
     };
 
