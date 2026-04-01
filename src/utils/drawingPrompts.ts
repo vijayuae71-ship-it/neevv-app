@@ -183,7 +183,7 @@ export function buildDrawingPrompt(drawingType: DrawingType, layout: any, requir
   const archStyle = requirements?.architecturalStyle || 'contemporary_indian';
   const city = requirements?.city || '';
   const state = requirements?.state || '';
-  const plotArea = Math.round(parseFloat(plotW) * parseFloat(plotD));
+  const plotArea = Math.round(plotW * plotD);
 
   // Budget-driven material specifications — makes every budget tier look different
   const budgetMaterials: Record<string, string> = {
