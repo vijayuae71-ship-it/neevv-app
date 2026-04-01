@@ -37,14 +37,16 @@ export default function RootLayout({
           src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"
           strategy="beforeInteractive"
         />
-        {/* Three.js - lazy loaded (only when 3D view is used) */}
+        {/* Three.js - loaded after page interactive, OrbitControls depends on THREE */}
         <Script
+          id="three-core"
           src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"
-          strategy="lazyOnload"
+          strategy="afterInteractive"
         />
         <Script
+          id="three-orbit"
           src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"
-          strategy="lazyOnload"
+          strategy="afterInteractive"
         />
         {/* Google Analytics - replace GA_MEASUREMENT_ID with actual ID */}
         <Script

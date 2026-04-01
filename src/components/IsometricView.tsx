@@ -64,8 +64,50 @@ export const IsometricView: React.FC<Props> = ({ layout, requirements }) => {
   // Setup scene once on mount / layout change
   useEffect(() => {
     if (viewMode !== '3d') return;
-    const THREE = (window as any).THREE;
-    if (!THREE || !containerRef.current) return;
+
+    // Wait for THREE and OrbitControls to be available (CDN scripts may still be loading)
+    const waitForThree = () => {
+      return new Promise<any>((resolve) => {
+        const check = () => {
+          const T = (window as any).THREE;
+          if (T && T.OrbitControls) {
+            resolve(T);
+          } else {
+            setTimeout(check, 100);
+          }
+        };
+        check();
+      });
+    };
+
+    let cancelled = false;
+    waitForThree().then((THREE) => {
+      if (cancelled || !containerRef.current) return;
+      initScene(THREE);
+    });
+
+    return () => { cancelled = true; cleanup(); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [layout, viewMode]);
+
+  const cleanup = () => {
+    if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+    if (controlsRef.current) { try { controlsRef.current.dispose(); } catch {} }
+    if (rendererRef.current && containerRef.current) {
+      // Remove resize listener
+      const onResize = (containerRef.current as any).__onResize;
+      if (onResize) window.removeEventListener('resize', onResize);
+      try { containerRef.current.removeChild(rendererRef.current.domElement); } catch {}
+      rendererRef.current.dispose();
+    }
+    controlsRef.current = null;
+    rendererRef.current = null;
+    sceneRef.current = null;
+    cameraRef.current = null;
+  };
+
+  const initScene = (THREE: any) => {
+    if (!containerRef.current) return;
 
     const container = containerRef.current;
     const width = container.clientWidth;
@@ -125,16 +167,9 @@ export const IsometricView: React.FC<Props> = ({ layout, requirements }) => {
     };
     window.addEventListener('resize', onResize);
 
-    return () => {
-      window.removeEventListener('resize', onResize);
-      cancelAnimationFrame(animFrameRef.current);
-      controls.dispose();
-      renderer.dispose();
-      if (container.contains(renderer.domElement)) {
-        container.removeChild(renderer.domElement);
-      }
-    };
-  }, [layout, viewMode]);
+    // Store resize handler ref for cleanup
+    (containerRef.current as any).__onResize = onResize;
+  };
 
   // Rebuild scene when options change
   useEffect(() => {
