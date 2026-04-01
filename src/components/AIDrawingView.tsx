@@ -206,9 +206,14 @@ export default function AIDrawingView({ layout, requirements }: Props) {
       {error && (
         <div className="alert alert-error mb-6 shadow-sm">
           <span className="text-sm">{error}</span>
-          <button className="btn btn-ghost btn-xs" onClick={() => setError(null)}>
-            <X className="w-4 h-4" />
-          </button>
+          <div className="flex gap-1">
+            <button className="btn btn-ghost btn-xs" onClick={() => { setError(null); if (loadingType) generateDrawing(loadingType); }}>
+              Retry
+            </button>
+            <button className="btn btn-ghost btn-xs" onClick={() => setError(null)}>
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       )}
 

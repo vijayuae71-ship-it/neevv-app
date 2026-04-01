@@ -651,7 +651,10 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq }) 
           </button>
         )}
         {aiError && !aiLoading && (
-          <span className="text-[10px] text-red-600 ml-1">{aiError}</span>
+          <span className="text-[10px] text-red-600 ml-1 flex items-center gap-1">
+            {aiError}
+            <button className="btn btn-xs btn-error btn-outline ml-1" onClick={generateAI}>Retry</button>
+          </span>
         )}
 
         <div className="flex-1" />

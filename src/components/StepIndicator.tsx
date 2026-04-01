@@ -26,7 +26,7 @@ export const StepIndicator: React.FC<Props> = ({ current, onNavigate, canNavigat
   const currentIndex = STEPS.findIndex((s) => s.id === current);
 
   return (
-    <div className="flex items-center gap-0.5 px-2 py-1.5 bg-gray-100 border-b border-gray-200 overflow-x-auto">
+    <div className="flex items-center gap-0.5 px-2 py-1.5 bg-gray-100 border-b border-gray-200 overflow-x-auto shrink-0">
       {STEPS.map((s, i) => {
         const isActive = s.id === current;
         const isDone = i < currentIndex;
