@@ -37,6 +37,13 @@ export default function RootLayout({
           src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"
           strategy="beforeInteractive"
         />
+        {/* Google model-viewer for AR/3D */}
+        <Script
+          id="model-viewer"
+          type="module"
+          src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.5.0/model-viewer.min.js"
+          strategy="afterInteractive"
+        />
         {/* Three.js - loaded after page interactive, OrbitControls depends on THREE */}
         <Script
           id="three-core"

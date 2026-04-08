@@ -4,7 +4,8 @@ import React, { useRef, useEffect, useState } from 'react';
 import { Layout, ProjectRequirements } from '../types';
 import { buildScene } from '../utils/sceneBuilder';
 import { AIRenderView } from './AIRenderView';
-import { Box, Sparkles, Ruler } from 'lucide-react';
+import { ModelARView } from './ModelARView';
+import { Box, Sparkles, Ruler, Smartphone } from 'lucide-react';
 
 /** Floating dimension info panel */
 const DimensionPanel: React.FC<{ layout: Layout; requirements: ProjectRequirements }> = ({ layout, requirements }) => {
@@ -59,13 +60,13 @@ export const IsometricView: React.FC<Props> = ({ layout, requirements }) => {
   const [showFloor, setShowFloor] = useState<number | 'all'>('all');
   const [cutaway, setCutaway] = useState(false);
   const [showDimensions, setShowDimensions] = useState(true);
-  const [viewMode, setViewMode] = useState<'3d' | 'ai'>('3d');
+  const [viewMode, setViewMode] = useState<'3d' | 'ai' | 'ar'>('3d');
 
   // Setup scene once on mount / layout change
   useEffect(() => {
     if (viewMode !== '3d') return;
 
-    // Wait for THREE and OrbitControls to be available (CDN scripts may still be loading)
+    // Wait for THREE and OrbitControls to be available (CDN scripts may still be loading) (CDN scripts may still be loading)
     const waitForThree = () => {
       return new Promise<any>((resolve) => {
         const check = () => {
@@ -211,6 +212,13 @@ export const IsometricView: React.FC<Props> = ({ layout, requirements }) => {
           <Sparkles size={14} />
           AI Photorealistic Render
         </button>
+        <button
+          className={`btn btn-sm gap-1 ${viewMode === 'ar' ? 'btn-accent' : 'btn-ghost'}`}
+          onClick={() => setViewMode('ar')}
+        >
+          <Smartphone size={14} />
+          AR Model
+        </button>
       </div>
 
       {viewMode === '3d' ? (
@@ -281,8 +289,10 @@ export const IsometricView: React.FC<Props> = ({ layout, requirements }) => {
             ))}
           </div>
         </>
-      ) : (
+      ) : viewMode === 'ai' ? (
         <AIRenderView layout={layout} requirements={requirements} />
+      ) : (
+        <ModelARView layout={layout} requirements={requirements} />
       )}
     </div>
   );
