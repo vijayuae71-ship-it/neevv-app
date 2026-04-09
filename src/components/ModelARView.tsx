@@ -36,7 +36,7 @@ declare global {
           'ar-scale'?: string;
           'ar-placement'?: string;
           'ios-src'?: string;
-          tone-mapping?: string;
+          'tone-mapping'?: string;
           ref?: React.Ref<HTMLElement>;
         },
         HTMLElement
