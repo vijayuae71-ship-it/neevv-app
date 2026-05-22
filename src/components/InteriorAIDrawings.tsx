@@ -10,9 +10,9 @@ import { Camera, RefreshCw, Download, AlertTriangle, Sparkles, Eye, ChevronRight
 /* ------------------------------------------------------------------ */
 
 const MODELS = [
-  { id: 'nano-banana', label: 'Nano Banana' },
-  { id: 'nano-banana-2', label: 'Nano Banana 2' },
-  { id: 'nano-banana-pro', label: 'Nano Banana Pro' },
+  { id: 'neevv-gen', label: 'neevv Generation Pro' },
+  { id: 'neevv-gen-2', label: 'neevv Generation Pro II' },
+  { id: 'neevv-gen-pro', label: 'neevv Generation Pro Max' },
 ];
 
 const RENDER_TYPES: { key: RenderTypeKey; label: string; description: string }[] = [
