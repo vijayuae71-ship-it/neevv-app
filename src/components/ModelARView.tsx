@@ -255,15 +255,7 @@ export const ModelARView: React.FC<Props> = ({ layout, requirements }) => {
             <p className="text-[10px] text-gray-400 mt-1">*Includes 3% site wastage buffer. Rates are indicative.</p>
           </div>
 
-          <button
-            className="mt-3 w-full bg-[#4f6f52] text-white py-2 rounded-lg text-xs font-bold hover:bg-[#3d5840] transition-colors flex items-center justify-center gap-1"
-            onClick={() => {
-              const msg = `Hi, I need a quote for building materials for my ${requirements.plotWidthFt}'×${requirements.plotDepthFt}' villa (${totalBuiltUp} sq.ft). Cement: ${cementBags} bags, Steel: ${steelKg} kg, Bricks: ${bricks}. Please share best rates.`;
-              window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
-            }}
-          >
-            📲 Share on WhatsApp for Best Rates
-          </button>
+
         </div>
       )}
 
