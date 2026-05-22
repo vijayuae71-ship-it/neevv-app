@@ -115,4 +115,4 @@ export const InteriorDesign: React.FC<Props> = ({ layout, requirements }) => {
       </div>
     </div>
   );
-;
+};
