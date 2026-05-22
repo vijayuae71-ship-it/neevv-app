@@ -60,7 +60,7 @@ export async function POST(request: NextRequest) {
           },
         ],
         generationConfig: {
-          responseModalities: ['IMAGE'],
+          responseModalities: ['TEXT', 'IMAGE'],
           imageConfig: {
             aspectRatio: drawingType === '3d_exterior' ? '16:9' : '1:1',
           },

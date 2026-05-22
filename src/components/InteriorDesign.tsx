@@ -28,7 +28,7 @@ export const InteriorDesign: React.FC<Props> = ({ layout, requirements }) => {
 
   const handleMoodBoardComplete = (configuredRooms: RoomInterior[]) => {
     setRooms(configuredRooms);
-    setActiveTab('drawings');
+    setActiveTab('ai_renders');
   };
 
   // If rooms not configured yet, show mood board
@@ -115,4 +115,4 @@ export const InteriorDesign: React.FC<Props> = ({ layout, requirements }) => {
       </div>
     </div>
   );
-};
+;
