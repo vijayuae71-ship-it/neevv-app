@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Share2, Gift, Copy, CheckCircle2, MessageCircle, X } from 'lucide-react';
+import { Share2, Gift, Copy, CheckCircle2, X } from 'lucide-react';
 
 const SHARE_STORAGE_KEY = 'neevv_share_credits';
 const SHARES_NEEDED = 3;
@@ -34,27 +34,19 @@ interface Props {
 export const ShareUnlock: React.FC<Props> = ({ isOpen, onClose, onCreditsUpdate }) => {
   const [credits, setCredits] = useState<ShareCredits>(getCredits());
   const [copied, setCopied] = useState(false);
-  const [shareMethod, setShareMethod] = useState<'whatsapp' | 'copy' | null>(null);
 
   const shareUrl = typeof window !== 'undefined' ? window.location.origin : 'https://neevv.app';
   const shareText = `🏠 I just designed my dream home using neevv — AI-powered architecture studio! Free floor plans, 3D renders, working drawings & BOQ. Try it: ${shareUrl}`;
 
-  const handleWhatsAppShare = () => {
-    const url = `https://wa.me/?text=${encodeURIComponent(shareText)}`;
-    window.open(url, '_blank');
-    recordShare('whatsapp');
-  };
-
   const handleCopyLink = async () => {
     try {
-      await navigator.clipboard.writeText(shareUrl);
+      await navigator.clipboard.writeText(shareText);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
       recordShare('copy');
     } catch {
-      // Fallback
       const input = document.createElement('input');
-      input.value = shareUrl;
+      input.value = shareText;
       document.body.appendChild(input);
       input.select();
       document.execCommand('copy');
@@ -65,12 +57,20 @@ export const ShareUnlock: React.FC<Props> = ({ isOpen, onClose, onCreditsUpdate 
     }
   };
 
+  const handleNativeShare = async () => {
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: 'neevv — AI Architecture Studio', text: shareText, url: shareUrl });
+        recordShare('native');
+      } catch {}
+    }
+  };
+
   const recordShare = (method: string) => {
     const updated = { ...credits };
     updated.totalShares += 1;
     updated.shareLinks.push(`${method}-${Date.now()}`);
     
-    // Every 3 shares = 9 credits
     if (updated.totalShares % SHARES_NEEDED === 0) {
       updated.reRenderCredits += CREDITS_PER_UNLOCK;
     }
@@ -78,7 +78,6 @@ export const ShareUnlock: React.FC<Props> = ({ isOpen, onClose, onCreditsUpdate 
     setCredits(updated);
     saveCredits(updated);
     onCreditsUpdate?.(updated.reRenderCredits);
-    setShareMethod(method as any);
   };
 
   const sharesUntilNextUnlock = SHARES_NEEDED - (credits.totalShares % SHARES_NEEDED);
@@ -127,12 +126,14 @@ export const ShareUnlock: React.FC<Props> = ({ isOpen, onClose, onCreditsUpdate 
 
         {/* Share buttons */}
         <div className="space-y-3">
-          <button
-            className="btn btn-success w-full gap-2"
-            onClick={handleWhatsAppShare}
-          >
-            <MessageCircle size={18} /> Share on WhatsApp
-          </button>
+          {typeof navigator !== 'undefined' && 'share' in navigator && (
+            <button
+              className="btn btn-primary w-full gap-2"
+              onClick={handleNativeShare}
+            >
+              <Share2 size={18} /> Share with Friends
+            </button>
+          )}
           <button
             className="btn btn-outline w-full gap-2"
             onClick={handleCopyLink}

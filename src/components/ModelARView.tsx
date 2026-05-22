@@ -102,7 +102,7 @@ export const ModelARView: React.FC<Props> = ({ layout, requirements }) => {
       <div className="absolute top-3 left-3 z-20 flex items-center gap-2">
         <div className="bg-white/90 backdrop-blur-sm rounded-lg px-3 py-1.5 shadow-sm border border-gray-200">
           <span className="text-xs font-bold text-[#4f6f52]">
-            🏠 AR Model — {requirements.plotWidthFt}' × {requirements.plotDepthFt}' Villa
+            \uD83C\uDFE0 AR Model — {requirements.plotWidthFt}\' × {requirements.plotDepthFt}\' Villa
           </span>
         </div>
         {arSupported && (
@@ -205,7 +205,7 @@ export const ModelARView: React.FC<Props> = ({ layout, requirements }) => {
         {/* Poster placeholder during load */}
         <div slot="poster" className="flex items-center justify-center w-full h-full bg-gray-100">
           <div className="text-center">
-            <div className="animate-pulse text-4xl mb-2">🏠</div>
+            <div className="animate-pulse text-4xl mb-2">\uD83C\uDFE0</div>
             <p className="text-sm text-gray-500">Preparing 3D Model...</p>
           </div>
         </div>
@@ -228,7 +228,7 @@ export const ModelARView: React.FC<Props> = ({ layout, requirements }) => {
           </div>
 
           <div className="text-xs text-gray-500 mb-3 pb-2 border-b border-gray-100">
-            {requirements.plotWidthFt}' × {requirements.plotDepthFt}' | {totalBuiltUp} sq.ft | {numFloors} Floor(s)
+            {requirements.plotWidthFt}\' × {requirements.plotDepthFt}\' | {totalBuiltUp} sq.ft | {numFloors} Floor(s)
           </div>
 
           <div className="space-y-2">
@@ -254,7 +254,6 @@ export const ModelARView: React.FC<Props> = ({ layout, requirements }) => {
             </div>
             <p className="text-[10px] text-gray-400 mt-1">*Includes 3% site wastage buffer. Rates are indicative.</p>
           </div>
-
 
         </div>
       )}

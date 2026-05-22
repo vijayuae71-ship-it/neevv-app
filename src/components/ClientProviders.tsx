@@ -3,7 +3,6 @@
 import React from 'react';
 import { ErrorBoundary } from './ErrorBoundary';
 import { ToastProvider } from './Toast';
-import { WhatsAppCTA } from './WhatsAppCTA';
 import { Onboarding } from './Onboarding';
 
 export default function ClientProviders({ children }: { children: React.ReactNode }) {
@@ -11,7 +10,6 @@ export default function ClientProviders({ children }: { children: React.ReactNod
     <ErrorBoundary>
       <ToastProvider>
         {children}
-        <WhatsAppCTA />
         <Onboarding />
       </ToastProvider>
     </ErrorBoundary>
