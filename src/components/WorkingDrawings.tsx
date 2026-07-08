@@ -57,7 +57,7 @@ const aiDrawingMap: Record<DrawingType, string> = {
 };
 
 /* Key drawings to auto-generate when component mounts */
-const AUTO_GENERATE: DrawingType[] = ['elevation', 'section', 'excavation'];
+const AUTO_GENERATE: DrawingType[] = ['excavation', 'elevation', 'section'];
 
 export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq }) => {
   const [activeDrawing, setActiveDrawing] = useState<DrawingType>('excavation');
@@ -71,16 +71,12 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq }) 
   const [exportResult, setExportResult] = useState<string | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
   const [autoGenStarted, setAutoGenStarted] = useState(false);
+  const [autoGenActive, setAutoGenActive] = useState(false);
 
-  const generateAI = useCallback(async (drawingType: DrawingType) => {
+  /* ---------- Single drawing generation ---------- */
+  const generateSingle = useCallback(async (drawingType: DrawingType) => {
     const aiType = aiDrawingMap[drawingType];
     if (!aiType) return;
-    
-    // If already cached, just view it
-    if (aiImages[drawingType]) {
-      setActiveDrawing(drawingType);
-      return;
-    }
 
     setAiLoading(drawingType);
     setAiError(null);
@@ -104,53 +100,67 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq }) 
       } else {
         throw new Error('No image in response from neevv Generation Pro');
       }
-    } catch (e: any) {
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Generation failed';
       console.error('AI generation error:', e);
-      setAiError(e.message || 'Generation failed');
+      setAiError(msg);
     } finally {
       setAiLoading(null);
     }
-  }, [aiImages, layout, requirements]);
+  }, [layout, requirements]);
 
-  /* Auto-generate key drawings on first mount */
+  /* ---------- Click handler for generate button ---------- */
+  const handleGenerate = useCallback((drawingType: DrawingType) => {
+    // If already cached, just view it
+    if (aiImages[drawingType]) {
+      setActiveDrawing(drawingType);
+      return;
+    }
+    generateSingle(drawingType);
+  }, [aiImages, generateSingle]);
+
+  /* ---------- Auto-generate key drawings on mount ---------- */
   useEffect(() => {
     if (autoGenStarted) return;
     setAutoGenStarted(true);
-    
+    setAutoGenActive(true);
+
     const autoGen = async () => {
       for (const dt of AUTO_GENERATE) {
-        if (!aiImages[dt]) {
-          setAiLoading(dt);
-          try {
-            const res = await fetch('/api/generate-drawing', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                drawingType: aiDrawingMap[dt],
-                layout,
-                requirements,
-              }),
-            });
-            const data = await res.json();
-            if (data.success && data.imageDataUri) {
-              setAiImages(prev => ({ ...prev, [dt]: data.imageDataUri }));
-            }
-          } catch {
-            // Continue to next drawing on error
-          } finally {
-            setAiLoading(null);
+        setAiLoading(dt);
+        // Switch active view to the drawing being generated so user sees progress
+        setActiveDrawing(dt);
+        try {
+          const res = await fetch('/api/generate-drawing', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              drawingType: aiDrawingMap[dt],
+              layout,
+              requirements,
+            }),
+          });
+          const data = await res.json();
+          if (data.success && data.imageDataUri) {
+            setAiImages(prev => ({ ...prev, [dt]: data.imageDataUri }));
           }
+        } catch {
+          // Continue to next drawing on error
+        } finally {
+          setAiLoading(null);
         }
       }
+      setAutoGenActive(false);
     };
     autoGen();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  /* ---------- Generate All ---------- */
   const generateAll = useCallback(async () => {
     setGeneratingAll(true);
     setAiError(null);
     const allTypes = Object.keys(aiDrawingMap) as DrawingType[];
-    
+
     for (const dt of allTypes) {
       if (aiImages[dt]) continue; // Skip cached
 
@@ -179,6 +189,7 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq }) 
     setGeneratingAll(false);
   }, [aiImages, layout, requirements]);
 
+  /* ---------- PDF Export ---------- */
   const handleExportPDF = async () => {
     setExporting(true);
     setExportResult(null);
@@ -186,8 +197,9 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq }) 
     try {
       const path = await exportAIPDF(aiImages, layout, requirements, boq || null, setExportProgress);
       setExportResult(path);
-    } catch (e: any) {
-      setExportError(e.message || 'Export failed');
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Export failed';
+      setExportError(msg);
       console.error('PDF export error:', e);
     } finally {
       setExporting(false);
@@ -195,6 +207,7 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq }) 
     }
   };
 
+  /* ---------- Download single image ---------- */
   const downloadImage = (drawingType: DrawingType) => {
     const dataUri = aiImages[drawingType];
     if (!dataUri) return;
@@ -252,8 +265,10 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq }) 
   };
 
   const activeImage = aiImages[activeDrawing];
-  const isLoading = aiLoading === activeDrawing;
+  const isLoadingCurrent = aiLoading === activeDrawing;
+  const isLoadingOther = !!aiLoading && aiLoading !== activeDrawing;
   const activeTab = tabs.find(t => t.id === activeDrawing);
+  const loadingTab = aiLoading ? tabs.find(t => t.id === aiLoading) : null;
 
   return (
     <div className="flex flex-col h-full bg-white relative">
@@ -272,7 +287,7 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq }) 
                     <button
                       key={t.id}
                       className={`btn btn-xs gap-1 ${activeDrawing === t.id ? 'btn-primary' : isGenerated ? 'btn-success btn-outline' : 'btn-ghost'}`}
-                      onClick={() => { setActiveDrawing(t.id); if (!aiImages[t.id] && !aiLoading) generateAI(t.id); }}
+                      onClick={() => { setActiveDrawing(t.id); }}
                     >
                       {isCurrentLoading ? <Loader2 size={10} className="animate-spin" /> : isGenerated ? <CheckCircle2 size={10} /> : t.icon}
                       {t.label}
@@ -299,12 +314,14 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq }) 
 
         {/* Generate All */}
         <button
-          className={`btn btn-xs btn-accent gap-1 ml-2 ${generatingAll || !!aiLoading ? 'btn-disabled' : ''}`}
+          className={`btn btn-xs btn-accent gap-1 ml-2 ${generatingAll || autoGenActive ? 'btn-disabled' : ''}`}
           onClick={generateAll}
-          disabled={generatingAll || !!aiLoading}
+          disabled={generatingAll || autoGenActive}
         >
           {generatingAll ? (
             <><Loader2 size={10} className="animate-spin" /> Generating All...</>
+          ) : autoGenActive ? (
+            <><Loader2 size={10} className="animate-spin" /> Auto-generating...</>
           ) : (
             <><PlayCircle size={10} /> Generate All</>
           )}
@@ -321,12 +338,12 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq }) 
         {aiError && !aiLoading && (
           <span className="text-[10px] text-red-600 ml-1 flex items-center gap-1">
             {aiError}
-            <button className="btn btn-xs btn-error btn-outline ml-1" onClick={() => generateAI(activeDrawing)}>Retry</button>
+            <button className="btn btn-xs btn-error btn-outline ml-1" onClick={() => generateSingle(activeDrawing)}>Retry</button>
           </span>
         )}
 
         <div className="flex-1" />
-        
+
         {/* Download current */}
         {activeImage && (
           <button className="btn btn-xs btn-ghost gap-1" onClick={() => downloadImage(activeDrawing)}>
@@ -356,8 +373,8 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq }) 
 
       {/* Canvas area */}
       <div className="flex-1 overflow-auto min-h-0 bg-neutral-100 p-4">
-        {isLoading ? (
-          /* Loading state */
+        {isLoadingCurrent ? (
+          /* Loading state — this drawing is being generated */
           <div className="flex flex-col items-center justify-center h-full gap-4">
             <div className="relative">
               <Loader2 size={48} className="animate-spin text-primary" />
@@ -396,10 +413,21 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq }) 
               <h3 className="text-lg font-semibold text-gray-700">{activeTab?.label || activeDrawing}</h3>
               <p className="text-sm text-gray-500 mt-1">{descriptions[activeDrawing]}</p>
             </div>
+
+            {/* Show status banner when another drawing is being generated in background */}
+            {isLoadingOther && (
+              <div className="flex items-center gap-2 px-4 py-2 bg-blue-50 rounded-lg border border-blue-200">
+                <Loader2 size={14} className="animate-spin text-blue-500" />
+                <span className="text-xs text-blue-700">
+                  Generating {loadingTab?.label || aiLoading} in background...
+                </span>
+              </div>
+            )}
+
             <button
               className="btn btn-primary gap-2"
-              onClick={() => generateAI(activeDrawing)}
-              disabled={!!aiLoading}
+              onClick={() => handleGenerate(activeDrawing)}
+              disabled={isLoadingCurrent}
             >
               <Sparkles size={16} /> Generate with neevv Generation Pro
             </button>
