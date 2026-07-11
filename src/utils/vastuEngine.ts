@@ -8,7 +8,7 @@ import { Room, Facing, VastuDetail } from '../types';
 
 // Vastu ideal zones for each room type, based on compass directions
 // Zones: NE, NW, SE, SW, N, S, E, W, Center
-const VASTU_IDEAL_ZONES: Record<string, string[]> = {
+export const VASTU_IDEAL_ZONES: Record<string, string[]> = {
   master_bedroom: ['SW'],
   bedroom: ['SW', 'S', 'NW', 'W'],
   hall: ['N', 'NE', 'E', 'Center'],
@@ -43,7 +43,7 @@ const VASTU_FIX_SUGGESTIONS: Record<string, string> = {
 };
 
 // Vastu taboo zones — critical violations
-const VASTU_TABOO: Record<string, string[]> = {
+export const VASTU_TABOO: Record<string, string[]> = {
   toilet: ['NE'], // Never place toilet in NE (Ishaan)
   kitchen: ['NE', 'SW'], // Kitchen fire in NE is sacrilege
   staircase: ['NE', 'Center'], // Heavy structure in NE blocks energy

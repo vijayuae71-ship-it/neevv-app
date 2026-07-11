@@ -120,7 +120,7 @@ export function checkNBCCompliance(
 
     if (minArea) {
       totalRules++;
-      if (area < minArea * 0.95) {
+      if (area < minArea) {
         issues.push({
           room: room.name,
           issue: `Area ${area.toFixed(1)} m² is below NBC minimum of ${minArea} m². ${
@@ -143,7 +143,7 @@ export function checkNBCCompliance(
 
     if (minWidth) {
       totalRules++;
-      if (actualMinDim < minWidth * 0.95) {
+      if (actualMinDim < minWidth) {
         issues.push({
           room: room.name,
           issue: `Minimum dimension ${actualMinDim.toFixed(2)}m < required ${minWidth}m (NBC 2016). ${

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Layout, CustomRateSheet } from '../types';
 import { autoFixLayout } from '@/utils/vastuAutoFix';
 import { calculateBOQ } from '@/utils/boqCalculator';
@@ -16,6 +16,8 @@ import {
   Home,
   Flame,
   Info,
+  Lock,
+  ArrowRight,
 } from 'lucide-react';
 
 interface Props {
@@ -23,6 +25,7 @@ interface Props {
   vastuEnabled: boolean;
   facing?: string;
   onAutoFix?: (optimizedLayout: Layout) => void;
+  onProceed?: () => void;
   boqTotal?: number;
   numFloors?: number;
   customRates?: CustomRateSheet | null;
@@ -34,11 +37,12 @@ const formatCurrency = (n: number): string => {
   return `₹${n.toLocaleString('en-IN')}`;
 };
 
-export const ComplianceReport: React.FC<Props> = ({ layout, vastuEnabled, facing = 'North', onAutoFix, boqTotal, numFloors, customRates }) => {
+export const ComplianceReport: React.FC<Props> = ({ layout, vastuEnabled, facing = 'North', onAutoFix, onProceed, boqTotal, numFloors, customRates }) => {
   const [expandNBC, setExpandNBC] = useState(false);
   const [expandVastu, setExpandVastu] = useState(false);
   const [expandFire, setExpandFire] = useState(false);
   const [fixing, setFixing] = useState(false);
+  const [autoFixAttempted, setAutoFixAttempted] = useState(false);
   const [costPreview, setCostPreview] = useState<{
     beforeCost: number;
     afterCost: number;
@@ -58,28 +62,31 @@ export const ComplianceReport: React.FC<Props> = ({ layout, vastuEnabled, facing
   const fireErrors = fireIssues.filter((i) => i.severity === 'error');
   const fireWarnings = fireIssues.filter((i) => i.severity === 'warning');
   const fireInfo = fireIssues.filter((i) => i.severity === 'info');
-  const nbcPass = nbcErrors.length === 0 && nbcWarnings.length === 0;
+  
+  // NBC compliance gate: ZERO errors = compliant
+  const nbcFullyCompliant = nbcErrors.length === 0;
+  const canProceed = nbcFullyCompliant;
 
   // Overall status
   const getOverallStatus = (): { label: string; color: string; bg: string; icon: React.ReactNode } => {
     if (nbcErrors.length > 0) {
       return {
-        label: 'Non-Compliant',
+        label: 'NBC Non-Compliant — Auto-Fix Required',
         color: 'text-red-700',
         bg: 'bg-red-50 border-red-200',
         icon: <XCircle size={24} className="text-red-600" />,
       };
     }
-    if (nbcWarnings.length > 0 || (vastuEnabled && layout.vastuScore < 60)) {
+    if (nbcWarnings.length > 0) {
       return {
-        label: 'Partially Compliant',
-        color: 'text-amber-700',
-        bg: 'bg-amber-50 border-amber-200',
-        icon: <AlertTriangle size={24} className="text-amber-600" />,
+        label: '100% NBC Compliant (with advisories)',
+        color: 'text-green-700',
+        bg: 'bg-green-50 border-green-200',
+        icon: <CheckCircle size={24} className="text-green-600" />,
       };
     }
     return {
-      label: '100% NBC Compliant',
+      label: '100% NBC Compliant ✓',
       color: 'text-green-700',
       bg: 'bg-green-50 border-green-200',
       icon: <CheckCircle size={24} className="text-green-600" />,
@@ -90,6 +97,7 @@ export const ComplianceReport: React.FC<Props> = ({ layout, vastuEnabled, facing
 
   const handleAutoFixPreview = () => {
     setFixing(true);
+    setAutoFixAttempted(true);
     setTimeout(() => {
       try {
         const optimized = autoFixLayout(layout, facing as any);
@@ -111,9 +119,10 @@ export const ComplianceReport: React.FC<Props> = ({ layout, vastuEnabled, facing
           afterNBCIssues,
           optimizedLayout: optimized,
         });
-      } catch {
-        // If preview calc fails, just apply directly
-        if (onAutoFix) onAutoFix(layout);
+      } catch (err) {
+        // FAIL-CLOSED: If auto-fix fails, show error — do NOT pass original layout as "fixed"
+        console.error('Auto-fix failed:', err);
+        setCostPreview(null);
       }
       setFixing(false);
     }, 100);
@@ -130,7 +139,7 @@ export const ComplianceReport: React.FC<Props> = ({ layout, vastuEnabled, facing
     setCostPreview(null);
   };
 
-  const showAutoFix = onAutoFix && (nbcErrors.length > 0 || nbcWarnings.length > 0 || (vastuEnabled && layout.vastuScore < 90));
+  const showAutoFix = onAutoFix && (nbcErrors.length > 0 || (vastuEnabled && layout.vastuScore < 90));
 
   return (
     <div className="p-4 space-y-4 max-w-2xl mx-auto">
@@ -152,6 +161,43 @@ export const ComplianceReport: React.FC<Props> = ({ layout, vastuEnabled, facing
         </div>
       </div>
 
+      {/* NBC COMPLIANCE GATE — must pass before proceeding */}
+      {!nbcFullyCompliant && (
+        <div className="bg-red-50 border-2 border-red-300 rounded-xl p-4">
+          <div className="flex items-center gap-2 text-red-700 font-bold text-sm mb-2">
+            <XCircle size={18} />
+            <span>NBC Compliance Required Before Proceeding</span>
+          </div>
+          <p className="text-xs text-red-600 mb-3">
+            This plan has {nbcErrors.length} NBC violation{nbcErrors.length > 1 ? 's' : ''} that must be resolved. 
+            No drawings can be generated from a non-compliant plan. Use Auto-Fix below to resolve all issues.
+          </p>
+          <div className="flex flex-wrap gap-1">
+            {nbcErrors.map((issue, i) => (
+              <span key={i} className="text-[10px] bg-red-100 text-red-700 px-2 py-0.5 rounded-full">
+                {issue.room}: {issue.issue.substring(0, 60)}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Vastu Score — informational, not a gate */}
+      {vastuEnabled && (
+        <div className={`${layout.vastuScore >= 70 ? 'bg-green-50 border-green-200' : layout.vastuScore >= 50 ? 'bg-amber-50 border-amber-200' : 'bg-orange-50 border-orange-200'} border rounded-xl p-3`}>
+          <div className="flex items-center gap-2 mb-1">
+            <Compass size={16} className="text-orange-500" />
+            <span className="text-sm font-semibold text-gray-800">Vastu Score: {layout.vastuScore}%</span>
+          </div>
+          <p className="text-[11px] text-gray-600">
+            No residential plan achieves 100% Vastu compliance due to plot constraints. 
+            {layout.vastuScore >= 70 ? ' Your score is good — key Vastu principles are satisfied.' :
+             layout.vastuScore >= 50 ? ' Auto-Fix can improve placement of key rooms.' :
+             ' Auto-Fix is recommended to improve Vastu placement.'}
+          </p>
+        </div>
+      )}
+
       {/* Cost Impact Preview Card */}
       {costPreview && (
         <div className="bg-white border-2 border-blue-300 rounded-xl p-4 space-y-3 shadow-lg">
@@ -164,7 +210,6 @@ export const ComplianceReport: React.FC<Props> = ({ layout, vastuEnabled, facing
 
           {/* Before vs After Grid */}
           <div className="grid grid-cols-2 gap-3">
-            {/* Before */}
             <div className="bg-gray-50 border rounded-lg p-3">
               <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-2">Current Plan</div>
               <div className="text-base font-bold text-gray-800">{formatCurrency(costPreview.beforeCost)}</div>
@@ -182,7 +227,6 @@ export const ComplianceReport: React.FC<Props> = ({ layout, vastuEnabled, facing
               </div>
             </div>
 
-            {/* After */}
             <div className="bg-green-50 border border-green-200 rounded-lg p-3">
               <div className="text-[10px] font-semibold text-green-700 uppercase tracking-wide mb-2">Optimized Plan</div>
               <div className="text-base font-bold text-green-700">{formatCurrency(costPreview.afterCost)}</div>
@@ -216,12 +260,10 @@ export const ComplianceReport: React.FC<Props> = ({ layout, vastuEnabled, facing
             );
           })()}
 
-          {/* Rework Savings Note */}
           <div className="text-[10px] text-gray-500 text-center">
-            💡 Compliant plans avoid ₹50K-₹2L rework costs from municipal rejections & structural fixes
+            💡 Compliant plans avoid ₹50K-₹2L rework costs from municipal rejections &amp; structural fixes
           </div>
 
-          {/* Accept / Reject Buttons */}
           <div className="grid grid-cols-2 gap-2">
             <button
               onClick={handleRejectFix}
@@ -239,7 +281,7 @@ export const ComplianceReport: React.FC<Props> = ({ layout, vastuEnabled, facing
         </div>
       )}
 
-      {/* Auto-Fix CTA Button (hidden when preview shown) */}
+      {/* Auto-Fix CTA Button */}
       {showAutoFix && !costPreview && (
         <button
           className="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-3 px-4 rounded-xl flex items-center justify-center gap-2 transition-all shadow-md hover:shadow-lg"
@@ -259,10 +301,33 @@ export const ComplianceReport: React.FC<Props> = ({ layout, vastuEnabled, facing
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
               </svg>
-              <span>⚡ Auto-Fix: Optimize Vastu &amp; NBC Compliance</span>
+              <span>⚡ Auto-Fix: {nbcErrors.length > 0 ? 'Resolve NBC Violations' : 'Optimize Vastu'} &amp; Preview Cost Impact</span>
             </>
           )}
         </button>
+      )}
+
+      {/* PROCEED BUTTON — only when NBC compliant */}
+      {canProceed && onProceed && (
+        <div className="bg-green-50 border-2 border-green-300 rounded-xl p-4">
+          <div className="flex items-center gap-2 text-green-700 font-bold text-sm mb-2">
+            <Lock size={16} />
+            <span>Plan Approved — Ready to Generate Drawings</span>
+          </div>
+          <p className="text-xs text-gray-600 mb-3">
+            This plan is 100% NBC compliant{vastuEnabled ? ` with ${layout.vastuScore}% Vastu score` : ''}. 
+            Once you proceed, this becomes the <strong>Mother Layout</strong> — all 13 professional drawings, 
+            3D renders, and BOQ will be generated from this exact plan.
+          </p>
+          <button
+            onClick={onProceed}
+            className="w-full py-3 rounded-xl text-white font-bold text-sm flex items-center justify-center gap-2 transition-all shadow-lg hover:shadow-xl"
+            style={{ backgroundColor: '#4f6f52' }}
+          >
+            <Lock size={16} />
+            <span>Finalize as Mother Layout &amp; Proceed →</span>
+          </button>
+        </div>
       )}
 
       {/* Quick Stats */}
@@ -274,22 +339,14 @@ export const ComplianceReport: React.FC<Props> = ({ layout, vastuEnabled, facing
         </div>
         <div className="bg-white border rounded-lg p-3 text-center">
           <Shield size={16} className="mx-auto text-gray-500 mb-1" />
-          <div
-            className={`text-lg font-bold ${
-              nbcPass ? 'text-green-600' : nbcErrors.length > 0 ? 'text-red-600' : 'text-amber-600'
-            }`}
-          >
-            {nbcPass ? 'PASS' : `${nonFireErrors.length + nonFireWarnings.length}`}
+          <div className={`text-lg font-bold ${nbcFullyCompliant ? 'text-green-600' : nbcErrors.length > 0 ? 'text-red-600' : 'text-amber-600'}`}>
+            {nbcFullyCompliant ? 'PASS' : `${nbcErrors.length} FAIL`}
           </div>
-          <div className="text-[10px] text-gray-500">NBC Issues</div>
+          <div className="text-[10px] text-gray-500">NBC 2016</div>
         </div>
         <div className="bg-white border rounded-lg p-3 text-center">
           <Flame size={16} className="mx-auto text-orange-500 mb-1" />
-          <div
-            className={`text-lg font-bold ${
-              fireErrors.length > 0 ? 'text-red-600' : fireWarnings.length > 0 ? 'text-amber-600' : 'text-green-600'
-            }`}
-          >
+          <div className={`text-lg font-bold ${fireErrors.length > 0 ? 'text-red-600' : fireWarnings.length > 0 ? 'text-amber-600' : 'text-green-600'}`}>
             {fireErrors.length === 0 && fireWarnings.length === 0 ? 'SAFE' : `${fireErrors.length + fireWarnings.length}`}
           </div>
           <div className="text-[10px] text-gray-500">Fire Safety</div>
@@ -297,15 +354,7 @@ export const ComplianceReport: React.FC<Props> = ({ layout, vastuEnabled, facing
         {vastuEnabled && (
           <div className="bg-white border rounded-lg p-3 text-center">
             <Compass size={16} className="mx-auto text-gray-500 mb-1" />
-            <div
-              className={`text-lg font-bold ${
-                layout.vastuScore >= 80
-                  ? 'text-green-600'
-                  : layout.vastuScore >= 60
-                    ? 'text-amber-600'
-                    : 'text-red-600'
-              }`}
-            >
+            <div className={`text-lg font-bold ${layout.vastuScore >= 80 ? 'text-green-600' : layout.vastuScore >= 60 ? 'text-amber-600' : 'text-red-600'}`}>
               {layout.vastuScore}%
             </div>
             <div className="text-[10px] text-gray-500">Vastu Score</div>
@@ -330,7 +379,7 @@ export const ComplianceReport: React.FC<Props> = ({ layout, vastuEnabled, facing
 
         {expandNBC && (
           <div className="px-3 pb-3 space-y-2">
-            {nbcPass && (
+            {nbcFullyCompliant && nbcWarnings.length === 0 && (
               <div className="flex items-center gap-2 p-2 bg-green-50 rounded-lg">
                 <CheckCircle size={14} className="text-green-600 flex-shrink-0" />
                 <span className="text-xs text-green-700">
@@ -339,12 +388,8 @@ export const ComplianceReport: React.FC<Props> = ({ layout, vastuEnabled, facing
               </div>
             )}
 
-            {/* Errors */}
             {nbcErrors.map((issue, idx) => (
-              <div
-                key={`err-${idx}`}
-                className="flex items-start gap-2 p-2 bg-red-50 rounded-lg"
-              >
+              <div key={`err-${idx}`} className="flex items-start gap-2 p-2 bg-red-50 rounded-lg">
                 <XCircle size={14} className="text-red-600 flex-shrink-0 mt-0.5" />
                 <div>
                   <div className="text-xs font-semibold text-red-700">{issue.room}</div>
@@ -353,12 +398,8 @@ export const ComplianceReport: React.FC<Props> = ({ layout, vastuEnabled, facing
               </div>
             ))}
 
-            {/* Warnings */}
             {nbcWarnings.map((issue, idx) => (
-              <div
-                key={`warn-${idx}`}
-                className="flex items-start gap-2 p-2 bg-amber-50 rounded-lg"
-              >
+              <div key={`warn-${idx}`} className="flex items-start gap-2 p-2 bg-amber-50 rounded-lg">
                 <AlertTriangle size={14} className="text-amber-600 flex-shrink-0 mt-0.5" />
                 <div>
                   <div className="text-xs font-semibold text-amber-700">{issue.room}</div>
@@ -388,35 +429,25 @@ export const ComplianceReport: React.FC<Props> = ({ layout, vastuEnabled, facing
 
           {expandVastu && (
             <div className="px-3 pb-3">
-              {/* Score Bar */}
               <div className="mb-3">
                 <div className="w-full bg-gray-200 rounded-full h-2.5">
                   <div
-                    className={`h-2.5 rounded-full ${
-                      layout.vastuScore >= 80
-                        ? 'bg-green-500'
-                        : layout.vastuScore >= 60
-                          ? 'bg-amber-500'
-                          : 'bg-red-500'
-                    }`}
+                    className={`h-2.5 rounded-full ${layout.vastuScore >= 80 ? 'bg-green-500' : layout.vastuScore >= 60 ? 'bg-amber-500' : 'bg-red-500'}`}
                     style={{ width: `${layout.vastuScore}%` }}
                   />
                 </div>
                 <div className="flex justify-between text-[10px] text-gray-400 mt-1">
                   <span>0%</span>
-                  <span>Target: 90%+</span>
+                  <span>No plan is 100% Vastu — target 70%+</span>
                   <span>100%</span>
                 </div>
               </div>
 
-              {/* Room Details */}
               <div className="space-y-1">
                 {layout.vastuDetails.map((detail, idx) => (
                   <div
                     key={idx}
-                    className={`flex items-center justify-between text-xs p-1.5 rounded ${
-                      detail.compliant ? 'bg-green-50' : 'bg-orange-50'
-                    }`}
+                    className={`flex items-center justify-between text-xs p-1.5 rounded ${detail.compliant ? 'bg-green-50' : 'bg-orange-50'}`}
                   >
                     <div className="flex items-center gap-1.5">
                       {detail.compliant ? (
@@ -436,7 +467,6 @@ export const ComplianceReport: React.FC<Props> = ({ layout, vastuEnabled, facing
                 ))}
               </div>
 
-              {/* Conflict Note */}
               <div className="mt-3 p-2 bg-blue-50 rounded-lg">
                 <div className="text-[10px] text-blue-700">
                   <strong>Note:</strong> In case of conflict between Vastu and NBC Safety

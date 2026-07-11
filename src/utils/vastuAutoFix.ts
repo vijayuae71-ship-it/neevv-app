@@ -1,29 +1,11 @@
 import { Layout, Room, Facing } from '../types';
-import { getRoomZone, calculateVastuScore } from './vastuEngine';
+import { getRoomZone, calculateVastuScore, VASTU_IDEAL_ZONES, VASTU_TABOO } from './vastuEngine';
 import { checkNBCCompliance } from './nbcCompliance';
 
 // ============================================================================
 // VASTU & NBC AUTO-FIX ENGINE
 // Greedy optimization: swap rooms to improve Vastu score, expand rooms for NBC
 // ============================================================================
-
-// Vastu ideal zones for scoring swaps
-const VASTU_IDEAL_ZONES: Record<string, string[]> = {
-  master_bedroom: ['SW'],
-  bedroom: ['SW', 'S', 'NW', 'W'],
-  hall: ['N', 'NE', 'E', 'Center'],
-  kitchen: ['SE'],
-  toilet: ['W', 'NW'],
-  dining: ['W', 'E', 'Center'],
-  puja: ['NE'],
-  staircase: ['S', 'SW', 'W'],
-  entrance: ['N', 'E', 'NE'],
-  parking: ['NW', 'SE'],
-  store: ['SW', 'S'],
-  utility: ['NW', 'W'],
-  balcony: ['N', 'E', 'NE'],
-  passage: ['Center', 'N', 'E'],
-};
 
 // NBC minimum areas (m²)
 const NBC_MIN_AREAS: Record<string, number> = {
@@ -63,8 +45,10 @@ function deepClone<T>(obj: T): T {
 function vastuRoomScore(room: Room, plotWidthM: number, plotDepthM: number, facing: Facing): number {
   const zone = getRoomZone(room, plotWidthM, plotDepthM, facing);
   const idealZones = VASTU_IDEAL_ZONES[room.type] || ['Center'];
+  const tabooZones = VASTU_TABOO[room.type] || [];
   if (idealZones.includes(zone)) return 1;
-  return 0.3;
+  if (tabooZones.includes(zone)) return 0; // Critical — taboo placement gets zero
+  return 0.3; // Non-ideal but acceptable
 }
 
 /**
@@ -302,39 +286,45 @@ function fixNBCMinimumAreas(rooms: Room[]): Room[] {
 export function autoFixLayout(layout: Layout, facing: Facing): Layout {
   const optimized = deepClone(layout);
   const { plotWidthM, plotDepthM } = optimized;
+  const MAX_PASSES = 3; // Multi-pass: fix -> validate -> re-fix until stable
 
-  // Step 1: Optimize Vastu placement per floor
-  for (const floorLayout of optimized.floors) {
-    floorLayout.rooms = optimizeFloorVastu(
-      floorLayout.rooms,
-      plotWidthM,
-      plotDepthM,
-      facing
-    );
+  for (let pass = 0; pass < MAX_PASSES; pass++) {
+    // Step 1: Optimize Vastu placement per floor
+    for (const floorLayout of optimized.floors) {
+      floorLayout.rooms = optimizeFloorVastu(
+        floorLayout.rooms,
+        plotWidthM,
+        plotDepthM,
+        facing
+      );
+    }
+
+    // Step 2: Fix NBC minimum area/width issues per floor
+    for (const floorLayout of optimized.floors) {
+      floorLayout.rooms = fixNBCMinimumAreas(floorLayout.rooms);
+    }
+
+    // Step 3: Re-validate — check if NBC errors remain
+    const passRooms = optimized.floors.flatMap(f => f.rooms);
+    const passNBC = checkNBCCompliance(passRooms, plotWidthM * plotDepthM, optimized.builtUpAreaSqM, optimized.floors.length);
+    const nbcErrors = passNBC.issues.filter(i => i.severity === 'error');
+
+    if (nbcErrors.length === 0) break; // Compliant — stop early
   }
 
-  // Step 2: Fix NBC minimum area/width issues per floor
-  for (const floorLayout of optimized.floors) {
-    floorLayout.rooms = fixNBCMinimumAreas(floorLayout.rooms);
-  }
-
-  // Step 3: Collect all rooms and re-calculate scores
+  // Final recalculation
   const allRooms = optimized.floors.flatMap(f => f.rooms);
   const plotArea = plotWidthM * plotDepthM;
-  const builtUpAreaSqM = optimized.builtUpAreaSqM;
   const numFloors = optimized.floors.length;
 
-  // Re-calculate Vastu
   const vastuResult = calculateVastuScore(allRooms, plotWidthM, plotDepthM, facing);
   optimized.vastuScore = vastuResult.score;
   optimized.vastuDetails = vastuResult.details;
 
-  // Re-calculate NBC compliance
-  const nbcResult = checkNBCCompliance(allRooms, plotArea, builtUpAreaSqM, numFloors);
+  const nbcResult = checkNBCCompliance(allRooms, plotArea, optimized.builtUpAreaSqM, numFloors);
   optimized.nbcCompliant = nbcResult.compliant;
   optimized.nbcIssues = nbcResult.issues;
 
-  // Update built-up area based on potentially adjusted room sizes
   const newBuiltUpM2 = optimized.floors.reduce((sum, fl) => {
     const floorArea = fl.rooms.reduce((s, r) => s + r.width * r.depth, 0);
     return sum + floorArea;

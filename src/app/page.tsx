@@ -36,6 +36,7 @@ export default function HomePage() {
   const [selectedLayout, setSelectedLayout] = useState<Layout | null>(null);
   const [boq, setBOQ] = useState<BOQ | null>(null);
   const [customRates, setCustomRates] = useState<CustomRateSheet | null>(null);
+  const [motherLayoutLocked, setMotherLayoutLocked] = useState(false);
 
   // Auto-save to localStorage
   useEffect(() => {
@@ -89,11 +90,11 @@ export default function HomePage() {
       case 'layouts': return layouts.length > 0;
       case 'compliance': return selectedLayout !== null;
 
-      case 'isometric': return selectedLayout !== null;
-      case 'working': return selectedLayout !== null;
-      case 'rates': return selectedLayout !== null;
-      case 'boq': return boq !== null;
-      case 'interior': return selectedLayout !== null;
+      case 'isometric': return motherLayoutLocked && selectedLayout !== null;
+      case 'working': return motherLayoutLocked && selectedLayout !== null;
+      case 'rates': return motherLayoutLocked && selectedLayout !== null;
+      case 'boq': return motherLayoutLocked && boq !== null;
+      case 'interior': return motherLayoutLocked && selectedLayout !== null;
       default: return false;
     }
   };
@@ -109,11 +110,13 @@ export default function HomePage() {
       facing: req.facing,
       floors: req.floors.length,
     });
+    setMotherLayoutLocked(false);
     setStep('layouts');
   };
 
   const handleLayoutSelect = (layout: Layout) => {
     setSelectedLayout(layout);
+    setMotherLayoutLocked(false);
     if (requirements) {
       const b = calculateBOQ(layout, requirements.floors.length, customRates);
       setBOQ(b);
@@ -143,11 +146,17 @@ export default function HomePage() {
     if (!requirements) return;
     const optimized = autoFixLayout(currentLayout, requirements.facing);
     setSelectedLayout(optimized);
+    setMotherLayoutLocked(false);
     // Update layouts array with the optimized version
     setLayouts(prev => prev.map(l => l.id === optimized.id ? optimized : l));
     // Recalculate BOQ with optimized layout
     const b = calculateBOQ(optimized, requirements.floors.length, customRates);
     setBOQ(b);
+  };
+
+  const handleComplianceProceed = () => {
+    setMotherLayoutLocked(true);
+    setStep('isometric');
   };
 
   const handleUploadConversion = (layout: Layout, req: ProjectRequirements) => {
@@ -532,10 +541,10 @@ export default function HomePage() {
           <>
             {step === 'requirements' && <RequirementForm onSubmit={handleRequirements} />}
             {step === 'layouts' && requirements && (
-              <LayoutSelector layouts={layouts} onSelect={handleLayoutSelect} vastuEnabled={requirements.vastuCompliance} />
+              <LayoutSelector layouts={layouts} onSelect={handleLayoutSelect} vastuEnabled={requirements.vastuCompliance} requirements={requirements} />
             )}
             {step === 'compliance' && selectedLayout && requirements && (
-              <ComplianceReport layout={selectedLayout} vastuEnabled={requirements.vastuCompliance} facing={requirements.facing} onAutoFix={handleAutoFix} boqTotal={boq?.totalCost} numFloors={requirements.floors.length} customRates={customRates} />
+              <ComplianceReport layout={selectedLayout} vastuEnabled={requirements.vastuCompliance} facing={requirements.facing} onAutoFix={handleAutoFix} onProceed={handleComplianceProceed} boqTotal={boq?.totalCost} numFloors={requirements.floors.length} customRates={customRates} />
             )}
 
             {step === 'isometric' && selectedLayout && requirements && (
