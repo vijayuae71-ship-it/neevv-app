@@ -15,22 +15,48 @@ import { calculateVastuScore, getIdealPlotPosition } from './vastuEngine';
 const FT_TO_M = 0.3048;
 const SQM_TO_SQFT = 10.764;
 
-interface RoomSpec {
-  type: RoomType;
-  name: string;
-  minArea: number;
-  priority: number;
+// Snap to 0.05m grid for clean wall alignment
+const snap = (n: number): number => Math.round(n * 20) / 20;
+
+// NBC 2016 minimum areas (m²)
+const NBC_MIN_AREA: Record<string, number> = {
+  master_bedroom: 9.5, bedroom: 9.5, hall: 9.5, kitchen: 5.0,
+  toilet: 2.8, dining: 7.5, puja: 2.0, staircase: 3.0, parking: 13.75,
+  store: 2.0, utility: 2.0, balcony: 2.0, passage: 1.0, entrance: 2.0,
+};
+
+// NBC 2016 minimum widths (m)
+const NBC_MIN_WIDTH: Record<string, number> = {
+  master_bedroom: 2.7, bedroom: 2.7, hall: 2.7, kitchen: 1.8,
+  toilet: 1.2, dining: 2.4, parking: 3.0, staircase: 1.0,
+  puja: 1.2, passage: 1.0, balcony: 1.2,
+};
+
+// Strategy-specific zone configurations
+interface ZoneConfig {
+  frontPct: number;  // front zone depth as fraction of buildD
+  midPct: number;    // mid zone depth (0 = no mid zone)
+  rearPct: number;   // rear zone depth
+  parkingPct: number; // parking width as fraction of effectiveW
+  kitchenInRear: boolean; // kitchen moves to rear zone
+  mergeLivingDining: boolean; // combine living + dining in front
+  includePuja: boolean;
 }
 
-/**
- * ADJACENCY RULES (Indian Residential Best Practice):
- * - Balcony MUST adjoin Living Room or Bedroom (exterior wall side)
- * - Toilet MUST adjoin its parent Bedroom (internal side, away from entrance)
- * - Kitchen should adjoin Dining
- * - Puja should be near Kitchen or Entrance
- * - Parking should be at front (entrance side)
- * - Staircase should be central or near entrance
- */
+const STRATEGY_CONFIG: Record<string, ZoneConfig> = {
+  vastu: {
+    frontPct: 0.32, midPct: 0.28, rearPct: 0.40,
+    parkingPct: 0.42, kitchenInRear: false, mergeLivingDining: false, includePuja: true,
+  },
+  space: {
+    frontPct: 0.42, midPct: 0, rearPct: 0.58,
+    parkingPct: 0.35, kitchenInRear: true, mergeLivingDining: true, includePuja: false,
+  },
+  balanced: {
+    frontPct: 0.35, midPct: 0.22, rearPct: 0.43,
+    parkingPct: 0.38, kitchenInRear: false, mergeLivingDining: false, includePuja: true,
+  },
+};
 
 export function generateLayouts(req: ProjectRequirements): Layout[] {
   const plotW = req.plotWidthFt * FT_TO_M;
@@ -38,17 +64,17 @@ export function generateLayouts(req: ProjectRequirements): Layout[] {
   const plotArea = plotW * plotD;
   const setbacks = calculateSetbacks(plotArea, plotW, plotD);
 
-  const buildW = plotW - setbacks.left - setbacks.right;
-  const buildD = plotD - setbacks.front - setbacks.rear;
+  const buildW = snap(plotW - setbacks.left - setbacks.right);
+  const buildD = snap(plotD - setbacks.front - setbacks.rear);
 
   if (buildW < 3 || buildD < 3) return [];
 
   const layouts: Layout[] = [];
 
   const strategies = [
-    { id: 'vastu', name: 'Vastu-Optimized', desc: 'Strict Vastu compliance with room placement per Shastra norms. Kitchen in SE, Master Bed in SW, Entrance per facing.' },
-    { id: 'space', name: 'Space-Optimized', desc: 'Maximizes carpet area and room dimensions. Efficient circulation with minimal passage waste.' },
-    { id: 'balanced', name: 'Balanced Design', desc: 'Practical layout balancing Vastu principles with optimal space utilization and natural light.' },
+    { id: 'vastu', name: 'Vastu-Optimized', desc: 'Strict Vastu placement — Kitchen SE, Master Bed SW, Puja NE. Dedicated zones for each function.' },
+    { id: 'space', name: 'Space-Optimized', desc: 'Open-plan Living+Dining, Kitchen near bedrooms. Maximizes carpet area with minimal corridors.' },
+    { id: 'balanced', name: 'Balanced Design', desc: 'Practical layout with good Vastu score and efficient room sizing. Best of both approaches.' },
   ];
 
   for (const strat of strategies) {
@@ -61,7 +87,7 @@ export function generateLayouts(req: ProjectRequirements): Layout[] {
       const hasParking = isGround && req.parkingType !== 'None';
       const isStilt = isGround && req.parkingType === 'Stilt';
 
-      const rooms = placeRoomsWithAdjacency(
+      const rooms = placeRoomsForStrategy(
         fp, buildW, buildD, setbacks, fi,
         strat.id, req.facing, isStilt,
         req.floors.length > 1, hasParking
@@ -109,11 +135,11 @@ export function generateLayouts(req: ProjectRequirements): Layout[] {
 }
 
 /**
- * Core room placement engine with adjacency enforcement.
- * Uses a zone-based approach: divides buildable area into functional zones,
- * then places rooms respecting adjacency constraints.
+ * Strategy-aware room placement engine.
+ * Uses grid-snapped coordinates for wall alignment.
+ * Each strategy produces genuinely different room arrangements.
  */
-function placeRoomsWithAdjacency(
+function placeRoomsForStrategy(
   fp: FloorProgram,
   buildW: number,
   buildD: number,
@@ -125,546 +151,338 @@ function placeRoomsWithAdjacency(
   isMultiFloor: boolean,
   hasParking: boolean
 ): Room[] {
-  const ox = setbacks.left;
-  const oy = setbacks.front;
+  const ox = snap(setbacks.left);
+  const oy = snap(setbacks.front);
 
   if (isStilt) {
     return [
-      { id: `f${floor}_parking`, name: 'Stilt Parking', type: 'parking', x: ox, y: oy, width: buildW - 2.5, depth: buildD, floor },
-      { id: `f${floor}_staircase`, name: 'Staircase', type: 'staircase', x: ox + buildW - 2.5, y: oy, width: 2.5, depth: Math.min(5, buildD), floor },
+      { id: `f${floor}_parking`, name: 'Stilt Parking', type: 'parking', x: ox, y: oy, width: snap(buildW - 2.5), depth: buildD, floor },
+      { id: `f${floor}_staircase`, name: 'Staircase', type: 'staircase', x: snap(ox + buildW - 2.5), y: oy, width: snap(2.5), depth: snap(Math.min(5, buildD)), floor },
     ];
   }
 
+  const config = STRATEGY_CONFIG[strategy] || STRATEGY_CONFIG.balanced;
   const rooms: Room[] = [];
-  const staircaseW = isMultiFloor ? 2.5 : 0;
-  const effectiveW = buildW - staircaseW;
 
-  // --- ZONE DEFINITIONS ---
-  // Front zone: Living/Hall, Entrance, Parking (faces the road)
-  // Middle zone: Dining, Kitchen, Passage, Staircase
-  // Rear zone: Bedrooms with attached toilets
-  // Balconies: Attached to bedrooms/living on EXTERIOR walls only
+  // Staircase strip
+  const staircaseW = isMultiFloor ? snap(Math.min(2.5, buildW * 0.3)) : 0;
+  const effectiveW = snap(buildW - staircaseW);
 
-  // Determine zone depths
-  const numBedrooms = fp.bedrooms;
-  const numHalls = fp.halls;
-  const hasKitchen = fp.kitchens > 0;
-  const hasDining = fp.hasDining;
-  const hasPuja = fp.hasPuja;
-
-  // Calculate row distribution
-  let frontDepth: number, rearDepth: number, midDepth: number;
-  const hasMidZone = hasKitchen || hasDining || hasPuja;
-
-  if (hasMidZone && numBedrooms > 0) {
-    // 3-zone layout: front (living), middle (kitchen/dining), rear (bedrooms)
-    frontDepth = buildD * 0.35;
-    midDepth = buildD * 0.25;
-    rearDepth = buildD * 0.40;
-  } else if (numBedrooms > 0 && numHalls > 0) {
-    // 2-zone: front (living/kitchen), rear (bedrooms)
-    frontDepth = buildD * 0.45;
-    midDepth = 0;
-    rearDepth = buildD * 0.55;
-  } else {
-    // Single zone
-    frontDepth = buildD;
-    midDepth = 0;
-    rearDepth = 0;
+  // Parking dimensions — ensure NBC minimum area (13.75 m²)
+  let parkingW = 0;
+  let parkingD = 0;
+  if (hasParking) {
+    parkingW = snap(Math.max(3.0, Math.min(effectiveW * config.parkingPct, 4.5)));
+    parkingD = snap(Math.max(NBC_MIN_AREA.parking / parkingW, 3.5));
   }
 
-  // Ensure minimum depths
-  frontDepth = Math.max(frontDepth, 3);
-  if (hasMidZone) midDepth = Math.max(midDepth, 2.8);
-  if (numBedrooms > 0) rearDepth = Math.max(rearDepth, 3.5);
+  // Zone depths — start from strategy proportions, enforce NBC minimums
+  const livingW = snap(effectiveW - parkingW);
 
-  // Normalize to fit buildD
-  const totalRaw = frontDepth + midDepth + rearDepth;
+  // Compute minimum depths per zone from NBC room minimums
+  const minFrontD = hasParking ? snap(Math.max(3.0, parkingD)) : snap(3.0);
+  const minMidD = (config.midPct > 0 && fp.kitchens > 0) ? snap(Math.max(2.5, NBC_MIN_AREA.kitchen / effectiveW * 2)) : 0;
+  const minRearD = fp.bedrooms > 0 ? snap(Math.max(3.5, NBC_MIN_AREA.bedroom / (effectiveW / Math.max(1, fp.bedrooms)) + 0.5)) : 0;
+
+  // Apply strategy proportions with NBC minimum enforcement
+  let frontD = snap(Math.max(buildD * config.frontPct, minFrontD));
+  let midD = config.midPct > 0 ? snap(Math.max(buildD * config.midPct, minMidD)) : 0;
+  let rearD = fp.bedrooms > 0 ? snap(Math.max(buildD * config.rearPct, minRearD)) : 0;
+
+  // Normalize if total exceeds buildD
+  const totalRaw = frontD + midD + rearD;
   if (totalRaw > buildD) {
     const scale = buildD / totalRaw;
-    frontDepth *= scale;
-    midDepth *= scale;
-    rearDepth *= scale;
+    frontD = snap(frontD * scale);
+    midD = snap(midD * scale);
+    rearD = snap(buildD - frontD - midD);
+  } else {
+    // Distribute excess to rear (bedrooms benefit most)
+    rearD = snap(buildD - frontD - midD);
   }
 
-  // Adjust for parking on ground floor
-  let parkingW = 0;
-  if (hasParking && !isStilt) {
-    parkingW = Math.max(3.0, Math.min(effectiveW * 0.4, 4.0)); // NBC: min 3.0m for door clearance
-  }
-
-  // --- FRONT ZONE: Living/Hall + Parking ---
+  // ===== FRONT ZONE =====
   let currentY = oy;
 
-  if (numHalls > 0) {
-    const livingW = effectiveW - parkingW;
-    for (let i = 0; i < numHalls; i++) {
-      const hw = i === 0 ? livingW : livingW;
-      rooms.push({
-        id: `f${floor}_hall_${i}`,
-        name: numHalls > 1 ? `Living ${i + 1}` : 'Living/Hall',
-        type: 'hall',
-        x: ox + (i === 0 ? 0 : 0),
-        y: currentY,
-        width: hw,
-        depth: frontDepth,
-        floor,
-      });
-
-      // BALCONY: Attach to living room on FRONT exterior wall
-      // Only if living room is on the front edge (road-facing)
-      if (i === 0 && frontDepth > 1.5) {
-        const balconyDepth = Math.min(1.5, frontDepth * 0.2);
-        // Place balcony as part of the living area on the front
-        // We'll note this as a balcony adjacent to living
-        rooms.push({
-          id: `f${floor}_balcony_living`,
-          name: 'Balcony',
-          type: 'balcony',
-          x: ox,
-          y: currentY - Math.min(balconyDepth, setbacks.front * 0.5 > 0.8 ? balconyDepth : 0),
-          // Place on exterior side of living — use front setback projection or side
-          width: Math.min(livingW * 0.5, 3),
-          depth: balconyDepth,
-          floor,
-        });
-        // Fix: place balcony properly. If front setback doesn't allow projection,
-        // place alongside living on the exterior side wall
-      }
-    }
-
-    if (hasParking && parkingW > 0) {
-      rooms.push({
-        id: `f${floor}_parking`,
-        name: 'Car Parking',
-        type: 'parking',
-        x: ox + effectiveW - parkingW,
-        y: currentY,
-        width: parkingW,
-        depth: frontDepth,
-        floor,
-      });
-    }
-  } else if (hasParking) {
+  if (config.mergeLivingDining && fp.halls > 0) {
+    // SPACE strategy: Living + Dining merged into one large room
     rooms.push({
-      id: `f${floor}_parking`,
-      name: 'Car Parking',
-      type: 'parking',
-      x: ox,
-      y: currentY,
-      width: effectiveW,
-      depth: frontDepth,
-      floor,
+      id: `f${floor}_hall_0`, name: 'Living + Dining', type: 'hall',
+      x: ox, y: currentY, width: livingW, depth: frontD, floor,
+    });
+  } else if (fp.halls > 0) {
+    // VASTU/BALANCED: separate living room
+    rooms.push({
+      id: `f${floor}_hall_0`, name: 'Living/Hall', type: 'hall',
+      x: ox, y: currentY, width: livingW, depth: frontD, floor,
     });
   }
 
-  currentY += frontDepth;
+  if (hasParking && parkingW > 0) {
+    rooms.push({
+      id: `f${floor}_parking`, name: 'Car Parking', type: 'parking',
+      x: snap(ox + livingW), y: currentY, width: parkingW, depth: frontD, floor,
+    });
+  }
 
-  // --- MIDDLE ZONE: Kitchen + Dining + Puja ---
-  if (hasMidZone && midDepth > 0) {
-    const kitchenW = hasKitchen ? (hasDining ? effectiveW * 0.45 : effectiveW * 0.5) : 0;
-    const diningW = hasDining ? (hasKitchen ? effectiveW * 0.35 : effectiveW * 0.5) : 0;
-    const pujaW = hasPuja ? Math.max(0, effectiveW - kitchenW - diningW) : 0;
+  currentY = snap(currentY + frontD);
 
-    // For Vastu: kitchen goes to SE, other rooms fill remaining space from ox
+  // ===== MID ZONE (Vastu/Balanced only — Space skips this) =====
+  if (midD > 0 && !config.kitchenInRear) {
+    const hasKitchen = fp.kitchens > 0;
+    const hasDining = fp.hasDining && !config.mergeLivingDining;
+    const hasPuja = fp.hasPuja && config.includePuja;
+
+    // Divide mid zone width among available rooms
+    let kitchenW = 0, diningW = 0, pujaW = 0;
+    const midRoomCount = (hasKitchen ? 1 : 0) + (hasDining ? 1 : 0) + (hasPuja ? 1 : 0);
+
+    if (midRoomCount > 0) {
+      if (hasKitchen && hasDining && hasPuja) {
+        kitchenW = snap(effectiveW * 0.40);
+        diningW = snap(effectiveW * 0.38);
+        pujaW = snap(effectiveW - kitchenW - diningW);
+      } else if (hasKitchen && hasDining) {
+        kitchenW = snap(effectiveW * 0.45);
+        diningW = snap(effectiveW - kitchenW);
+      } else if (hasKitchen) {
+        kitchenW = snap(effectiveW);
+      }
+    }
+
+    // Vastu placement: Kitchen in SE
     const kitchenOnRight = strategy === 'vastu' && (facing === 'North' || facing === 'East');
 
     if (kitchenOnRight) {
-      // Kitchen at right side (SE), dining + puja fill from left
-      let leftX = ox;
+      let midX = ox;
       if (hasDining) {
         rooms.push({
           id: `f${floor}_dining_0`, name: 'Dining', type: 'dining',
-          x: leftX, y: currentY, width: diningW, depth: midDepth, floor,
+          x: midX, y: currentY, width: diningW, depth: midD, floor,
         });
-        leftX += diningW;
+        midX = snap(midX + diningW);
       }
-      if (hasPuja && pujaW > 1.2) {
+      if (hasPuja && pujaW >= 1.2) {
         rooms.push({
           id: `f${floor}_puja_0`, name: 'Puja Room', type: 'puja',
-          x: leftX, y: currentY, width: pujaW, depth: midDepth, floor,
+          x: midX, y: currentY, width: pujaW, depth: midD, floor,
         });
+        midX = snap(midX + pujaW);
       }
       if (hasKitchen) {
         rooms.push({
           id: `f${floor}_kitchen_0`, name: 'Kitchen', type: 'kitchen',
-          x: ox + effectiveW - kitchenW, y: currentY, width: kitchenW, depth: midDepth, floor,
+          x: snap(ox + effectiveW - kitchenW), y: currentY, width: kitchenW, depth: midD, floor,
         });
       }
     } else {
-      // Standard left-to-right: kitchen, dining, puja
+      // Balanced: Kitchen left, Dining right
       let midX = ox;
       if (hasKitchen) {
-        const kx = strategy === 'vastu' ? getVastuX(ox, effectiveW, kitchenW, 'SE', facing) : midX;
         rooms.push({
           id: `f${floor}_kitchen_0`, name: 'Kitchen', type: 'kitchen',
-          x: kx, y: currentY, width: kitchenW, depth: midDepth, floor,
+          x: midX, y: currentY, width: kitchenW, depth: midD, floor,
         });
-        midX = kx + kitchenW;
+        midX = snap(midX + kitchenW);
       }
       if (hasDining) {
-        // Clamp dining to not exceed buildable width
-        const clampedDiningW = Math.min(diningW, ox + effectiveW - midX);
-        if (clampedDiningW > 1.5) {
+        const clampedW = snap(Math.min(diningW, ox + effectiveW - midX));
+        if (clampedW > 1.5) {
           rooms.push({
             id: `f${floor}_dining_0`, name: 'Dining', type: 'dining',
-            x: midX, y: currentY, width: clampedDiningW, depth: midDepth, floor,
+            x: midX, y: currentY, width: clampedW, depth: midD, floor,
           });
-          midX += clampedDiningW;
+          midX = snap(midX + clampedW);
         }
       }
-      if (hasPuja && pujaW > 1.2) {
-        const clampedPujaW = Math.min(pujaW, ox + effectiveW - midX);
-        if (clampedPujaW > 1.0) {
+      if (hasPuja && config.includePuja) {
+        const pw = snap(ox + effectiveW - midX);
+        if (pw >= 1.2) {
           rooms.push({
             id: `f${floor}_puja_0`, name: 'Puja Room', type: 'puja',
-            x: midX, y: currentY, width: clampedPujaW, depth: midDepth, floor,
+            x: midX, y: currentY, width: pw, depth: midD, floor,
           });
         }
       }
     }
 
-    currentY += midDepth;
+    currentY = snap(currentY + midD);
   }
 
-  // --- REAR ZONE: Bedrooms with attached toilets ---
-  if (numBedrooms > 0 && rearDepth > 0) {
-    // NBC minimum: bedroom ≥ 9.5 m², min width 3.0m
-    // Determine max columns that still allow 3.0m bedroom + 1.2m toilet
-    const MIN_BED_W = 3.0;  // NBC minimum habitable room width
-    const MIN_TOILET_W = 1.2;
-    const minColW = MIN_BED_W + MIN_TOILET_W; // 4.2m per bedroom column
-    const maxFitCols = Math.max(1, Math.floor(effectiveW / minColW));
-    const bedroomCols = Math.min(numBedrooms, maxFitCols);
-    const bedroomColW = effectiveW / bedroomCols;
-    // Toilet strip: carved from bedroom, sized proportionally but respecting minimums
-    const toiletW = Math.max(MIN_TOILET_W, Math.min(1.8, bedroomColW * 0.28));
-    const toiletD = Math.min(2.5, rearDepth * 0.45);
+  // ===== REAR ZONE: Bedrooms + Toilets (+ Kitchen for Space strategy) =====
+  if (fp.bedrooms > 0 && rearD > 0) {
+    const numBedrooms = fp.bedrooms;
 
-    let bedIdx = 0;
-    let bedroomRows = Math.ceil(numBedrooms / bedroomCols);
+    if (config.kitchenInRear && fp.kitchens > 0) {
+      // SPACE STRATEGY: Kitchen in rear zone alongside bedrooms
+      // Layout: [Kitchen | MasterBed + T1 | Bed2 + T2]
+      const kitchenW = snap(Math.max(2.1, effectiveW * 0.28));
+      const bedroomAreaW = snap(effectiveW - kitchenW);
 
-    for (let row = 0; row < bedroomRows; row++) {
-      const rowY = currentY + row * (rearDepth / bedroomRows);
-      const rowH = rearDepth / bedroomRows;
+      // Kitchen
+      rooms.push({
+        id: `f${floor}_kitchen_0`, name: 'Kitchen', type: 'kitchen',
+        x: ox, y: currentY, width: kitchenW, depth: rearD, floor,
+      });
 
-      for (let col = 0; col < bedroomCols && bedIdx < numBedrooms; col++) {
-        const isMaster = bedIdx === 0;
-        const bedName = isMaster ? 'Master Bedroom' : `Bedroom ${bedIdx + 1}`;
-        const bedType: RoomType = isMaster ? 'master_bedroom' : 'bedroom';
-        const bx = ox + col * bedroomColW;
+      // Bedrooms share remaining width
+      const bedroomCols = Math.min(numBedrooms, Math.max(1, Math.floor(bedroomAreaW / 3.0)));
+      const bedColW = snap(bedroomAreaW / bedroomCols);
+      const toiletW = snap(Math.max(1.2, Math.min(1.8, bedColW * 0.28)));
+      const toiletD = snap(Math.min(2.5, rearD * 0.40));
 
-        // Determine which side is EXTERIOR (plot boundary) vs INTERIOR
-        const isLeftEdge = col === 0;
-        const isRightEdge = col === bedroomCols - 1;
-        const isRearEdge = row === bedroomRows - 1;
+      for (let i = 0; i < Math.min(numBedrooms, bedroomCols); i++) {
+        const isMaster = i === 0;
+        const bx = snap(ox + kitchenW + i * bedColW);
+        const bedW = snap(bedColW - toiletW);
 
-        // Toilet goes on INTERIOR side (away from exterior walls)
-        // If bedroom is on left edge, toilet goes on right side of bedroom
-        // If bedroom is on right edge, toilet goes on left side of bedroom
-        const toiletOnRight = isLeftEdge || (!isRightEdge && col < bedroomCols / 2);
+        rooms.push({
+          id: `f${floor}_${isMaster ? 'master_bedroom' : 'bedroom'}_${i}`,
+          name: isMaster ? 'Master Bedroom' : `Bedroom ${i + 1}`,
+          type: isMaster ? 'master_bedroom' : 'bedroom',
+          x: bx, y: currentY, width: bedW, depth: rearD, floor,
+        });
 
-        const actualBedW = bedroomColW - toiletW;
+        rooms.push({
+          id: `f${floor}_toilet_${i}`,
+          name: `Toilet ${i + 1}`,
+          type: 'toilet',
+          x: snap(bx + bedW), y: snap(currentY + rearD - toiletD),
+          width: toiletW, depth: toiletD, floor,
+        });
+      }
+    } else {
+      // VASTU/BALANCED: Standard bedroom zone
+      const bedroomCols = Math.min(numBedrooms, Math.max(1, Math.floor(effectiveW / 3.5)));
+      const bedColW = snap(effectiveW / bedroomCols);
+      const toiletW = snap(Math.max(1.2, Math.min(1.8, bedColW * 0.28)));
+      const toiletD = snap(Math.min(2.5, rearD * 0.42));
 
-        if (toiletOnRight) {
-          // Bedroom on left, toilet on right (interior side)
-          rooms.push({
-            id: `f${floor}_${bedType}_${bedIdx}`,
-            name: bedName,
-            type: bedType,
-            x: bx,
-            y: rowY,
-            width: actualBedW,
-            depth: rowH,
-            floor,
-          });
-          // Toilet attached to bedroom (interior side)
-          rooms.push({
-            id: `f${floor}_toilet_${bedIdx}`,
-            name: `Toilet ${bedIdx + 1}`,
-            type: 'toilet',
-            x: bx + actualBedW,
-            y: rowY + rowH - toiletD,
-            width: toiletW,
-            depth: toiletD,
-            floor,
-          });
+      const bedroomRows = Math.ceil(numBedrooms / bedroomCols);
 
-          // BALCONY: Attach to BEDROOM on EXTERIOR wall side
-          // Balcony goes on the rear or side exterior wall adjacent to the bedroom
-          if (isRearEdge || isLeftEdge) {
-            const balconyDepth = Math.min(1.2, rowH * 0.2);
-            const balconyW = Math.min(actualBedW * 0.6, 2.5);
-            if (isRearEdge) {
-              // Balcony projects from bedroom toward rear
-              rooms.push({
-                id: `f${floor}_balcony_bed_${bedIdx}`,
-                name: 'Balcony',
-                type: 'balcony',
-                x: bx,
-                y: rowY + rowH - balconyDepth,
-                width: balconyW,
-                depth: balconyDepth,
-                floor,
-              });
-            }
+      let bedIdx = 0;
+      for (let row = 0; row < bedroomRows; row++) {
+        const rowY = snap(currentY + row * (rearD / bedroomRows));
+        const rowH = snap(rearD / bedroomRows);
+
+        for (let col = 0; col < bedroomCols && bedIdx < numBedrooms; col++) {
+          const isMaster = bedIdx === 0;
+          const bedType: RoomType = isMaster ? 'master_bedroom' : 'bedroom';
+          const bedName = isMaster ? 'Master Bedroom' : `Bedroom ${bedIdx + 1}`;
+          const bx = snap(ox + col * bedColW);
+
+          // Vastu: Master bed in SW
+          const isLeftEdge = col === 0;
+          const toiletOnRight = isLeftEdge || col < bedroomCols / 2;
+          const actualBedW = snap(bedColW - toiletW);
+
+          if (toiletOnRight) {
+            rooms.push({
+              id: `f${floor}_${bedType}_${bedIdx}`, name: bedName, type: bedType,
+              x: bx, y: rowY, width: actualBedW, depth: rowH, floor,
+            });
+            rooms.push({
+              id: `f${floor}_toilet_${bedIdx}`, name: `Toilet ${bedIdx + 1}`, type: 'toilet',
+              x: snap(bx + actualBedW), y: snap(rowY + rowH - toiletD),
+              width: toiletW, depth: toiletD, floor,
+            });
+          } else {
+            rooms.push({
+              id: `f${floor}_toilet_${bedIdx}`, name: `Toilet ${bedIdx + 1}`, type: 'toilet',
+              x: bx, y: snap(rowY + rowH - toiletD),
+              width: toiletW, depth: toiletD, floor,
+            });
+            rooms.push({
+              id: `f${floor}_${bedType}_${bedIdx}`, name: bedName, type: bedType,
+              x: snap(bx + toiletW), y: rowY, width: actualBedW, depth: rowH, floor,
+            });
           }
-        } else {
-          // Toilet on left (interior side), bedroom on right
-          rooms.push({
-            id: `f${floor}_toilet_${bedIdx}`,
-            name: `Toilet ${bedIdx + 1}`,
-            type: 'toilet',
-            x: bx,
-            y: rowY + rowH - toiletD,
-            width: toiletW,
-            depth: toiletD,
-            floor,
-          });
-          rooms.push({
-            id: `f${floor}_${bedType}_${bedIdx}`,
-            name: bedName,
-            type: bedType,
-            x: bx + toiletW,
-            y: rowY,
-            width: actualBedW,
-            depth: rowH,
-            floor,
-          });
 
-          // BALCONY attached to bedroom on exterior (right edge or rear)
-          if (isRearEdge || isRightEdge) {
-            const balconyDepth = Math.min(1.2, rowH * 0.2);
-            const balconyW = Math.min(actualBedW * 0.6, 2.5);
-            if (isRearEdge) {
-              rooms.push({
-                id: `f${floor}_balcony_bed_${bedIdx}`,
-                name: 'Balcony',
-                type: 'balcony',
-                x: bx + toiletW,
-                y: rowY + rowH - balconyDepth,
-                width: balconyW,
-                depth: balconyDepth,
-                floor,
-              });
-            }
-          }
+          bedIdx++;
         }
-
-        bedIdx++;
       }
     }
   }
 
-  // --- STAIRCASE: near entrance/center ---
-  if (isMultiFloor) {
-    const stairDepth = Math.min(5, buildD * 0.35);
+  // ===== STAIRCASE STRIP =====
+  if (isMultiFloor && staircaseW > 0) {
+    const stairDepth = snap(Math.min(5, buildD * 0.40));
     rooms.push({
-      id: `f${floor}_staircase`,
-      name: 'Staircase',
-      type: 'staircase',
-      x: ox + effectiveW,
-      y: oy,
-      width: staircaseW,
-      depth: stairDepth,
-      floor,
+      id: `f${floor}_staircase`, name: 'Staircase', type: 'staircase',
+      x: snap(ox + effectiveW), y: oy, width: staircaseW, depth: stairDepth, floor,
     });
 
-    // Space below staircase: Store/Utility capped at reasonable size
-    const remainBelowStair = buildD - stairDepth;
-    if (remainBelowStair > 1.5) {
-      // Cap store at 3m depth max (~7.5 m²), rest becomes passage
-      const storeDepth = Math.min(3.0, remainBelowStair);
+    const remainBelow = snap(buildD - stairDepth);
+    if (remainBelow > 1.5) {
+      const storeD = snap(Math.min(3.0, remainBelow));
       rooms.push({
-        id: `f${floor}_utility`,
-        name: floor === 0 ? 'Store' : 'Utility',
+        id: `f${floor}_utility`, name: floor === 0 ? 'Store' : 'Utility',
         type: floor === 0 ? 'store' : 'utility',
-        x: ox + effectiveW,
-        y: oy + stairDepth,
-        width: staircaseW,
-        depth: storeDepth,
-        floor,
+        x: snap(ox + effectiveW), y: snap(oy + stairDepth),
+        width: staircaseW, depth: storeD, floor,
       });
-      // If remaining space below store, add passage/circulation
-      const passageDepth = remainBelowStair - storeDepth;
-      if (passageDepth > 0.8) {
+
+      const passD = snap(remainBelow - storeD);
+      if (passD > 0.8) {
         rooms.push({
-          id: `f${floor}_passage_stair`,
-          name: 'Passage',
-          type: 'passage',
-          x: ox + effectiveW,
-          y: oy + stairDepth + storeDepth,
-          width: staircaseW,
-          depth: passageDepth,
-          floor,
+          id: `f${floor}_passage_stair`, name: 'Passage', type: 'passage',
+          x: snap(ox + effectiveW), y: snap(oy + stairDepth + storeD),
+          width: staircaseW, depth: passD, floor,
         });
       }
     }
   }
 
-  // --- Handle remaining rooms for middle zone if no separate mid zone ---
-  if (!hasMidZone || midDepth === 0) {
-    // Kitchen and dining placed adjacent to hall in front zone
+  // ===== HANDLE MISSING MID-ZONE ROOMS (fallback) =====
+  if (config.midPct === 0 && !config.kitchenInRear) {
+    // Kitchen/dining not placed yet — place adjacent to hall in front zone
     let fillX = ox;
     const hallRoom = rooms.find(r => r.type === 'hall');
-    if (hallRoom) {
-      fillX = hallRoom.x + hallRoom.width;
-    }
-    const remainW = ox + effectiveW - fillX;
+    if (hallRoom) fillX = snap(hallRoom.x + hallRoom.width);
+    const remainW = snap(ox + effectiveW - fillX);
 
-    if (fp.kitchens > 0 && !rooms.some(r => r.type === 'kitchen')) {
-      const kw = hasDining ? remainW * 0.55 : remainW;
-      if (kw > 1.8) {
-        rooms.push({
-          id: `f${floor}_kitchen_0`,
-          name: 'Kitchen',
-          type: 'kitchen',
-          x: fillX,
-          y: oy,
-          width: kw,
-          depth: frontDepth,
-          floor,
-        });
-        fillX += kw;
-      }
+    if (fp.kitchens > 0 && !rooms.some(r => r.type === 'kitchen') && remainW > 1.8) {
+      const kw = snap(fp.hasDining ? remainW * 0.55 : remainW);
+      rooms.push({
+        id: `f${floor}_kitchen_0`, name: 'Kitchen', type: 'kitchen',
+        x: fillX, y: oy, width: kw, depth: frontD, floor,
+      });
+      fillX = snap(fillX + kw);
     }
-    if (fp.hasDining && !rooms.some(r => r.type === 'dining')) {
-      const dw = ox + effectiveW - fillX;
+    if (fp.hasDining && !config.mergeLivingDining && !rooms.some(r => r.type === 'dining')) {
+      const dw = snap(ox + effectiveW - fillX);
       if (dw > 1.5) {
         rooms.push({
-          id: `f${floor}_dining_0`,
-          name: 'Dining',
-          type: 'dining',
-          x: fillX,
-          y: oy,
-          width: dw,
-          depth: frontDepth,
-          floor,
-        });
-      }
-    }
-    if (fp.hasPuja && !rooms.some(r => r.type === 'puja')) {
-      // Tuck puja near kitchen or entrance
-      const lastRoom = rooms[rooms.length - 1];
-      if (lastRoom) {
-        const pw = Math.min(2, effectiveW * 0.15);
-        const pd = Math.min(2.5, frontDepth * 0.4);
-        rooms.push({
-          id: `f${floor}_puja_0`,
-          name: 'Puja Room',
-          type: 'puja',
-          x: lastRoom.x + lastRoom.width - pw,
-          y: lastRoom.y + lastRoom.depth - pd,
-          width: pw,
-          depth: pd,
-          floor,
+          id: `f${floor}_dining_0`, name: 'Dining', type: 'dining',
+          x: fillX, y: oy, width: dw, depth: frontD, floor,
         });
       }
     }
   }
 
-  // --- BOUNDARY CLAMP: Ensure no room extends beyond buildable area ---
-  const maxX = ox + buildW; // full width including staircase zone
-  const maxY = oy + buildD;
+  // ===== BOUNDARY CLAMP =====
+  const maxX = snap(ox + buildW);
+  const maxY = snap(oy + buildD);
   for (const room of rooms) {
-    // Clamp X: room must not extend past right boundary
-    if (room.x + room.width > maxX + 0.01) {
-      room.x = Math.max(ox, maxX - room.width);
+    if (room.x < ox) room.x = ox;
+    if (room.y < oy) room.y = oy;
+    if (room.x + room.width > maxX + 0.02) {
+      room.width = snap(maxX - room.x);
     }
-    // Clamp X: room must not start before left boundary
-    if (room.x < ox - 0.01) {
-      room.x = ox;
+    if (room.y + room.depth > maxY + 0.02) {
+      room.depth = snap(maxY - room.y);
     }
-    // Clamp Y: room must not extend past rear boundary
-    if (room.y + room.depth > maxY + 0.01) {
-      room.y = Math.max(oy, maxY - room.depth);
-    }
-    // Clamp Y: room must not start before front boundary
-    if (room.y < oy - 0.01) {
-      room.y = oy;
-    }
-    // Final safety: shrink if still overflows
-    if (room.x + room.width > maxX + 0.01) {
-      room.width = maxX - room.x;
-    }
-    if (room.y + room.depth > maxY + 0.01) {
-      room.depth = maxY - room.y;
-    }
+    // Ensure positive dimensions
+    room.width = Math.max(0.5, room.width);
+    room.depth = Math.max(0.5, room.depth);
+    // Final snap
+    room.x = snap(room.x);
+    room.y = snap(room.y);
+    room.width = snap(room.width);
+    room.depth = snap(room.depth);
   }
 
-  // --- MINIMUM SIZE ENFORCEMENT: NBC requires habitable rooms ≥ 2.4m width ---
-  // Expand undersized rooms by borrowing from adjacent rooms
-  const MIN_WIDTHS: Record<string, number> = {
-    master_bedroom: 3.0, bedroom: 3.0, hall: 3.0,
-    kitchen: 2.4, dining: 2.4, toilet: 1.2, store: 1.5,
-    puja: 1.2, utility: 1.2, staircase: 2.0, passage: 1.0,
-    parking: 3.0, balcony: 1.0, entrance: 1.0,
-  };
-  for (const room of rooms) {
-    const minW = MIN_WIDTHS[room.type] || 2.4;
-    if (room.width < minW && room.type !== 'balcony' && room.type !== 'passage') {
-      // Try to expand: first check if there's space within boundary
-      const spaceRight = maxX - (room.x + room.width);
-      if (spaceRight >= minW - room.width) {
-        room.width = minW;
-      } else {
-        // Shift left and expand
-        const deficit = minW - room.width;
-        room.x = Math.max(ox, room.x - deficit / 2);
-        room.width = Math.min(minW, maxX - room.x);
-      }
-    }
-    // Also enforce minimum depth for habitable rooms
-    if (room.depth < 2.4 && ['master_bedroom', 'bedroom', 'hall', 'kitchen', 'dining'].includes(room.type)) {
-      const spaceDown = maxY - (room.y + room.depth);
-      if (spaceDown >= 2.4 - room.depth) {
-        room.depth = 2.4;
-      }
-    }
-  }
-
-  // --- Final balcony cleanup: remove any balcony not adjacent to bedroom/living ---
-  return rooms.filter(room => {
-    if (room.type !== 'balcony') return true;
-    // Check adjacency to a bedroom or hall
-    return rooms.some(other => {
-      if (other.type !== 'hall' && other.type !== 'bedroom' && other.type !== 'master_bedroom') return false;
-      return roomsAdjacent(room, other);
-    });
-  });
-}
-
-/** Check if two rooms share a wall (adjacent within 0.15m tolerance) */
-function roomsAdjacent(a: Room, b: Room): boolean {
-  const tol = 0.15;
-  // Horizontal overlap
-  const overlapX = Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x);
-  // Vertical overlap
-  const overlapY = Math.min(a.y + a.depth, b.y + b.depth) - Math.max(a.y, b.y);
-
-  // Shared vertical wall (left-right adjacency)
-  if (overlapY > tol) {
-    if (Math.abs((a.x + a.width) - b.x) < tol || Math.abs((b.x + b.width) - a.x) < tol) return true;
-  }
-  // Shared horizontal wall (top-bottom adjacency)
-  if (overlapX > tol) {
-    if (Math.abs((a.y + a.depth) - b.y) < tol || Math.abs((b.y + b.depth) - a.y) < tol) return true;
-  }
-  return false;
-}
-
-/** Vastu-based X position helper */
-function getVastuX(ox: number, totalW: number, roomW: number, zone: string, facing: Facing): number {
-  // SE = right side for North/East facing, left side for South/West
-  if (zone === 'SE') {
-    if (facing === 'North' || facing === 'East') return ox + totalW - roomW;
-    return ox;
-  }
-  if (zone === 'SW') {
-    if (facing === 'North' || facing === 'West') return ox;
-    return ox + totalW - roomW;
-  }
-  return ox; // default
+  return rooms;
 }
 
 /**
@@ -673,22 +491,22 @@ function getVastuX(ox: number, totalW: number, roomW: number, zone: string, faci
  */
 function placeColumns(rooms: Room[], buildW: number, buildD: number, setbacks: Setbacks): Column[] {
   const columns: Column[] = [];
-  const ox = setbacks.left;
-  const oy = setbacks.front;
+  const ox = snap(setbacks.left);
+  const oy = snap(setbacks.front);
 
   const xCoords = new Set<number>();
   const yCoords = new Set<number>();
 
   xCoords.add(ox);
-  xCoords.add(ox + buildW);
+  xCoords.add(snap(ox + buildW));
   yCoords.add(oy);
-  yCoords.add(oy + buildD);
+  yCoords.add(snap(oy + buildD));
 
   for (const room of rooms) {
-    xCoords.add(round2(room.x));
-    xCoords.add(round2(room.x + room.width));
-    yCoords.add(round2(room.y));
-    yCoords.add(round2(room.y + room.depth));
+    xCoords.add(snap(room.x));
+    xCoords.add(snap(room.x + room.width));
+    yCoords.add(snap(room.y));
+    yCoords.add(snap(room.y + room.depth));
   }
 
   const xs = Array.from(xCoords).sort((a, b) => a - b);
@@ -701,19 +519,19 @@ function placeColumns(rooms: Room[], buildW: number, buildD: number, setbacks: S
     for (const y of finalYs) {
       const isCorner = rooms.some(
         (r) =>
-          (Math.abs(r.x - x) < 0.05 || Math.abs(r.x + r.width - x) < 0.05) &&
-          (Math.abs(r.y - y) < 0.05 || Math.abs(r.y + r.depth - y) < 0.05)
+          (Math.abs(snap(r.x) - x) < 0.06 || Math.abs(snap(r.x + r.width) - x) < 0.06) &&
+          (Math.abs(snap(r.y) - y) < 0.06 || Math.abs(snap(r.y + r.depth) - y) < 0.06)
       );
 
       const isBoundaryCorner =
-        (Math.abs(x - ox) < 0.05 || Math.abs(x - (ox + buildW)) < 0.05) &&
-        (Math.abs(y - oy) < 0.05 || Math.abs(y - (oy + buildD)) < 0.05);
+        (Math.abs(x - ox) < 0.06 || Math.abs(x - snap(ox + buildW)) < 0.06) &&
+        (Math.abs(y - oy) < 0.06 || Math.abs(y - snap(oy + buildD)) < 0.06);
 
       const isEdge =
-        Math.abs(x - ox) < 0.05 ||
-        Math.abs(x - (ox + buildW)) < 0.05 ||
-        Math.abs(y - oy) < 0.05 ||
-        Math.abs(y - (oy + buildD)) < 0.05;
+        Math.abs(x - ox) < 0.06 ||
+        Math.abs(x - snap(ox + buildW)) < 0.06 ||
+        Math.abs(y - oy) < 0.06 ||
+        Math.abs(y - snap(oy + buildD)) < 0.06;
 
       if (isCorner || isBoundaryCorner || isEdge) {
         const exists = columns.some((c) => Math.abs(c.x - x) < 0.1 && Math.abs(c.y - y) < 0.1);
@@ -724,11 +542,12 @@ function placeColumns(rooms: Room[], buildW: number, buildD: number, setbacks: S
     }
   }
 
+  // Ensure 4 boundary corners always have columns
   const corners = [
     { x: ox, y: oy },
-    { x: ox + buildW, y: oy },
-    { x: ox, y: oy + buildD },
-    { x: ox + buildW, y: oy + buildD },
+    { x: snap(ox + buildW), y: oy },
+    { x: ox, y: snap(oy + buildD) },
+    { x: snap(ox + buildW), y: snap(oy + buildD) },
   ];
   for (const corner of corners) {
     const exists = columns.some(
@@ -750,7 +569,7 @@ function addIntermediatePoints(sorted: number[], maxSpan: number): number[] {
       const n = Math.ceil(gap / maxSpan);
       const step = gap / n;
       for (let j = 1; j < n; j++) {
-        result.push(round2(sorted[i - 1] + step * j));
+        result.push(snap(sorted[i - 1] + step * j));
       }
     }
     result.push(sorted[i]);

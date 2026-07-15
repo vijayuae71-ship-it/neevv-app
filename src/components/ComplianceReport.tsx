@@ -101,6 +101,13 @@ export const ComplianceReport: React.FC<Props> = ({ layout, vastuEnabled, facing
     setTimeout(() => {
       try {
         const optimized = autoFixLayout(layout, facing as any);
+        if (!optimized) {
+          // Fail-closed: auto-fix returned null, show error
+          console.error('Auto-fix returned null — cannot proceed');
+          setCostPreview(null);
+          setFixing(false);
+          return;
+        }
         const floors = numFloors || 1;
         const beforeCost = boqTotal || calculateBOQ(layout, floors, customRates).totalCost;
         const afterBOQ = calculateBOQ(optimized, floors, customRates);
