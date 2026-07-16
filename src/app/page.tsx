@@ -145,6 +145,10 @@ export default function HomePage() {
   const handleAutoFix = (currentLayout: Layout) => {
     if (!requirements) return;
     const optimized = autoFixLayout(currentLayout, requirements.facing);
+    if (!optimized) {
+      // Auto-fix could not converge to 0 NBC errors
+      return;
+    }
     setSelectedLayout(optimized);
     setMotherLayoutLocked(false);
     // Update layouts array with the optimized version
