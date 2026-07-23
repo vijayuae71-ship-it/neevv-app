@@ -3,28 +3,36 @@ import { getRoomZone, calculateVastuScore, VASTU_IDEAL_ZONES, VASTU_TABOO } from
 import { checkNBCCompliance } from './nbcCompliance';
 
 // ============================================================================
-// VASTU & NBC AUTO-FIX ENGINE v2
-// Multi-pass optimization: swap rooms for Vastu, expand rooms for NBC
-// More aggressive expansion (30% per pass) to converge within 5 passes
+// VASTU & NBC AUTO-FIX ENGINE v3
+// Multi-phase: swap for Vastu → expand for NBC → REMOVE non-essential rooms
+// when buildable area is physically too small for all rooms at NBC minimums.
+// Phase 4: re-run expansion after room removal to fill freed space.
 // ============================================================================
 
-// NBC minimum areas (m²)
 const NBC_MIN_AREAS: Record<string, number> = {
   master_bedroom: 9.5, bedroom: 9.5, hall: 9.5, kitchen: 5.0,
   toilet: 2.8, dining: 7.5, parking: 13.75, staircase: 3.0,
-  puja: 2.0, store: 2.0, utility: 2.0,
+  puja: 2.0, store: 2.0, utility: 2.0, passage: 1.0,
 };
 
-// NBC minimum widths (m)
 const NBC_MIN_WIDTHS: Record<string, number> = {
   master_bedroom: 2.7, bedroom: 2.7, hall: 2.7, kitchen: 1.8,
   toilet: 1.2, dining: 2.4, parking: 3.0, passage: 1.0,
   puja: 1.2, staircase: 1.0,
 };
 
+// Rooms removable when plot is over-programmed (most dispensable first)
+const REMOVAL_PRIORITY: string[] = [
+  'passage', 'store', 'utility', 'puja', 'dining',
+];
+
 function deepClone<T>(obj: T): T {
   return JSON.parse(JSON.stringify(obj));
 }
+
+// ---------------------------------------------------------------------------
+// Vastu helpers
+// ---------------------------------------------------------------------------
 
 function vastuRoomScore(room: Room, plotWidthM: number, plotDepthM: number, facing: Facing): number {
   const zone = getRoomZone(room, plotWidthM, plotDepthM, facing);
@@ -73,6 +81,10 @@ function optimizeFloorVastu(rooms: Room[], plotWidthM: number, plotDepthM: numbe
   return rooms;
 }
 
+// ---------------------------------------------------------------------------
+// NBC area / width fix helpers
+// ---------------------------------------------------------------------------
+
 function findLargestAdjacentRoom(target: Room, allRooms: Room[]): Room | null {
   const tolerance = 0.3;
   const sameFloor = allRooms.filter(r => r.floor === target.floor && r.id !== target.id);
@@ -95,11 +107,7 @@ function findLargestAdjacentRoom(target: Room, allRooms: Room[]): Room | null {
   });
 }
 
-/**
- * Fix NBC minimum area/width issues — MORE AGGRESSIVE (up to 40% of neighbor per pass)
- */
 function fixNBCMinimumAreas(rooms: Room[]): Room[] {
-  // Sort rooms by deficit (largest deficit first) for priority fixing
   const roomsWithDeficit = rooms
     .map(r => ({ room: r, deficit: (NBC_MIN_AREAS[r.type] || 0) - r.width * r.depth }))
     .filter(r => r.deficit > 0)
@@ -118,7 +126,6 @@ function fixNBCMinimumAreas(rooms: Room[]): Room[] {
     const neighborArea = neighbor.width * neighbor.depth;
     const neighborMinArea = NBC_MIN_AREAS[neighbor.type] || 2.0;
 
-    // Allow taking up to 40% of neighbor (was 30%)
     if (neighborArea - deficit < neighborMinArea * 0.9) continue;
 
     const isHorizAdj =
@@ -185,43 +192,140 @@ function fixNBCMinimumAreas(rooms: Room[]): Room[] {
   return rooms;
 }
 
+// ---------------------------------------------------------------------------
+// ROOM REMOVAL — drop non-essential rooms when buildable area is insufficient
+// ---------------------------------------------------------------------------
+
+function totalNBCMinForFloor(rooms: Room[]): number {
+  return rooms.reduce((sum, r) => sum + (NBC_MIN_AREAS[r.type] || 1.0), 0);
+}
+
 /**
- * Auto-fix layout — 5-pass multi-pass loop (was 3).
- * Fail-closed: if error occurs, returns null (caller must handle).
+ * Remove non-essential rooms from a single floor to bring total NBC minimums
+ * within buildable area. Expands adjacent rooms to fill gaps after removal.
+ */
+function removeNonEssentialFromFloor(rooms: Room[], buildableArea: number): Room[] {
+  const usableArea = buildableArea * 0.95;
+  let totalMin = totalNBCMinForFloor(rooms);
+
+  if (totalMin <= usableArea) return rooms;
+
+  const result = [...rooms];
+
+  for (const removeType of REMOVAL_PRIORITY) {
+    if (totalMin <= usableArea) break;
+
+    const idx = result.findIndex(r => r.type === removeType);
+    if (idx === -1) continue;
+
+    const removed = result[idx];
+    const removedMin = NBC_MIN_AREAS[removed.type] || (removed.width * removed.depth);
+
+    const neighbor = findLargestAdjacentRoom(removed, result);
+
+    result.splice(idx, 1);
+
+    if (neighbor) {
+      const isHorizAdj =
+        Math.abs(neighbor.x - (removed.x + removed.width)) < 0.3 ||
+        Math.abs(removed.x - (neighbor.x + neighbor.width)) < 0.3;
+
+      if (isHorizAdj) {
+        if (neighbor.x > removed.x) {
+          neighbor.x = removed.x;
+          neighbor.width += removed.width;
+        } else {
+          neighbor.width += removed.width;
+        }
+      } else {
+        if (neighbor.y > removed.y) {
+          neighbor.y = removed.y;
+          neighbor.depth += removed.depth;
+        } else {
+          neighbor.depth += removed.depth;
+        }
+      }
+
+      if (removeType === 'dining' && neighbor.type === 'hall') {
+        neighbor.name = 'Living/Dining';
+      }
+    }
+
+    totalMin -= removedMin;
+  }
+
+  return result;
+}
+
+// ---------------------------------------------------------------------------
+// MAIN AUTO-FIX ENTRY POINT
+// ---------------------------------------------------------------------------
+
+/**
+ * Auto-fix layout — 4-phase approach:
+ *  Phase 1: Vastu room swaps
+ *  Phase 2: NBC expansion (borrow space from neighbors) — 5 passes
+ *  Phase 3: Room removal when buildable area is physically insufficient
+ *  Phase 4: Re-run NBC expansion after removal — 5 more passes
+ *
+ * Fail-closed: returns null on any error.
  */
 export function autoFixLayout(layout: Layout, facing: Facing): Layout | null {
   try {
     const optimized = deepClone(layout);
     const { plotWidthM, plotDepthM } = optimized;
-    const MAX_PASSES = 5;
+    const buildableW = optimized.buildableWidthM || plotWidthM;
+    const buildableD = optimized.buildableDepthM || plotDepthM;
+    const buildableArea = buildableW * buildableD;
+    const plotArea = plotWidthM * plotDepthM;
 
-    for (let pass = 0; pass < MAX_PASSES; pass++) {
-      // Step 1: Vastu optimization
-      for (const floorLayout of optimized.floors) {
-        floorLayout.rooms = optimizeFloorVastu(floorLayout.rooms, plotWidthM, plotDepthM, facing);
+    // ===== PHASE 1 & 2: Vastu swap + NBC expansion (5 passes) =====
+    for (let pass = 0; pass < 5; pass++) {
+      for (const fl of optimized.floors) {
+        fl.rooms = optimizeFloorVastu(fl.rooms, plotWidthM, plotDepthM, facing);
       }
-
-      // Step 2: NBC area/width fixes
-      for (const floorLayout of optimized.floors) {
-        floorLayout.rooms = fixNBCMinimumAreas(floorLayout.rooms);
+      for (const fl of optimized.floors) {
+        fl.rooms = fixNBCMinimumAreas(fl.rooms);
       }
-
-      // Step 3: Check if we're done
       const passRooms = optimized.floors.flatMap(f => f.rooms);
-      const passNBC = checkNBCCompliance(passRooms, plotWidthM * plotDepthM, optimized.builtUpAreaSqM, optimized.floors.length);
-      const nbcErrors = passNBC.issues.filter(i => i.severity === 'error');
-      if (nbcErrors.length === 0) break;
+      const passNBC = checkNBCCompliance(passRooms, plotArea, optimized.builtUpAreaSqM, optimized.floors.length);
+      if (passNBC.issues.filter(i => i.severity === 'error').length === 0) break;
     }
 
-    // Final recalculation
-    const allRooms = optimized.floors.flatMap(f => f.rooms);
-    const plotArea = plotWidthM * plotDepthM;
+    // ===== PHASE 3: Room removal if still NBC errors =====
+    let allRooms = optimized.floors.flatMap(f => f.rooms);
+    let nbcResult = checkNBCCompliance(allRooms, plotArea, optimized.builtUpAreaSqM, optimized.floors.length);
+    const areaErrors = nbcResult.issues.filter(i =>
+      i.severity === 'error' && i.issue.includes('below NBC minimum')
+    );
+
+    if (areaErrors.length > 0) {
+      for (const fl of optimized.floors) {
+        fl.rooms = removeNonEssentialFromFloor(fl.rooms, buildableArea);
+      }
+
+      // ===== PHASE 4: Re-run expansion after room removal =====
+      for (let pass = 0; pass < 5; pass++) {
+        for (const fl of optimized.floors) {
+          fl.rooms = optimizeFloorVastu(fl.rooms, plotWidthM, plotDepthM, facing);
+        }
+        for (const fl of optimized.floors) {
+          fl.rooms = fixNBCMinimumAreas(fl.rooms);
+        }
+        const passRooms = optimized.floors.flatMap(f => f.rooms);
+        const passNBC = checkNBCCompliance(passRooms, plotArea, optimized.builtUpAreaSqM, optimized.floors.length);
+        if (passNBC.issues.filter(i => i.severity === 'error').length === 0) break;
+      }
+    }
+
+    // ===== FINAL RECALCULATION =====
+    allRooms = optimized.floors.flatMap(f => f.rooms);
 
     const vastuResult = calculateVastuScore(allRooms, plotWidthM, plotDepthM, facing);
     optimized.vastuScore = vastuResult.score;
     optimized.vastuDetails = vastuResult.details;
 
-    const nbcResult = checkNBCCompliance(allRooms, plotArea, optimized.builtUpAreaSqM, optimized.floors.length);
+    nbcResult = checkNBCCompliance(allRooms, plotArea, optimized.builtUpAreaSqM, optimized.floors.length);
     optimized.nbcCompliant = nbcResult.compliant;
     optimized.nbcIssues = nbcResult.issues;
 
@@ -234,7 +338,6 @@ export function autoFixLayout(layout: Layout, facing: Facing): Layout | null {
 
     return optimized;
   } catch (error) {
-    // Fail-closed: return null on error, never pass original as "fixed"
     console.error('AutoFix failed:', error);
     return null;
   }

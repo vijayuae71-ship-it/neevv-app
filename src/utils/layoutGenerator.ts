@@ -34,12 +34,12 @@ const NBC_MIN_WIDTH: Record<string, number> = {
 
 // Strategy-specific zone configurations
 interface ZoneConfig {
-  frontPct: number;  // front zone depth as fraction of buildD
-  midPct: number;    // mid zone depth (0 = no mid zone)
-  rearPct: number;   // rear zone depth
-  parkingPct: number; // parking width as fraction of effectiveW
-  kitchenInRear: boolean; // kitchen moves to rear zone
-  mergeLivingDining: boolean; // combine living + dining in front
+  frontPct: number;
+  midPct: number;
+  rearPct: number;
+  parkingPct: number;
+  kitchenInRear: boolean;
+  mergeLivingDining: boolean;
   includePuja: boolean;
 }
 
@@ -57,6 +57,63 @@ const STRATEGY_CONFIG: Record<string, ZoneConfig> = {
     parkingPct: 0.38, kitchenInRear: false, mergeLivingDining: false, includePuja: true,
   },
 };
+
+/**
+ * Calculate total NBC minimum area needed for a floor program.
+ * Used to check if a plot can physically fit all requested rooms.
+ */
+function calcMinAreaNeeded(
+  fp: FloorProgram,
+  hasParking: boolean,
+  isMultiFloor: boolean
+): number {
+  let total = 0;
+  total += fp.halls * NBC_MIN_AREA.hall;
+  total += fp.bedrooms * NBC_MIN_AREA.bedroom;
+  total += fp.kitchens * NBC_MIN_AREA.kitchen;
+  total += Math.min(fp.bedrooms, 2) * NBC_MIN_AREA.toilet;
+  if (fp.hasDining) total += NBC_MIN_AREA.dining;
+  if (fp.hasPuja) total += NBC_MIN_AREA.puja;
+  if (hasParking) total += NBC_MIN_AREA.parking;
+  if (isMultiFloor) total += NBC_MIN_AREA.staircase + NBC_MIN_AREA.store;
+  return total;
+}
+
+/**
+ * Adjust floor program for small plots that cannot physically fit all rooms.
+ * Drops non-essential rooms in priority order: puja → dining (merge into hall).
+ * Returns a new FloorProgram; never mutates the original.
+ */
+function fitFloorProgram(
+  fp: FloorProgram,
+  buildableArea: number,
+  hasParking: boolean,
+  isMultiFloor: boolean
+): FloorProgram {
+  const usable = buildableArea * 0.92; // 8% for wall thicknesses
+  const adj: FloorProgram = { ...fp };
+
+  if (calcMinAreaNeeded(adj, hasParking, isMultiFloor) <= usable) return adj;
+
+  // Drop puja first
+  if (adj.hasPuja) {
+    adj.hasPuja = false;
+    if (calcMinAreaNeeded(adj, hasParking, isMultiFloor) <= usable) return adj;
+  }
+
+  // Drop dining — hall becomes "Living/Dining"
+  if (adj.hasDining) {
+    adj.hasDining = false;
+    if (calcMinAreaNeeded(adj, hasParking, isMultiFloor) <= usable) return adj;
+  }
+
+  // If still over, cap bedrooms per floor (keep at least 1)
+  while (adj.bedrooms > 1 && calcMinAreaNeeded(adj, hasParking, isMultiFloor) > usable) {
+    adj.bedrooms--;
+  }
+
+  return adj;
+}
 
 export function generateLayouts(req: ProjectRequirements): Layout[] {
   const plotW = req.plotWidthFt * FT_TO_M;
@@ -87,8 +144,11 @@ export function generateLayouts(req: ProjectRequirements): Layout[] {
       const hasParking = isGround && req.parkingType !== 'None';
       const isStilt = isGround && req.parkingType === 'Stilt';
 
+      // Fit floor program to buildable area
+      const adjFp = fitFloorProgram(fp, buildW * buildD, hasParking, req.floors.length > 1);
+
       const rooms = placeRoomsForStrategy(
-        fp, buildW, buildD, setbacks, fi,
+        adjFp, buildW, buildD, setbacks, fi,
         strat.id, req.facing, isStilt,
         req.floors.length > 1, hasParking
       );
@@ -179,12 +239,10 @@ function placeRoomsForStrategy(
   // Zone depths — start from strategy proportions, enforce NBC minimums
   const livingW = snap(effectiveW - parkingW);
 
-  // Compute minimum depths per zone from NBC room minimums
   const minFrontD = hasParking ? snap(Math.max(3.0, parkingD)) : snap(3.0);
   const minMidD = (config.midPct > 0 && fp.kitchens > 0) ? snap(Math.max(2.5, NBC_MIN_AREA.kitchen / effectiveW * 2)) : 0;
   const minRearD = fp.bedrooms > 0 ? snap(Math.max(3.5, NBC_MIN_AREA.bedroom / (effectiveW / Math.max(1, fp.bedrooms)) + 0.5)) : 0;
 
-  // Apply strategy proportions with NBC minimum enforcement
   let frontD = snap(Math.max(buildD * config.frontPct, minFrontD));
   let midD = config.midPct > 0 ? snap(Math.max(buildD * config.midPct, minMidD)) : 0;
   let rearD = fp.bedrooms > 0 ? snap(Math.max(buildD * config.rearPct, minRearD)) : 0;
@@ -197,23 +255,19 @@ function placeRoomsForStrategy(
     midD = snap(midD * scale);
     rearD = snap(buildD - frontD - midD);
   } else {
-    // Distribute excess to rear (bedrooms benefit most)
     rearD = snap(buildD - frontD - midD);
   }
 
   // ===== FRONT ZONE =====
   let currentY = oy;
 
-  if (config.mergeLivingDining && fp.halls > 0) {
-    // SPACE strategy: Living + Dining merged into one large room
+  // Determine if we should merge living+dining
+  const mergeLivDin = config.mergeLivingDining || (!fp.hasDining && fp.halls > 0);
+  const hallLabel = mergeLivDin ? 'Living/Dining' : 'Living/Hall';
+
+  if (fp.halls > 0) {
     rooms.push({
-      id: `f${floor}_hall_0`, name: 'Living + Dining', type: 'hall',
-      x: ox, y: currentY, width: livingW, depth: frontD, floor,
-    });
-  } else if (fp.halls > 0) {
-    // VASTU/BALANCED: separate living room
-    rooms.push({
-      id: `f${floor}_hall_0`, name: 'Living/Hall', type: 'hall',
+      id: `f${floor}_hall_0`, name: hallLabel, type: 'hall',
       x: ox, y: currentY, width: livingW, depth: frontD, floor,
     });
   }
@@ -230,10 +284,9 @@ function placeRoomsForStrategy(
   // ===== MID ZONE (Vastu/Balanced only — Space skips this) =====
   if (midD > 0 && !config.kitchenInRear) {
     const hasKitchen = fp.kitchens > 0;
-    const hasDining = fp.hasDining && !config.mergeLivingDining;
+    const hasDining = fp.hasDining && !mergeLivDin;
     const hasPuja = fp.hasPuja && config.includePuja;
 
-    // Divide mid zone width among available rooms
     let kitchenW = 0, diningW = 0, pujaW = 0;
     const midRoomCount = (hasKitchen ? 1 : 0) + (hasDining ? 1 : 0) + (hasPuja ? 1 : 0);
 
@@ -245,12 +298,14 @@ function placeRoomsForStrategy(
       } else if (hasKitchen && hasDining) {
         kitchenW = snap(effectiveW * 0.45);
         diningW = snap(effectiveW - kitchenW);
+      } else if (hasKitchen && hasPuja) {
+        kitchenW = snap(effectiveW * 0.70);
+        pujaW = snap(effectiveW - kitchenW);
       } else if (hasKitchen) {
         kitchenW = snap(effectiveW);
       }
     }
 
-    // Vastu placement: Kitchen in SE
     const kitchenOnRight = strategy === 'vastu' && (facing === 'North' || facing === 'East');
 
     if (kitchenOnRight) {
@@ -276,7 +331,6 @@ function placeRoomsForStrategy(
         });
       }
     } else {
-      // Balanced: Kitchen left, Dining right
       let midX = ox;
       if (hasKitchen) {
         rooms.push({
@@ -314,18 +368,14 @@ function placeRoomsForStrategy(
     const numBedrooms = fp.bedrooms;
 
     if (config.kitchenInRear && fp.kitchens > 0) {
-      // SPACE STRATEGY: Kitchen in rear zone alongside bedrooms
-      // Layout: [Kitchen | MasterBed + T1 | Bed2 + T2]
       const kitchenW = snap(Math.max(2.1, effectiveW * 0.28));
       const bedroomAreaW = snap(effectiveW - kitchenW);
 
-      // Kitchen
       rooms.push({
         id: `f${floor}_kitchen_0`, name: 'Kitchen', type: 'kitchen',
         x: ox, y: currentY, width: kitchenW, depth: rearD, floor,
       });
 
-      // Bedrooms share remaining width
       const bedroomCols = Math.min(numBedrooms, Math.max(1, Math.floor(bedroomAreaW / 3.0)));
       const bedColW = snap(bedroomAreaW / bedroomCols);
       const toiletW = snap(Math.max(1.2, Math.min(1.8, bedColW * 0.28)));
@@ -352,7 +402,6 @@ function placeRoomsForStrategy(
         });
       }
     } else {
-      // VASTU/BALANCED: Standard bedroom zone
       const bedroomCols = Math.min(numBedrooms, Math.max(1, Math.floor(effectiveW / 3.5)));
       const bedColW = snap(effectiveW / bedroomCols);
       const toiletW = snap(Math.max(1.2, Math.min(1.8, bedColW * 0.28)));
@@ -371,7 +420,6 @@ function placeRoomsForStrategy(
           const bedName = isMaster ? 'Master Bedroom' : `Bedroom ${bedIdx + 1}`;
           const bx = snap(ox + col * bedColW);
 
-          // Vastu: Master bed in SW
           const isLeftEdge = col === 0;
           const toiletOnRight = isLeftEdge || col < bedroomCols / 2;
           const actualBedW = snap(bedColW - toiletW);
@@ -435,7 +483,6 @@ function placeRoomsForStrategy(
 
   // ===== HANDLE MISSING MID-ZONE ROOMS (fallback) =====
   if (config.midPct === 0 && !config.kitchenInRear) {
-    // Kitchen/dining not placed yet — place adjacent to hall in front zone
     let fillX = ox;
     const hallRoom = rooms.find(r => r.type === 'hall');
     if (hallRoom) fillX = snap(hallRoom.x + hallRoom.width);
@@ -449,7 +496,7 @@ function placeRoomsForStrategy(
       });
       fillX = snap(fillX + kw);
     }
-    if (fp.hasDining && !config.mergeLivingDining && !rooms.some(r => r.type === 'dining')) {
+    if (fp.hasDining && !mergeLivDin && !rooms.some(r => r.type === 'dining')) {
       const dw = snap(ox + effectiveW - fillX);
       if (dw > 1.5) {
         rooms.push({
@@ -472,10 +519,8 @@ function placeRoomsForStrategy(
     if (room.y + room.depth > maxY + 0.02) {
       room.depth = snap(maxY - room.y);
     }
-    // Ensure positive dimensions
     room.width = Math.max(0.5, room.width);
     room.depth = Math.max(0.5, room.depth);
-    // Final snap
     room.x = snap(room.x);
     room.y = snap(room.y);
     room.width = snap(room.width);
@@ -542,7 +587,6 @@ function placeColumns(rooms: Room[], buildW: number, buildD: number, setbacks: S
     }
   }
 
-  // Ensure 4 boundary corners always have columns
   const corners = [
     { x: ox, y: oy },
     { x: snap(ox + buildW), y: oy },
