@@ -310,12 +310,13 @@ function placeRoomsForStrategy(
 
     if (kitchenOnRight) {
       let midX = ox;
-      if (hasDining) {
+      // Kitchen on LEFT for exterior wall access
+      if (hasKitchen) {
         rooms.push({
-          id: `f${floor}_dining_0`, name: 'Dining', type: 'dining',
-          x: midX, y: currentY, width: diningW, depth: midD, floor,
+          id: `f${floor}_kitchen_0`, name: 'Kitchen', type: 'kitchen',
+          x: midX, y: currentY, width: kitchenW, depth: midD, floor,
         });
-        midX = snap(midX + diningW);
+        midX = snap(midX + kitchenW);
       }
       if (hasPuja && pujaW >= 1.2) {
         rooms.push({
@@ -324,11 +325,14 @@ function placeRoomsForStrategy(
         });
         midX = snap(midX + pujaW);
       }
-      if (hasKitchen) {
-        rooms.push({
-          id: `f${floor}_kitchen_0`, name: 'Kitchen', type: 'kitchen',
-          x: snap(ox + effectiveW - kitchenW), y: currentY, width: kitchenW, depth: midD, floor,
-        });
+      if (hasDining) {
+        const clampedW = snap(Math.min(diningW, ox + effectiveW - midX));
+        if (clampedW > 1.5) {
+          rooms.push({
+            id: `f${floor}_dining_0`, name: 'Dining', type: 'dining',
+            x: midX, y: currentY, width: clampedW, depth: midD, floor,
+          });
+        }
       }
     } else {
       let midX = ox;
