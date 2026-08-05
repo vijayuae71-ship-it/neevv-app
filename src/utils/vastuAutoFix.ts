@@ -8,6 +8,7 @@ import { checkNBCCompliance } from './nbcCompliance';
 // when buildable area is physically too small for all rooms at NBC minimums.
 // Phase 4: re-run expansion after room removal to fill freed space.
 // Phase 5: fix kitchen exterior wall access.
+// Phase 6: fix ground floor coverage exceeding the NBC maximum.
 // ============================================================================
 
 const NBC_MIN_AREAS: Record<string, number> = {
@@ -26,6 +27,10 @@ const NBC_MIN_WIDTHS: Record<string, number> = {
 const REMOVAL_PRIORITY: string[] = [
   'passage', 'store', 'utility', 'puja', 'dining',
 ];
+
+// NBC maximum ground coverage for plots under 200 m²
+const NBC_MAX_GROUND_COVERAGE_PCT = 65;
+const NBC_MAX_COVERAGE_PLOT_AREA_THRESHOLD = 200;
 
 function deepClone<T>(obj: T): T {
   return JSON.parse(JSON.stringify(obj));
@@ -127,7 +132,14 @@ function fixNBCMinimumAreas(rooms: Room[]): Room[] {
     const neighborArea = neighbor.width * neighbor.depth;
     const neighborMinArea = NBC_MIN_AREAS[neighbor.type] || 2.0;
 
-    if (neighborArea - deficit < neighborMinArea) continue;
+    // Toilets are critical (no toilet = no occupancy certificate). When the
+    // room needing space is a toilet and its neighbor is sitting right at
+    // its own NBC minimum, allow borrowing down to 5% below the neighbor's
+    // minimum so the toilet can still be brought up to its own minimum.
+    const isToiletFix = room.type === 'toilet';
+    const neighborFloorAllowed = isToiletFix ? neighborMinArea * 0.95 : neighborMinArea;
+
+    if (neighborArea - deficit < neighborFloorAllowed) continue;
 
     const isHorizAdj =
       Math.abs(neighbor.x - (room.x + room.width)) < 0.3 ||
@@ -261,6 +273,98 @@ function removeNonEssentialFromFloor(rooms: Room[], buildableArea: number): Room
 }
 
 // ---------------------------------------------------------------------------
+// GROUND COVERAGE FIX — total ground floor footprint can exceed the NBC
+// maximum coverage (65% for plots under 200 m²) after room expansion.
+// Remove rooms from the removal priority list until coverage is compliant,
+// then redistribute the freed-up footprint to any rooms still below their
+// NBC minimum (e.g. undersized toilets).
+// ---------------------------------------------------------------------------
+
+function calculateFloorFootprintArea(rooms: Room[]): number {
+  return rooms.reduce((sum, r) => sum + r.width * r.depth, 0);
+}
+
+/**
+ * Calculates ground floor coverage as a percentage of plot area.
+ */
+function calculateGroundCoveragePct(groundFloorRooms: Room[], plotArea: number): number {
+  if (plotArea <= 0) return 0;
+  return (calculateFloorFootprintArea(groundFloorRooms) / plotArea) * 100;
+}
+
+/**
+ * Fixes ground floor coverage that exceeds the NBC maximum (65% for plots
+ * under 200 m²). Removes rooms from REMOVAL_PRIORITY (passage, store,
+ * utility, puja, dining) one at a time, merging each removed room's
+ * footprint into its largest adjacent neighbor, until coverage is at or
+ * below the limit. The freed footprint absorbed by neighbors is then
+ * redistributed to any rooms still below their NBC minimum (e.g.
+ * undersized toilets) via another NBC minimum-area fix pass.
+ */
+function fixGroundCoverage(groundFloorRooms: Room[], plotArea: number): Room[] {
+  // NBC max ground coverage rule applies to plots under 200 m²
+  if (plotArea >= NBC_MAX_COVERAGE_PLOT_AREA_THRESHOLD || plotArea <= 0) {
+    return groundFloorRooms;
+  }
+
+  let result = [...groundFloorRooms];
+  let coverage = calculateGroundCoveragePct(result, plotArea);
+  if (coverage <= NBC_MAX_GROUND_COVERAGE_PCT) return result;
+
+  let removedAny = false;
+
+  for (const removeType of REMOVAL_PRIORITY) {
+    if (coverage <= NBC_MAX_GROUND_COVERAGE_PCT) break;
+
+    const idx = result.findIndex(r => r.type === removeType);
+    if (idx === -1) continue;
+
+    const removed = result[idx];
+    const neighbor = findLargestAdjacentRoom(removed, result);
+
+    result.splice(idx, 1);
+    removedAny = true;
+
+    if (neighbor) {
+      const isHorizAdj =
+        Math.abs(neighbor.x - (removed.x + removed.width)) < 0.3 ||
+        Math.abs(removed.x - (neighbor.x + neighbor.width)) < 0.3;
+
+      if (isHorizAdj) {
+        if (neighbor.x > removed.x) {
+          neighbor.x = removed.x;
+          neighbor.width += removed.width;
+        } else {
+          neighbor.width += removed.width;
+        }
+      } else {
+        if (neighbor.y > removed.y) {
+          neighbor.y = removed.y;
+          neighbor.depth += removed.depth;
+        } else {
+          neighbor.depth += removed.depth;
+        }
+      }
+
+      if (removeType === 'dining' && neighbor.type === 'hall') {
+        neighbor.name = 'Living/Dining';
+      }
+    }
+
+    coverage = calculateGroundCoveragePct(result, plotArea);
+  }
+
+  // Redistribute the freed footprint (now absorbed into neighboring rooms)
+  // to rooms still below their NBC minimum — e.g. undersized toilets —
+  // by re-running the NBC minimum-area fix pass on the updated room set.
+  if (removedAny) {
+    result = fixNBCMinimumAreas(result);
+  }
+
+  return result;
+}
+
+// ---------------------------------------------------------------------------
 // KITCHEN EXTERIOR WALL FIX — ensure kitchen sits on an exterior wall so it
 // has access for smoke exhaust and LPG storage per NBC requirements.
 // ---------------------------------------------------------------------------
@@ -319,12 +423,13 @@ function fixKitchenExteriorWall(rooms: Room[]): Room[] {
 // ---------------------------------------------------------------------------
 
 /**
- * Auto-fix layout — 5-phase approach, run inside an outer convergence loop:
+ * Auto-fix layout — 6-phase approach, run inside an outer convergence loop:
  *  Phase 1: Vastu room swaps
  *  Phase 2: NBC expansion (borrow space from neighbors) — 5 passes
  *  Phase 3: Room removal when individual rooms still fail NBC minimums
  *  Phase 4: Re-run NBC expansion after removal — 5 more passes
  *  Phase 5: Kitchen exterior wall fix
+ *  Phase 6: Ground floor coverage fix (NBC max 65% coverage for plots < 200 m²)
  *
  * Fail-closed: returns null on any error.
  */
@@ -381,6 +486,16 @@ export function autoFixLayout(layout: Layout, facing: Facing): Layout | null {
       // ===== PHASE 5: Kitchen exterior wall fix =====
       for (const fl of optimized.floors) {
         fl.rooms = fixKitchenExteriorWall(fl.rooms);
+      }
+
+      // ===== PHASE 6: Ground Coverage Check =====
+      // Total ground floor footprint can exceed the NBC max coverage of 65%
+      // (for plots under 200 m²) after expansion. Remove rooms from the
+      // removal priority list until coverage is compliant, then redistribute
+      // the freed area to any rooms still below their NBC minimums.
+      if (optimized.floors.length > 0) {
+        const groundFloor = optimized.floors[0];
+        groundFloor.rooms = fixGroundCoverage(groundFloor.rooms, plotArea);
       }
 
       // Check convergence
