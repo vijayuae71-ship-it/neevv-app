@@ -858,6 +858,22 @@ function fixGroundCoverage(groundFloorRooms: Room[], plotArea: number): Room[] {
     coverage = calculateGroundCoveragePct(result, plotArea);
   }
 
+  // --- Pre-shrink: cap absurdly oversized rooms (> 2× NBC minimum) ---
+  // AI sometimes generates a 50 m² toilet or 25 m² parking — shrink these
+  // to at most 2× their NBC minimum before proportional scaling, so the
+  // proportional pass doesn't have to fight extreme outliers.
+  for (const room of result) {
+    const nbcMin = NBC_MIN_AREAS[room.type] || 0;
+    if (nbcMin <= 0) continue;
+    const area = room.width * room.depth;
+    const cap = nbcMin * 2;
+    if (area > cap) {
+      const scale = Math.sqrt(cap / area);
+      room.width *= scale;
+      room.depth *= scale;
+    }
+  }
+
   // Shrink the remaining footprint proportionally down to the coverage
   // target (rather than re-expanding via fixNBCMinimumAreas).
   const currentTotal = calculateFloorFootprintArea(result);
