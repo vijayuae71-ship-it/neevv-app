@@ -6,6 +6,8 @@ import { checkNBCCompliance } from './nbcCompliance';
 // VASTU & NBC AUTO-FIX ENGINE v3
 // Multi-phase: swap for Vastu → expand for NBC → REMOVE non-essential rooms
 // when buildable area is physically too small for all rooms at NBC minimums.
+// Phase 2.5: multi-neighbor borrowing when a single neighbor can't cover the
+// full deficit (fixes rooms plateauing below their NBC minimum area).
 // Phase 4: re-run expansion after room removal to fill freed space.
 // Phase 5: fix kitchen exterior wall access.
 // Phase 6: fix ground floor coverage exceeding the NBC maximum.
@@ -113,6 +115,30 @@ function findLargestAdjacentRoom(target: Room, allRooms: Room[]): Room | null {
   });
 }
 
+/**
+ * Like findLargestAdjacentRoom, but returns ALL adjacent rooms on the same
+ * floor (not just the single largest one). Used by multiNeighborBorrow to
+ * spread a room's area deficit across every available neighbor instead of
+ * relying on one neighbor that may already be at its own NBC minimum.
+ */
+function findAllAdjacentRooms(target: Room, allRooms: Room[]): Room[] {
+  const tolerance = 0.3;
+  const sameFloor = allRooms.filter(r => r.floor === target.floor && r.id !== target.id);
+  return sameFloor.filter(r => {
+    const hOverlap = Math.min(target.y + target.depth, r.y + r.depth) - Math.max(target.y, r.y);
+    const vOverlap = Math.min(target.x + target.width, r.x + r.width) - Math.max(target.x, r.x);
+    if (hOverlap > 0.1) {
+      if (Math.abs(r.x - (target.x + target.width)) < tolerance) return true;
+      if (Math.abs(target.x - (r.x + r.width)) < tolerance) return true;
+    }
+    if (vOverlap > 0.1) {
+      if (Math.abs(r.y - (target.y + target.depth)) < tolerance) return true;
+      if (Math.abs(target.y - (r.y + r.depth)) < tolerance) return true;
+    }
+    return false;
+  });
+}
+
 function fixNBCMinimumAreas(rooms: Room[]): Room[] {
   const roomsWithDeficit = rooms
     .map(r => ({ room: r, deficit: (NBC_MIN_AREAS[r.type] || 0) - r.width * r.depth }))
@@ -205,10 +231,116 @@ function fixNBCMinimumAreas(rooms: Room[]): Room[] {
   return rooms;
 }
 
+/**
+ * Multi-neighbor borrowing: when a room is still below its NBC minimum area
+ * after fixNBCMinimumAreas (e.g. because its single largest neighbor is
+ * already sitting at its own NBC minimum and can't donate), pull smaller
+ * amounts of spare area from EVERY adjacent room proportionally until the
+ * deficit is covered. Each donor's contribution is capped at 30% of its own
+ * current area to avoid over-shrinking any one neighbor.
+ */
+function multiNeighborBorrow(rooms: Room[]): Room[] {
+  const roomsWithDeficit = rooms
+    .map(r => ({ room: r, deficit: (NBC_MIN_AREAS[r.type] || 0) - r.width * r.depth }))
+    .filter(r => r.deficit > 0)
+    .sort((a, b) => b.deficit - a.deficit);
+
+  for (const { room } of roomsWithDeficit) {
+    const minArea = NBC_MIN_AREAS[room.type];
+    if (!minArea) continue;
+    let currentArea = room.width * room.depth;
+    let remainingDeficit = minArea - currentArea;
+    if (remainingDeficit <= 0) continue;
+
+    const neighbors = findAllAdjacentRooms(room, rooms);
+    if (neighbors.length === 0) continue;
+
+    // Compute spare area each neighbor could donate.
+    const donors = neighbors
+      .map(n => {
+        const donorArea = n.width * n.depth;
+        const donorMinArea = NBC_MIN_AREAS[n.type] || 2.0;
+        const spareBySpecMin = donorArea - donorMinArea;
+        const spareByCap = donorArea * 0.30;
+        const spareArea = Math.max(0, Math.min(spareBySpecMin, spareByCap));
+        return { room: n, spareArea };
+      })
+      .filter(d => d.spareArea >= 0.1)
+      .sort((a, b) => b.spareArea - a.spareArea);
+
+    if (donors.length === 0) continue;
+
+    for (const donor of donors) {
+      if (remainingDeficit <= 0.01) break;
+
+      const neighbor = donor.room;
+      const donateArea = Math.min(donor.spareArea, remainingDeficit);
+      if (donateArea < 0.05) continue;
+
+      const isHorizAdj =
+        Math.abs(neighbor.x - (room.x + room.width)) < 0.3 ||
+        Math.abs(room.x - (neighbor.x + neighbor.width)) < 0.3;
+
+      if (isHorizAdj) {
+        const expandAmount = donateArea / room.depth;
+        const clampedExpand = Math.min(expandAmount, neighbor.width * 0.30);
+        if (clampedExpand <= 0) continue;
+        if (neighbor.x > room.x) {
+          room.width += clampedExpand;
+          neighbor.x += clampedExpand;
+          neighbor.width -= clampedExpand;
+        } else {
+          room.x -= clampedExpand;
+          room.width += clampedExpand;
+          neighbor.width -= clampedExpand;
+        }
+        currentArea = room.width * room.depth;
+        remainingDeficit = minArea - currentArea;
+      } else {
+        const expandAmount = donateArea / room.width;
+        const clampedExpand = Math.min(expandAmount, neighbor.depth * 0.30);
+        if (clampedExpand <= 0) continue;
+        if (neighbor.y > room.y) {
+          room.depth += clampedExpand;
+          neighbor.y += clampedExpand;
+          neighbor.depth -= clampedExpand;
+        } else {
+          room.y -= clampedExpand;
+          room.depth += clampedExpand;
+          neighbor.depth -= clampedExpand;
+        }
+        currentArea = room.width * room.depth;
+        remainingDeficit = minArea - currentArea;
+      }
+    }
+  }
+
+  return rooms;
+}
+
 // ---------------------------------------------------------------------------
 // ROOM REMOVAL — drop non-essential rooms when individual rooms can't meet
 // their NBC minimums even after expansion.
 // ---------------------------------------------------------------------------
+
+/**
+ * After a room is removed from a floor and its space merged into a
+ * neighbor, check whether any room on that floor still fails its NBC
+ * minimum area. If so, run multiNeighborBorrow so the freed-up space
+ * (now sitting inside the neighbor that absorbed the removed room) can be
+ * redirected toward the still-failing room instead of being stranded in
+ * whichever neighbor happened to be largest at removal time.
+ */
+function redistributeToFailingRooms(rooms: Room[]): Room[] {
+  const stillFailing = rooms.some(r => {
+    const min = NBC_MIN_AREAS[r.type];
+    return min !== undefined && (r.width * r.depth) < min;
+  });
+
+  if (!stillFailing) return rooms;
+
+  return multiNeighborBorrow(rooms);
+}
 
 /**
  * Remove non-essential rooms from a single floor when one or more rooms
@@ -224,7 +356,7 @@ function removeNonEssentialFromFloor(rooms: Room[], buildableArea: number): Room
 
   if (!hasAreaFailures) return rooms;
 
-  const result = [...rooms];
+  let result = [...rooms];
 
   for (const removeType of REMOVAL_PRIORITY) {
     // Recheck after each removal
@@ -266,6 +398,11 @@ function removeNonEssentialFromFloor(rooms: Room[], buildableArea: number): Room
       if (removeType === 'dining' && neighbor.type === 'hall') {
         neighbor.name = 'Living/Dining';
       }
+
+      // Instead of always leaving the freed space parked in whichever
+      // neighbor absorbed the removed room, redirect it toward any room
+      // still failing its NBC minimum area.
+      result = redistributeToFailingRooms(result);
     }
   }
 
@@ -423,9 +560,12 @@ function fixKitchenExteriorWall(rooms: Room[]): Room[] {
 // ---------------------------------------------------------------------------
 
 /**
- * Auto-fix layout — 6-phase approach, run inside an outer convergence loop:
+ * Auto-fix layout — multi-phase approach, run inside an outer convergence loop:
  *  Phase 1: Vastu room swaps
- *  Phase 2: NBC expansion (borrow space from neighbors) — 5 passes
+ *  Phase 2: NBC expansion (borrow space from single largest neighbor) — 5 passes
+ *  Phase 2.5: Multi-neighbor borrowing for rooms that still fail their NBC
+ *             minimum area because their single largest neighbor was already
+ *             at its own NBC minimum and couldn't donate enough alone.
  *  Phase 3: Room removal when individual rooms still fail NBC minimums
  *  Phase 4: Re-run NBC expansion after removal — 5 more passes
  *  Phase 5: Kitchen exterior wall fix
@@ -455,6 +595,26 @@ export function autoFixLayout(layout: Layout, facing: Facing): Layout | null {
         const passRooms = optimized.floors.flatMap(f => f.rooms);
         const passNBC = checkNBCCompliance(passRooms, plotArea, optimized.builtUpAreaSqM, optimized.floors.length);
         if (passNBC.issues.filter(i => i.severity === 'error').length === 0) break;
+      }
+
+      // ===== PHASE 2.5: Multi-neighbor borrowing =====
+      // If any room is still below its NBC minimum area after Phase 2 (e.g.
+      // because its single largest neighbor was already at its own minimum
+      // and fixNBCMinimumAreas refused to shrink it further), give every
+      // adjacent room a chance to donate spare area proportionally before
+      // falling back to removing rooms entirely.
+      {
+        let areaFailuresRemain = optimized.floors.some(fl =>
+          fl.rooms.some(r => {
+            const min = NBC_MIN_AREAS[r.type];
+            return min !== undefined && (r.width * r.depth) < min;
+          })
+        );
+        if (areaFailuresRemain) {
+          for (const fl of optimized.floors) {
+            fl.rooms = multiNeighborBorrow(fl.rooms);
+          }
+        }
       }
 
       // ===== PHASE 3: Room removal if individual rooms still fail =====
