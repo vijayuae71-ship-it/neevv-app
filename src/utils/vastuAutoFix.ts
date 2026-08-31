@@ -925,6 +925,105 @@ function fixKitchenExteriorWall(rooms: Room[]): Room[] {
 }
 
 // ---------------------------------------------------------------------------
+// FORCE REBALANCE — last-resort, geometry-agnostic area transfer. Handles
+// cases where a failing room can't be reached by adjacency-based fixes at
+// all (e.g. the failing room's bounds overlap a surplus room's bounds
+// instead of sharing a clean wall, so findAllAdjacentRooms / the BFS chain
+// walk never connect them). Instead of shifting shared walls, this directly
+// takes area from every surplus room proportionally and grows/shrinks each
+// room's own dimensions, ignoring adjacency entirely.
+// ---------------------------------------------------------------------------
+
+/**
+ * Directly rebalances area on a single floor by taking area from rooms with
+ * NBC surplus and giving it to rooms with NBC deficit, proportionally to
+ * each donor's surplus. This does not rely on adjacency at all, so it still
+ * works when rooms overlap geometrically and wall-shifting approaches can't
+ * detect a shared boundary to move.
+ *
+ * For each deficit room, the amount taken from each surplus room is
+ * `donorShare = donor.surplus / totalSurplus * neededDeficit`, capped so no
+ * donor is pushed below its own NBC minimum area. The donor is shrunk by
+ * reducing its larger dimension (width or depth) by `donorShare /
+ * otherDimension`; the deficit room is grown by increasing its smaller
+ * dimension by `totalGained / otherDimension`.
+ */
+function forceRebalanceFloor(rooms: Room[]): Room[] {
+  const getMin = (r: Room): number => NBC_MIN_AREAS[r.type] ?? 2.0;
+
+  const surplusRooms = rooms.filter(r => r.width * r.depth > getMin(r) + 0.1);
+  const deficitRooms = rooms
+    .filter(r => r.width * r.depth < getMin(r) - 0.05)
+    .sort((a, b) => (getMin(b) - b.width * b.depth) - (getMin(a) - a.width * a.depth));
+
+  if (surplusRooms.length === 0 || deficitRooms.length === 0) return rooms;
+
+  for (const deficitRoom of deficitRooms) {
+    const minArea = getMin(deficitRoom);
+    const currentArea = deficitRoom.width * deficitRoom.depth;
+    const neededDeficit = minArea - currentArea;
+    if (neededDeficit <= 0.01) continue;
+
+    // Recompute surplus donors fresh each iteration since earlier deficit
+    // rooms in this loop may have already consumed some surplus.
+    const donors = surplusRooms
+      .filter(r => r.id !== deficitRoom.id)
+      .map(r => ({ room: r, surplus: r.width * r.depth - getMin(r) }))
+      .filter(d => d.surplus > 0.1);
+
+    if (donors.length === 0) continue;
+
+    const totalSurplus = donors.reduce((sum, d) => sum + d.surplus, 0);
+    if (totalSurplus <= 0.01) continue;
+
+    let totalGained = 0;
+
+    for (const donor of donors) {
+      const donorShareRaw = (donor.surplus / totalSurplus) * neededDeficit;
+      const donorArea = donor.room.width * donor.room.depth;
+      const donorMinArea = getMin(donor.room);
+      // Cap the donation so the donor never drops below its own NBC minimum.
+      const donorShare = Math.min(donorShareRaw, Math.max(0, donorArea - donorMinArea));
+      if (donorShare <= 0.01) continue;
+
+      // Shrink the donor's larger dimension.
+      if (donor.room.width >= donor.room.depth) {
+        if (donor.room.depth > 0) {
+          const reduceBy = donorShare / donor.room.depth;
+          if (reduceBy < donor.room.width) {
+            donor.room.width -= reduceBy;
+            totalGained += donorShare;
+          }
+        }
+      } else {
+        if (donor.room.width > 0) {
+          const reduceBy = donorShare / donor.room.width;
+          if (reduceBy < donor.room.depth) {
+            donor.room.depth -= reduceBy;
+            totalGained += donorShare;
+          }
+        }
+      }
+    }
+
+    if (totalGained <= 0.01) continue;
+
+    // Expand the deficit room's smaller dimension.
+    if (deficitRoom.width <= deficitRoom.depth) {
+      if (deficitRoom.depth > 0) {
+        deficitRoom.width += totalGained / deficitRoom.depth;
+      }
+    } else {
+      if (deficitRoom.width > 0) {
+        deficitRoom.depth += totalGained / deficitRoom.width;
+      }
+    }
+  }
+
+  return rooms;
+}
+
+// ---------------------------------------------------------------------------
 // MAIN AUTO-FIX ENTRY POINT
 // ---------------------------------------------------------------------------
 
@@ -1067,9 +1166,21 @@ export function autoFixLayout(layout: Layout, facing: Facing): Layout | null {
         groundFloor.rooms = fixGroundCoverage(groundFloor.rooms, plotArea);
       }
 
+      // ===== PHASE 7: Force rebalance — last resort =====
+      // When adjacency-based fixes fail (e.g. overlapping geometry prevents
+      // wall-shifting), directly transfer area from surplus to deficit rooms
+      // on the same floor, adjusting dimensions proportionally.
+      for (const fl of optimized.floors) {
+        fl.rooms = forceRebalanceFloor(fl.rooms);
+      }
+
       // Check convergence
       allRooms = optimized.floors.flatMap(f => f.rooms);
       nbcResult = checkNBCCompliance(allRooms, plotArea, optimized.builtUpAreaSqM, optimized.floors.length);
+      const areaErrorsAfterPhase7 = nbcResult.issues.filter(i =>
+        i.severity === 'error' && i.issue.includes('below NBC minimum')
+      );
+      if (areaErrorsAfterPhase7.length === 0) break;
       if (nbcResult.issues.filter(i => i.severity === 'error').length === 0) break;
     }
 
