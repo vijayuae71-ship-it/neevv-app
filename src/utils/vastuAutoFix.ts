@@ -42,9 +42,14 @@ const REMOVAL_PRIORITY: string[] = [
   'passage', 'store', 'utility', 'puja', 'dining',
 ];
 
-// NBC maximum ground coverage for plots under 200 m²
-const NBC_MAX_GROUND_COVERAGE_PCT = 65;
-const NBC_MAX_COVERAGE_PLOT_AREA_THRESHOLD = 200;
+// NBC maximum ground coverage (%) based on plot area - NBC 2016 Table 17
+// Must match getMaxGroundCoverage() in nbcCompliance.ts exactly
+function getNbcMaxCoveragePct(plotAreaSqM: number): number {
+  if (plotAreaSqM <= 100) return 75;
+  if (plotAreaSqM <= 200) return 65;
+  if (plotAreaSqM <= 500) return 55;
+  return 50;
+}
 
 function deepClone<T>(obj: T): T {
   return JSON.parse(JSON.stringify(obj));
@@ -214,7 +219,7 @@ function scaleFloorToArea(rooms: Room[], targetArea: number): Room[] {
  * from their single largest adjacent neighbor.
  *
  * When `floorAreaCap` is provided (used for the ground floor, where NBC
- * caps coverage at 65% of plot area for plots < 200 m²), every mutation is
+ * caps coverage at NBC max for plot size (75%/65%/55%/50% by area)), every mutation is
  * checked against the cap afterward and reverted if it would push the
  * floor's total footprint over the limit — this is what makes NBC
  * expansion "coverage aware" instead of silently re-inflating a floor that
@@ -788,7 +793,7 @@ function removeNonEssentialFromFloor(rooms: Room[], buildableArea: number): Room
 
 // ---------------------------------------------------------------------------
 // GROUND COVERAGE FIX — total ground floor footprint can exceed the NBC
-// maximum coverage (65% for plots under 200 m²) after room expansion.
+// maximum coverage (plot-size dependent: 75%/65%/55%/50%) after room expansion.
 // Remove rooms from the removal priority list until coverage is compliant,
 // then shrink the remaining footprint down to the coverage target and only
 // move area BETWEEN rooms (never re-expanding the floor as a whole) to fix
@@ -804,7 +809,7 @@ function calculateGroundCoveragePct(groundFloorRooms: Room[], plotArea: number):
 }
 
 /**
- * Fixes ground floor coverage that exceeds the NBC maximum (65% for plots
+ * Fixes ground floor coverage that exceeds the NBC maximum (plot-size dependent:
  * under 200 m²). Removes rooms from REMOVAL_PRIORITY (passage, store,
  * utility, puja, dining) one at a time, merging each removed room's
  * footprint preferentially into an adjacent room that is failing its own
@@ -820,19 +825,17 @@ function calculateGroundCoveragePct(groundFloorRooms: Room[], plotArea: number):
  * so the shrink is never undone).
  */
 function fixGroundCoverage(groundFloorRooms: Room[], plotArea: number): Room[] {
-  // NBC max ground coverage rule applies to plots under 200 m²
-  if (plotArea >= NBC_MAX_COVERAGE_PLOT_AREA_THRESHOLD || plotArea <= 0) {
-    return groundFloorRooms;
-  }
+  // Coverage limits apply to all plots with valid area
+  if (plotArea <= 0) return groundFloorRooms;
 
   let result = [...groundFloorRooms];
   let coverage = calculateGroundCoveragePct(result, plotArea);
-  if (coverage <= NBC_MAX_GROUND_COVERAGE_PCT) return result;
+  if (coverage <= getNbcMaxCoveragePct(plotArea)) return result;
 
-  const targetArea = plotArea * (NBC_MAX_GROUND_COVERAGE_PCT / 100);
+  const targetArea = plotArea * (getNbcMaxCoveragePct(plotArea) / 100);
 
   for (const removeType of REMOVAL_PRIORITY) {
-    if (coverage <= NBC_MAX_GROUND_COVERAGE_PCT) break;
+    if (coverage <= getNbcMaxCoveragePct(plotArea)) break;
 
     const idx = result.findIndex(r => r.type === removeType);
     if (idx === -1) continue;
@@ -1047,7 +1050,7 @@ function forceRebalanceFloor(rooms: Room[]): Room[] {
  *  Phase 4.5: Chain wall-shifting — moves area through a chain of adjacent
  *             rooms when a failing room has no directly adjacent surplus.
  *  Phase 5: Kitchen exterior wall fix
- *  Phase 6: Ground floor coverage fix (NBC max 65% coverage for plots < 200
+ *  Phase 6: Ground floor coverage fix (NBC max coverage per plot size:
  *           m²) — shrinks rather than re-expanding, so it can't oscillate
  *           against Phase 2/4.
  *
@@ -1062,9 +1065,9 @@ export function autoFixLayout(layout: Layout, facing: Facing): Layout | null {
     const buildableArea = buildableW * buildableD;
     const plotArea = plotWidthM * plotDepthM;
 
-    const groundCoverageApplies = plotArea > 0 && plotArea < NBC_MAX_COVERAGE_PLOT_AREA_THRESHOLD;
+    const groundCoverageApplies = plotArea > 0;
     const groundFloorAreaCap = groundCoverageApplies
-      ? plotArea * (NBC_MAX_GROUND_COVERAGE_PCT / 100)
+      ? plotArea * (getNbcMaxCoveragePct(plotArea) / 100)
       : undefined;
 
     // ===== PHASE 0: Global proportional pre-shrink =====
@@ -1156,7 +1159,7 @@ export function autoFixLayout(layout: Layout, facing: Facing): Layout | null {
       }
 
       // ===== PHASE 6: Ground Coverage Check =====
-      // Total ground floor footprint can exceed the NBC max coverage of 65%
+      // Total ground floor footprint can exceed the NBC max coverage
       // (for plots under 200 m²) after expansion. Remove rooms from the
       // removal priority list until coverage is compliant, then shrink the
       // remaining footprint to the target — no re-expansion, so this can't
