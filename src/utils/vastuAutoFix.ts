@@ -1107,6 +1107,10 @@ export function autoFixLayout(layout: Layout, facing: Facing): Layout | null {
           fl.rooms = fixNBCMinimumAreas(fl.rooms, cap);
         });
         const passRooms = optimized.floors.flatMap(f => f.rooms);
+        // Recalc builtUpAreaSqM so compliance sees actual room sizes
+        optimized.builtUpAreaSqM = optimized.floors.reduce((t, fl) =>
+          t + fl.rooms.reduce((s, r) => s + r.width * r.depth, 0), 0);
+
         const passNBC = checkNBCCompliance(passRooms, plotArea, optimized.builtUpAreaSqM, optimized.floors.length);
         if (passNBC.issues.filter(i => i.severity === 'error').length === 0) break;
       }
@@ -1154,6 +1158,10 @@ export function autoFixLayout(layout: Layout, facing: Facing): Layout | null {
             fl.rooms = fixNBCMinimumAreas(fl.rooms, cap);
           });
           const passRooms = optimized.floors.flatMap(f => f.rooms);
+        // Recalc builtUpAreaSqM so compliance sees actual room sizes
+        optimized.builtUpAreaSqM = optimized.floors.reduce((t, fl) =>
+          t + fl.rooms.reduce((s, r) => s + r.width * r.depth, 0), 0);
+
           const passNBC = checkNBCCompliance(passRooms, plotArea, optimized.builtUpAreaSqM, optimized.floors.length);
           if (passNBC.issues.filter(i => i.severity === 'error').length === 0) break;
         }
@@ -1235,6 +1243,11 @@ export function autoFixLayout(layout: Layout, facing: Facing): Layout | null {
     const vastuResult = calculateVastuScore(allRooms, plotWidthM, plotDepthM, facing);
     optimized.vastuScore = vastuResult.score;
     optimized.vastuDetails = vastuResult.details;
+
+    // Recalculate builtUpAreaSqM from actual room dimensions after all fixes
+    const recalcBuiltUp = optimized.floors.reduce((total, fl) =>
+      total + fl.rooms.reduce((sum, r) => sum + r.width * r.depth, 0), 0);
+    optimized.builtUpAreaSqM = recalcBuiltUp;
 
     const nbcResult = checkNBCCompliance(allRooms, plotArea, optimized.builtUpAreaSqM, optimized.floors.length);
     optimized.nbcCompliant = nbcResult.compliant;

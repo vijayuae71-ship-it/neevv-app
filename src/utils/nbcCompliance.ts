@@ -344,7 +344,18 @@ export function checkNBCCompliance(
     }
 
     if (numFloors) {
-      const groundFloorArea = totalBuiltUpSqM / numFloors;
+      // Use actual ground floor room areas (sum of width*depth) instead of
+      // totalBuiltUpSqM/numFloors, so auto-fix room dimension changes are
+      // reflected in the compliance check. Fall back to totalBuiltUpSqM/numFloors
+      // only when no rooms are provided.
+      const groundFloorRoomArea = rooms.length > 0
+        ? rooms
+            .filter(r => !r.floor || r.floor === 0 || r.floor === 1)
+            .reduce((sum, r) => sum + r.width * r.depth, 0)
+        : 0;
+      const groundFloorArea = groundFloorRoomArea > 0
+        ? groundFloorRoomArea
+        : totalBuiltUpSqM / numFloors;
       const maxCoverage = getMaxGroundCoverage(plotAreaSqM);
       const actualCoverage = (groundFloorArea / plotAreaSqM) * 100;
       totalRules++;
