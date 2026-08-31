@@ -1,9 +1,10 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Layout, CustomRateSheet } from '../types';
+import { Layout, CustomRateSheet, ProjectRequirements } from '../types';
 import { autoFixLayout } from '@/utils/vastuAutoFix';
 import { calculateBOQ } from '@/utils/boqCalculator';
+import { renderFloorPlanSVG } from '@/utils/renderFloorPlan';
 import {
   CheckCircle,
   AlertTriangle,
@@ -29,6 +30,7 @@ interface Props {
   boqTotal?: number;
   numFloors?: number;
   customRates?: CustomRateSheet | null;
+  requirements?: ProjectRequirements;
 }
 
 const formatCurrency = (n: number): string => {
@@ -37,7 +39,7 @@ const formatCurrency = (n: number): string => {
   return `₹${n.toLocaleString('en-IN')}`;
 };
 
-export const ComplianceReport: React.FC<Props> = ({ layout, vastuEnabled, facing = 'North', onAutoFix, onProceed, boqTotal, numFloors, customRates }) => {
+export const ComplianceReport: React.FC<Props> = ({ layout, vastuEnabled, facing = 'North', onAutoFix, onProceed, boqTotal, numFloors, customRates, requirements }) => {
   const [expandNBC, setExpandNBC] = useState(false);
   const [expandVastu, setExpandVastu] = useState(false);
   const [expandFire, setExpandFire] = useState(false);
@@ -168,6 +170,19 @@ export const ComplianceReport: React.FC<Props> = ({ layout, vastuEnabled, facing
         </div>
       </div>
 
+      {/* Current Floor Plan */}
+      {requirements && (
+        <div className="bg-white border rounded-xl p-3">
+          <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-2">Current Floor Plan</div>
+          <img
+            src={`data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(renderFloorPlanSVG(layout, requirements))))}`}
+            alt={`${layout.name} floor plan`}
+            className="w-full h-auto"
+            style={{ maxHeight: '360px', objectFit: 'contain' }}
+          />
+        </div>
+      )}
+
       {/* NBC COMPLIANCE GATE — must pass before proceeding */}
       {!nbcFullyCompliant && (
         <div className="bg-red-50 border-2 border-red-300 rounded-xl p-4">
@@ -214,6 +229,30 @@ export const ComplianceReport: React.FC<Props> = ({ layout, vastuEnabled, facing
             </svg>
             Auto-Fix Cost Impact Analysis
           </div>
+
+          {/* Before/After Floor Plan Comparison */}
+          {requirements && (
+            <div className="grid grid-cols-2 gap-3">
+              <div className="bg-gray-50 border rounded-lg p-2">
+                <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-1 text-center">Current Layout</div>
+                <img
+                  src={`data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(renderFloorPlanSVG(layout, requirements))))}`}
+                  alt="Current layout floor plan"
+                  className="w-full h-auto"
+                  style={{ maxHeight: '280px', objectFit: 'contain' }}
+                />
+              </div>
+              <div className="bg-green-50 border border-green-200 rounded-lg p-2">
+                <div className="text-[10px] font-semibold text-green-700 uppercase tracking-wide mb-1 text-center">Optimized Layout</div>
+                <img
+                  src={`data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(renderFloorPlanSVG(costPreview.optimizedLayout, requirements))))}`}
+                  alt="Optimized layout floor plan"
+                  className="w-full h-auto"
+                  style={{ maxHeight: '280px', objectFit: 'contain' }}
+                />
+              </div>
+            </div>
+          )}
 
           {/* Before vs After Grid */}
           <div className="grid grid-cols-2 gap-3">

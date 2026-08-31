@@ -13,7 +13,6 @@ import { ComplianceReport } from '@/components/ComplianceReport';
 import { InteriorDesign } from '@/components/InteriorDesign';
 import ApartmentForm from '@/components/ApartmentForm';
 import { generateLayouts } from '@/utils/layoutGenerator';
-import { autoFixLayout } from '@/utils/vastuAutoFix';
 import { calculateBOQ } from '@/utils/boqCalculator';
 import { BRAND_LOGO_BASE64 } from '@/utils/brand';
 import { useAuth } from '@/hooks/useAuth';
@@ -142,19 +141,12 @@ export default function HomePage() {
     localStorage.removeItem('neevv_project_autosave');
   };
 
-  const handleAutoFix = (currentLayout: Layout) => {
+  const handleAutoFix = (optimizedLayout: Layout) => {
     if (!requirements) return;
-    const optimized = autoFixLayout(currentLayout, requirements.facing);
-    if (!optimized) {
-      // Auto-fix could not converge to 0 NBC errors
-      return;
-    }
-    setSelectedLayout(optimized);
+    setSelectedLayout(optimizedLayout);
     setMotherLayoutLocked(false);
-    // Update layouts array with the optimized version
-    setLayouts(prev => prev.map(l => l.id === optimized.id ? optimized : l));
-    // Recalculate BOQ with optimized layout
-    const b = calculateBOQ(optimized, requirements.floors.length, customRates);
+    setLayouts(prev => prev.map(l => l.id === optimizedLayout.id ? optimizedLayout : l));
+    const b = calculateBOQ(optimizedLayout, requirements.floors.length, customRates);
     setBOQ(b);
   };
 
@@ -548,7 +540,7 @@ export default function HomePage() {
               <LayoutSelector layouts={layouts} onSelect={handleLayoutSelect} vastuEnabled={requirements.vastuCompliance} requirements={requirements} />
             )}
             {step === 'compliance' && selectedLayout && requirements && (
-              <ComplianceReport layout={selectedLayout} vastuEnabled={requirements.vastuCompliance} facing={requirements.facing} onAutoFix={handleAutoFix} onProceed={handleComplianceProceed} boqTotal={boq?.totalCost} numFloors={requirements.floors.length} customRates={customRates} />
+              <ComplianceReport layout={selectedLayout} vastuEnabled={requirements.vastuCompliance} facing={requirements.facing} onAutoFix={handleAutoFix} onProceed={handleComplianceProceed} boqTotal={boq?.totalCost} numFloors={requirements.floors.length} customRates={customRates} requirements={requirements} />
             )}
 
             {step === 'isometric' && selectedLayout && requirements && (
