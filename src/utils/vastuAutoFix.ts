@@ -1160,7 +1160,7 @@ export function autoFixLayout(layout: Layout, facing: Facing): Layout | null {
 
       // ===== PHASE 6: Ground Coverage Check =====
       // Total ground floor footprint can exceed the NBC max coverage
-      // (for plots under 200 m²) after expansion. Remove rooms from the
+      // (plot-size dependent: 75%/65%/55%/50%) after expansion. Remove rooms from the
       // removal priority list until coverage is compliant, then shrink the
       // remaining footprint to the target — no re-expansion, so this can't
       // trade off against the area-minimum fixes above.
@@ -1175,6 +1175,32 @@ export function autoFixLayout(layout: Layout, facing: Facing): Layout | null {
       // on the same floor, adjusting dimensions proportionally.
       for (const fl of optimized.floors) {
         fl.rooms = forceRebalanceFloor(fl.rooms);
+      }
+
+      // ===== POST-PHASE-7: Re-run coverage fix =====
+      // Phase 7 force-rebalance can re-expand rooms, pushing coverage
+      // back over the limit. Re-apply coverage fix after Phase 7.
+      if (optimized.floors.length > 0) {
+        const gf = optimized.floors[0];
+        gf.rooms = fixGroundCoverage(gf.rooms, plotArea);
+      }
+
+      // ===== PARKING DIMENSION FIX =====
+      // NBC requires minimum 3.0m on the shorter dimension for car parking.
+      // If parking is too narrow, widen it by borrowing from adjacent rooms.
+      for (const fl of optimized.floors) {
+        for (const room of fl.rooms) {
+          if (room.type === 'parking') {
+            const minDim = Math.min(room.width, room.depth);
+            if (minDim < 3.0) {
+              if (room.width < room.depth) {
+                room.width = Math.max(room.width, 3.0);
+              } else {
+                room.depth = Math.max(room.depth, 3.0);
+              }
+            }
+          }
+        }
       }
 
       // Check convergence
