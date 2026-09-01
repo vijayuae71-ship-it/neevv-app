@@ -9,6 +9,7 @@ import {
   CheckCircle2, PlayCircle, ZoomIn, ZoomOut, RotateCcw
 } from 'lucide-react';
 import { exportAIPDF, ExportProgress } from '../utils/pdfExport';
+import { applyTextOverlay, OVERLAY_DRAWING_TYPES } from '../utils/textOverlay';
 
 interface Props {
   layout: Layout;
@@ -96,7 +97,16 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq }) 
       }
       const img = data.imageDataUri;
       if (img) {
-        setAiImages(prev => ({ ...prev, [drawingType]: img }));
+        // Apply programmatic text overlay for numeric drawings
+        let finalImg = img;
+        if ((OVERLAY_DRAWING_TYPES as readonly string[]).includes(drawingType) && boq) {
+          try {
+            finalImg = await applyTextOverlay(img, drawingType, layout, boq);
+          } catch (e) {
+            console.warn('Text overlay failed, using raw AI image:', e);
+          }
+        }
+        setAiImages(prev => ({ ...prev, [drawingType]: finalImg }));
       } else {
         throw new Error('No image in response from neevv Generation Pro');
       }
@@ -107,7 +117,7 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq }) 
     } finally {
       setAiLoading(null);
     }
-  }, [layout, requirements]);
+  }, [layout, requirements, boq]);
 
   /* ---------- Click handler for generate button ---------- */
   const handleGenerate = useCallback((drawingType: DrawingType) => {
@@ -142,7 +152,15 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq }) 
           });
           const data = await res.json();
           if (data.success && data.imageDataUri) {
-            setAiImages(prev => ({ ...prev, [dt]: data.imageDataUri }));
+            let finalImg = data.imageDataUri;
+            if ((OVERLAY_DRAWING_TYPES as readonly string[]).includes(dt) && boq) {
+              try {
+                finalImg = await applyTextOverlay(finalImg, dt, layout, boq);
+              } catch (e) {
+                console.warn('Text overlay failed, using raw AI image:', e);
+              }
+            }
+            setAiImages(prev => ({ ...prev, [dt]: finalImg }));
           }
         } catch {
           // Continue to next drawing on error
@@ -178,7 +196,15 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq }) 
         });
         const data = await res.json();
         if (data.success && data.imageDataUri) {
-          setAiImages(prev => ({ ...prev, [dt]: data.imageDataUri }));
+          let finalImg = data.imageDataUri;
+          if ((OVERLAY_DRAWING_TYPES as readonly string[]).includes(dt) && boq) {
+            try {
+              finalImg = await applyTextOverlay(finalImg, dt, layout, boq);
+            } catch (e) {
+              console.warn('Text overlay failed, using raw AI image:', e);
+            }
+          }
+          setAiImages(prev => ({ ...prev, [dt]: finalImg }));
         }
       } catch {
         // Continue to next drawing
@@ -187,7 +213,7 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq }) 
 
     setAiLoading(null);
     setGeneratingAll(false);
-  }, [aiImages, layout, requirements]);
+  }, [aiImages, layout, requirements, boq]);
 
   /* ---------- PDF Export ---------- */
   const handleExportPDF = async () => {
