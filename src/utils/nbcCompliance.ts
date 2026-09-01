@@ -350,7 +350,7 @@ export function checkNBCCompliance(
       // only when no rooms are provided.
       const groundFloorRoomArea = rooms.length > 0
         ? rooms
-            .filter(r => !r.floor || r.floor === 0 || r.floor === 1)
+            .filter(r => (r.floor ?? 0) === 0)
             .reduce((sum, r) => sum + r.width * r.depth, 0)
         : 0;
       const groundFloorArea = groundFloorRoomArea > 0
