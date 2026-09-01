@@ -1227,13 +1227,21 @@ export function autoFixLayout(layout: Layout, facing: Facing): Layout | null {
         }
       }
 
-      // Check convergence
+      // ===== POST-PARKING: Re-run coverage fix =====
+      // Parking dimension fix can expand parking width, pushing coverage
+      // back above the limit. Re-apply coverage fix one more time.
+      if (optimized.floors.length > 0) {
+        const gpf = optimized.floors[0];
+        gpf.rooms = fixGroundCoverage(gpf.rooms, plotArea);
+      }
+
+      // Recalc builtUpAreaSqM before convergence check
+      optimized.builtUpAreaSqM = optimized.floors.reduce((t, fl) =>
+        t + fl.rooms.reduce((s, r) => s + r.width * r.depth, 0), 0);
+
+      // Check convergence — break only when ALL errors are resolved
       allRooms = optimized.floors.flatMap(f => f.rooms);
       nbcResult = checkNBCCompliance(allRooms, plotArea, optimized.builtUpAreaSqM, optimized.floors.length);
-      const areaErrorsAfterPhase7 = nbcResult.issues.filter(i =>
-        i.severity === 'error' && i.issue.includes('below NBC minimum')
-      );
-      if (areaErrorsAfterPhase7.length === 0) break;
       if (nbcResult.issues.filter(i => i.severity === 'error').length === 0) break;
     }
 
