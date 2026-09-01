@@ -11,7 +11,7 @@ import {
 } from '../types';
 import { calculateSetbacks, checkNBCCompliance } from './nbcCompliance';
 import { calculateVastuScore, getIdealPlotPosition } from './vastuEngine';
-import { computeProportionalLayout, FloorRequest as ProportionalFloorRequest, RoomAllocation } from './computeProportionalLayout';
+import { computeProportionalLayout, checkPlotFeasibility, FloorRequest as ProportionalFloorRequest, RoomAllocation } from './computeProportionalLayout';
 
 const FT_TO_M = 0.3048;
 const SQM_TO_SQFT = 10.764;
@@ -130,13 +130,38 @@ export function generateLayouts(req: ProjectRequirements): Layout[] {
   const layouts: Layout[] = [];
 
   // Compute proportional room budgets
-  const proportionalFloorRequests: ProportionalFloorRequest[] = req.floors.map((fp, fi) => ({
+  let proportionalFloorRequests: ProportionalFloorRequest[] = req.floors.map((fp, fi) => ({
     floorType: fi === 0 ? 'ground' as const : 'upper' as const,
     bedroomCount: fp.bedrooms,
     toiletCount: Math.min(fp.bedrooms, 2),
     includeKitchen: fp.kitchens > 0,
     includePooja: fp.hasPuja,
   }));
+
+  // === Auto-downgrade bedrooms if plot can't support requested program ===
+  const feasibility = checkPlotFeasibility(
+    { plotWidthM: plotW, plotDepthM: plotD },
+    proportionalFloorRequests
+  );
+
+  let effectiveFloors: FloorProgram[] = req.floors;
+  if (!feasibility.feasible) {
+    // Auto-downgrade: use suggested floor requests with reduced bedrooms
+    const suggested = feasibility.suggestedFloorRequests;
+    effectiveFloors = req.floors.map((fp, fi) => ({
+      ...fp,
+      bedrooms: suggested[fi]?.bedroomCount ?? fp.bedrooms,
+    }));
+    // Rebuild proportional floor requests with downgraded counts
+    proportionalFloorRequests = effectiveFloors.map((fp, fi) => ({
+      floorType: (fi === 0 ? 'ground' : 'upper') as 'ground' | 'upper',
+      bedroomCount: fp.bedrooms,
+      toiletCount: Math.min(fp.bedrooms, 2),
+      includeKitchen: fp.kitchens > 0,
+      includePooja: fp.hasPuja,
+    }));
+  }
+
   const proportionalBudget = computeProportionalLayout(
     { plotWidthM: plotW, plotDepthM: plotD },
     proportionalFloorRequests
@@ -152,8 +177,8 @@ export function generateLayouts(req: ProjectRequirements): Layout[] {
     const floors: FloorLayout[] = [];
     let totalBuiltUp = 0;
 
-    for (let fi = 0; fi < req.floors.length; fi++) {
-      const fp = req.floors[fi];
+    for (let fi = 0; fi < effectiveFloors.length; fi++) {
+      const fp = effectiveFloors[fi];
       const isGround = fi === 0;
       const hasParking = isGround && req.parkingType !== 'None';
       const isStilt = isGround && req.parkingType === 'Stilt';
@@ -532,7 +557,53 @@ function placeRoomsForStrategy(
     }
   }
 
-  // ===== APPLY PROPORTIONAL BUDGET DIMENSIONS (keep positions, adjust sizes) =====
+  // ===== VASTU ZONE PLACEMENT (from proportional budget) =====
+  // If we have budgets with zone info, adjust room positions to match Vastu quadrants
+  if (roomBudgets && roomBudgets.length > 0) {
+    const midX = ox + buildW / 2;
+    const midY = oy + buildD / 2;
+
+    for (const room of rooms) {
+      let budget: RoomAllocation | undefined;
+      if (room.type === 'hall') budget = getBudget('Living & Dining');
+      else if (room.type === 'kitchen') budget = getBudget('Kitchen');
+      else if (room.type === 'master_bedroom') budget = getBudget('Master Bedroom');
+      else if (room.type === 'puja') budget = getBudget('Pooja Room');
+
+      if (!budget || !budget.vastuZone || budget.vastuZone === 'Center') continue;
+
+      // Compute target quadrant center for this zone
+      const zone = budget.vastuZone;
+      let targetX = room.x; // keep current if no match
+      let targetY = room.y;
+
+      // NE = low-x high-y for North-facing (front=North); adjust based on facing
+      // For simplicity, use absolute quadrants: NE=right-back, SE=right-front, etc.
+      // In the coordinate system: x increases right, y increases from front to back
+      const needsXHigh = zone.includes('E') || zone === 'SE' || zone === 'NE';
+      const needsXLow = zone.includes('W') || zone === 'SW' || zone === 'NW';
+      const needsYHigh = zone.includes('S') || zone === 'SE' || zone === 'SW';
+      const needsYLow = zone.includes('N') || zone === 'NE' || zone === 'NW';
+
+      // Soft nudge: if room is in wrong half, try to move it 20% toward correct half
+      // Only if the room type is one that Vastu cares about (kitchen, master bed, pooja)
+      if (needsXHigh && room.x + room.width / 2 < midX) {
+        targetX = Math.min(ox + buildW - room.width, room.x + buildW * 0.15);
+      } else if (needsXLow && room.x + room.width / 2 > midX) {
+        targetX = Math.max(ox, room.x - buildW * 0.15);
+      }
+      if (needsYHigh && room.y + room.depth / 2 < midY) {
+        targetY = Math.min(oy + buildD - room.depth, room.y + buildD * 0.15);
+      } else if (needsYLow && room.y + room.depth / 2 > midY) {
+        targetY = Math.max(oy, room.y - buildD * 0.15);
+      }
+
+      room.x = snap(targetX);
+      room.y = snap(targetY);
+    }
+  }
+
+  // ===== APPLY PROPORTIONAL BUDGET DIMENSIONS (flexible aspect ratio) =====
   if (roomBudgets) {
     for (const room of rooms) {
       let budget: RoomAllocation | undefined;
@@ -545,8 +616,28 @@ function placeRoomsForStrategy(
       else if (room.type === 'store' || room.type === 'utility') budget = getBudget('Store Room');
 
       if (budget) {
-        room.width = snap(budget.widthM);
-        room.depth = snap(budget.depthM);
+        // Use budget area but allow flexible aspect ratio
+        // If budget dimensions fit in available space, use them
+        // Otherwise, adjust aspect ratio within allowed range to fit
+        let targetW = budget.widthM;
+        let targetD = budget.depthM;
+
+        // Check if budget dimensions would overflow available space
+        const maxAvailW = snap(ox + buildW - room.x);
+        const maxAvailD = snap(oy + buildD - room.y);
+
+        if (targetW > maxAvailW && budget.aspectRatioRange) {
+          // Room too wide — increase depth, decrease width (lower aspect ratio)
+          targetW = Math.max(snap(maxAvailW), 1.0);
+          targetD = snap(budget.areaSqm / targetW);
+        } else if (targetD > maxAvailD && budget.aspectRatioRange) {
+          // Room too deep — increase width, decrease depth (higher aspect ratio)
+          targetD = Math.max(snap(maxAvailD), 1.0);
+          targetW = snap(budget.areaSqm / targetD);
+        }
+
+        room.width = snap(targetW);
+        room.depth = snap(targetD);
       }
     }
   }

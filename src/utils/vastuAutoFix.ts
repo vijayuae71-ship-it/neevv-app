@@ -1091,9 +1091,13 @@ export function autoFixLayout(layout: Layout, facing: Facing): Layout | null {
       fl.rooms = scaleFloorToArea(fl.rooms, buildableArea);
     }
 
-    // Outer convergence loop — max 3 full cycles
-    for (let cycle = 0; cycle < 3; cycle++) {
-      const runVastuSwap = cycle === 0;
+    // Single-pass validator — proportional layout guarantees sizing/coverage
+    // from birth; auto-fix now only handles edge cases (parking dims,
+    // staircase proportions, kitchen exterior wall, minor NBC width checks).
+    for (let cycle = 0; cycle < 1; cycle++) {
+      // Vastu swaps disabled — placement handled at generation time via
+      // zone constraints from computeProportionalLayout.
+      const runVastuSwap = false;
 
       // ===== PHASE 1 & 2: Vastu swap (cycle 0 only) + NBC expansion =====
       for (let pass = 0; pass < 5; pass++) {

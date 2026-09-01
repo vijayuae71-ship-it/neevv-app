@@ -15,6 +15,8 @@
  * Types
  * ===================================================================== */
 
+export type Facing = 'North' | 'South' | 'East' | 'West';
+
 export type FloorType = 'ground' | 'upper' | 'duplex-upper' | 'terrace-floor';
 
 export interface PlotInput {
@@ -41,6 +43,8 @@ export interface RoomAllocation {
   nbcMinSqm: number;
   hitNbcFloor: boolean;
   preferredDirection: string;
+  aspectRatioRange: { min: number; max: number };
+  vastuZone: string; // 'NE' | 'NW' | 'SE' | 'SW' | 'N' | 'S' | 'E' | 'W' | 'Center'
 }
 
 export interface FloorBudget {
@@ -73,6 +77,7 @@ export interface FeasibilityCheckResult {
   availableCarpetSqm: number;
   maxSupportableBedrooms: number;
   warnings: string[];
+  suggestedFloorRequests: FloorRequest[];
 }
 
 /* ========================================================================
@@ -193,6 +198,25 @@ export const DEFAULT_CONFIG: LayoutBudgetConfig = {
 };
 
 /* ========================================================================
+ * Vastu zone mapping
+ * ===================================================================== */
+
+const VASTU_ZONE_MAP: Record<string, string> = {
+  kitchen: 'SE',
+  masterBedroom: 'SW',
+  bedroom: 'NW',
+  livingDining: 'NE',
+  pooja: 'NE',
+  store: 'NW',
+  familyLounge: 'NE',
+  toilet: 'NW',
+};
+
+export function getVastuZone(roomKey: string): string {
+  return VASTU_ZONE_MAP[roomKey] || 'Center';
+}
+
+/* ========================================================================
  * Helper functions
  * ===================================================================== */
 
@@ -245,6 +269,28 @@ export function areaToDimensions(
   return {
     widthM: roundToIncrement(width, config.roundingIncrementM),
     depthM: roundToIncrement(depth, config.roundingIncrementM),
+  };
+}
+
+/**
+ * Nudge a room's base aspect ratio toward the overall plot's shape, so that
+ * long/thin plots tend to produce slightly longer/thinner rooms and vice
+ * versa. The influence is intentionally subtle (power 0.3) so NBC minimums
+ * and Vastu preferences still dominate the final room proportions.
+ */
+export function computePlotAwareAspectRatio(
+  baseRatio: number,
+  plotWidthM: number,
+  plotDepthM: number
+): { ratio: number; min: number; max: number } {
+  if (plotWidthM <= 0 || plotDepthM <= 0) return { ratio: baseRatio, min: baseRatio * 0.7, max: baseRatio * 1.4 };
+  const plotAspect = plotWidthM / plotDepthM;
+  // Gently pull room aspect toward plot shape (power 0.3 = subtle influence)
+  const adjusted = baseRatio * Math.pow(plotAspect, 0.3);
+  return {
+    ratio: Math.max(0.5, Math.min(2.5, adjusted)),
+    min: Math.max(0.5, adjusted * 0.7),
+    max: Math.min(2.5, adjusted * 1.4),
   };
 }
 
@@ -322,7 +368,9 @@ function resolveIncludeFlags(floorReq: FloorRequest): {
 export function allocateFloor(
   floorReq: FloorRequest,
   carpetArea: number,
-  config: LayoutBudgetConfig = DEFAULT_CONFIG
+  config: LayoutBudgetConfig = DEFAULT_CONFIG,
+  plotWidthM: number = 0,
+  plotDepthM: number = 0
 ): FloorBudget {
   const warnings: string[] = [];
   const staircaseAreaSqm = computeStaircaseFootprint(carpetArea, config);
@@ -382,7 +430,8 @@ export function allocateFloor(
       );
     }
     const aspectRatio = config.aspectRatios[key] ?? 1.3;
-    const { widthM, depthM } = areaToDimensions(areaSqm, aspectRatio, config);
+    const plotAware = computePlotAwareAspectRatio(aspectRatio, plotWidthM, plotDepthM);
+    const { widthM, depthM } = areaToDimensions(areaSqm, plotAware.ratio, config);
     rooms.push({
       roomType,
       areaSqm: roundToIncrement(areaSqm, 0.01),
@@ -391,6 +440,8 @@ export function allocateFloor(
       nbcMinSqm,
       hitNbcFloor,
       preferredDirection: config.vastuDirections[key] ?? 'Any',
+      aspectRatioRange: { min: plotAware.min, max: plotAware.max },
+      vastuZone: getVastuZone(key),
     });
   };
 
@@ -436,7 +487,8 @@ export function allocateFloor(
       const nbcMinSqm = config.nbcMinimums[key] ?? 0;
       const hitNbcFloor = area <= nbcMinSqm + 0.001;
       const aspectRatio = config.aspectRatios[key] ?? 1.3;
-      const { widthM, depthM } = areaToDimensions(area, aspectRatio, config);
+      const plotAware = computePlotAwareAspectRatio(aspectRatio, plotWidthM, plotDepthM);
+      const { widthM, depthM } = areaToDimensions(area, plotAware.ratio, config);
       rooms.push({
         roomType,
         areaSqm: roundToIncrement(area, 0.01),
@@ -445,6 +497,8 @@ export function allocateFloor(
         nbcMinSqm,
         hitNbcFloor,
         preferredDirection: config.vastuDirections[isMaster ? 'masterBedroom' : 'bedroom'] ?? 'Any',
+        aspectRatioRange: { min: plotAware.min, max: plotAware.max },
+        vastuZone: getVastuZone(key),
       });
     });
   }
@@ -501,8 +555,11 @@ export function computeProportionalLayout(
   // Deduct external wall thickness allowance to get usable carpet area per floor.
   const carpetPerFloor = maxFootprintSqm * (1 - config.externalWallDeductionPct);
 
+  const plotWidthM = plot.plotWidthM ?? 0;
+  const plotDepthM = plot.plotDepthM ?? 0;
+
   const floors: FloorBudget[] = floorRequests.map((floorReq) =>
-    allocateFloor(floorReq, carpetPerFloor, config)
+    allocateFloor(floorReq, carpetPerFloor, config, plotWidthM, plotDepthM)
   );
 
   const overallFeasible = floors.every((f) => f.feasible);
@@ -589,6 +646,47 @@ export function checkPlotFeasibility(
     }
   }
 
+  // Auto-downgrade: if the requested program isn't feasible, suggest a
+  // reduced-bedroom program that fits within the available carpet area.
+  const suggestedFloorRequests: FloorRequest[] = floorRequests.map((fr) => ({ ...fr }));
+  if (!feasible) {
+    // Reduce bedrooms starting from upper floors, then ground
+    let totalBedrooms = suggestedFloorRequests.reduce((s, fr) => s + fr.bedroomCount, 0);
+    while (totalBedrooms > 1) {
+      // Find floor with most bedrooms and reduce by 1
+      let maxIdx = 0;
+      for (let i = 1; i < suggestedFloorRequests.length; i++) {
+        if (suggestedFloorRequests[i].bedroomCount > suggestedFloorRequests[maxIdx].bedroomCount) maxIdx = i;
+      }
+      if (suggestedFloorRequests[maxIdx].bedroomCount <= 1) break;
+      suggestedFloorRequests[maxIdx].bedroomCount--;
+      suggestedFloorRequests[maxIdx].toiletCount = Math.min(
+        suggestedFloorRequests[maxIdx].bedroomCount,
+        suggestedFloorRequests[maxIdx].toiletCount
+      );
+      totalBedrooms--;
+
+      // Recheck feasibility with reduced program
+      let newRequired = 0;
+      for (const fr of suggestedFloorRequests) {
+        let floorMin = 0;
+        if (fr.floorType === 'ground') floorMin += config.nbcMinimums.livingDining;
+        if (fr.includeKitchen ?? (fr.floorType === 'ground' || fr.floorType === 'duplex-upper'))
+          floorMin += config.nbcMinimums.kitchen;
+        if (fr.includePooja ?? fr.floorType === 'ground') floorMin += config.nbcMinimums.pooja;
+        for (let i = 0; i < fr.bedroomCount; i++) {
+          floorMin += i === 0 ? config.nbcMinimums.masterBedroom : config.nbcMinimums.bedroom;
+        }
+        floorMin += Math.min(fr.bedroomCount, 2) * config.nbcMinimums.toilet;
+        newRequired += floorMin;
+      }
+      if (newRequired <= availableCarpetSqm * 1.08) break;
+    }
+    warnings.push(
+      `Auto-adjusted to ${suggestedFloorRequests.reduce((s, fr) => s + fr.bedroomCount, 0)} total bedrooms to fit your plot.`
+    );
+  }
+
   return {
     feasible,
     plotAreaSqm: roundToIncrement(plotAreaSqm, 0.01),
@@ -597,5 +695,6 @@ export function checkPlotFeasibility(
     availableCarpetSqm: roundToIncrement(availableCarpetSqm, 0.01),
     maxSupportableBedrooms,
     warnings,
+    suggestedFloorRequests,
   };
 }
