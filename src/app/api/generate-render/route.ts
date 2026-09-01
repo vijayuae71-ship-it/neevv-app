@@ -6,9 +6,9 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
 const GCS_BUCKET = process.env.GCS_BUCKET_NAME || '';
 
 const MODELS: Record<string, string> = {
-  'neevv-gen': 'gemini-2.5-flash-image',
-  'neevv-gen-2': 'gemini-2.5-flash-image',
-  'neevv-gen-pro': 'gemini-2.5-flash-image',
+  'neevv-gen': 'gemini-3.1-flash-image',
+  'neevv-gen-2': 'gemini-3.1-flash-image',
+  'neevv-gen-pro': 'gemini-3-pro-image',
 };
 
 export async function POST(request: NextRequest) {

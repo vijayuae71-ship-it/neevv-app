@@ -5,7 +5,7 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 120;
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-const MODEL_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=${GEMINI_API_KEY}`;
+const MODEL_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image:generateContent?key=${GEMINI_API_KEY}`;
 
 interface GenerateDrawingRequest {
   drawingType: DrawingType;
