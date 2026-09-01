@@ -104,23 +104,21 @@ export interface Layout {
   buildableDepthM: number;
 }
 
-/* ---------- Expanded BOQ ---------- */
-
 export interface BOQLineItem {
   sno: number;
   description: string;
   quantity: number;
   unit: string;
-  rate: number;        // INR per unit
-  amount: number;      // quantity * rate
+  rate: number;
+  amount: number;
   category: 'structural' | 'masonry' | 'finishing' | 'mep' | 'doors_windows' | 'misc';
   remark?: string;
 }
 
 export interface DoorScheduleItem {
-  mark: string;        // D1, D2...
+  mark: string;
   location: string;
-  type: string;        // "Flush", "Panel", "UPVC"
+  type: string;
   widthMM: number;
   heightMM: number;
   qty: number;
@@ -128,9 +126,9 @@ export interface DoorScheduleItem {
 }
 
 export interface WindowScheduleItem {
-  mark: string;        // W1, W2...
+  mark: string;
   location: string;
-  type: string;        // "Sliding", "Casement"
+  type: string;
   widthMM: number;
   heightMM: number;
   qty: number;
@@ -151,7 +149,6 @@ export interface BOQ {
   flooringAreaSqM: number;
   plumbingPoints: number;
   electricalPoints: number;
-  // Expanded fields
   lineItems: BOQLineItem[];
   doorSchedule: DoorScheduleItem[];
   windowSchedule: WindowScheduleItem[];
@@ -169,9 +166,7 @@ export interface BOQ {
   plasteringAreaSqM: number;
 }
 
-export type AppStep = 'requirements' | 'layouts' | 'compliance' | 'isometric' | 'working' | 'rates' | 'boq' | 'interior';
-
-/* ---------- Custom Rate Sheets ---------- */
+export type AppStep = 'requirements' | 'layouts' | 'isometric' | 'working' | 'rates' | 'boq' | 'interior';
 
 export interface MaterialRate {
   id: string;
@@ -186,7 +181,7 @@ export interface MaterialRate {
 export interface LabourRate {
   id: string;
   trade: string;
-  unit: string;        // 'per day', 'per m²', 'per point', etc.
+  unit: string;
   defaultRate: number;
   customRate?: number;
   category: 'skilled' | 'semi_skilled' | 'unskilled' | 'specialist';
@@ -199,19 +194,16 @@ export interface CustomRateSheet {
   lastUpdated?: string;
 }
 
-/* ========== INTERIOR DESIGN MODULE ========== */
-
 export type InteriorStyle = 'modern_minimalist' | 'contemporary_indian' | 'traditional' | 'industrial' | 'scandinavian';
-
 export type RoomFinishType = 'bedroom' | 'master_bedroom' | 'living' | 'kitchen' | 'dining' | 'bathroom' | 'puja' | 'balcony' | 'entrance';
 
 export interface ColorPalette {
-  primary: string;      // hex
-  secondary: string;    // hex
-  accent: string;       // hex
-  wall: string;         // hex
-  ceiling: string;      // hex
-  name: string;         // e.g. "Warm Neutrals"
+  primary: string;
+  secondary: string;
+  accent: string;
+  wall: string;
+  ceiling: string;
+  name: string;
 }
 
 export interface MaterialSpec {
@@ -219,26 +211,26 @@ export interface MaterialSpec {
   name: string;
   type: 'flooring' | 'wall_finish' | 'ceiling' | 'countertop' | 'cabinet' | 'hardware';
   brand?: string;
-  finish: string;       // e.g. "Matt", "Glossy", "Satin"
+  finish: string;
   color: string;
-  ratePerUnit: number;  // INR
-  unit: string;         // "sqft", "rft", "nos"
+  ratePerUnit: number;
+  unit: string;
 }
 
 export interface FurnitureItem {
   id: string;
-  name: string;           // e.g. "Queen Bed", "L-Shape Sofa"
+  name: string;
   category: 'bed' | 'sofa' | 'dining_table' | 'wardrobe' | 'tv_unit' | 'study_table' | 'dressing' | 'shoe_rack' | 'kitchen_cabinet' | 'crockery' | 'pooja_unit' | 'console' | 'side_table' | 'bookshelf' | 'bar_unit';
   widthMM: number;
   depthMM: number;
   heightMM: number;
-  material: string;       // "Plywood + Laminate", "Solid Wood", etc.
-  estimatedCost: number;  // INR
-  color: string;          // hex for rendering
+  material: string;
+  estimatedCost: number;
+  color: string;
 }
 
 export interface RoomInterior {
-  roomId: string;         // matches Room.id from layout
+  roomId: string;
   roomName: string;
   roomType: RoomFinishType;
   style: InteriorStyle;
@@ -246,7 +238,7 @@ export interface RoomInterior {
   flooring: MaterialSpec;
   wallFinish: MaterialSpec;
   ceilingType: 'plain' | 'false_ceiling_peripheral' | 'false_ceiling_full' | 'wooden_ceiling';
-  ceilingHeight: number;  // mm, default 2900 for false ceiling
+  ceilingHeight: number;
   furniture: FurnitureItem[];
   electricalPoints: {
     switches: number;
@@ -256,7 +248,7 @@ export interface RoomInterior {
     fanPoints: number;
     acPoints: number;
   };
-  specialFeatures: string[];  // "accent wall", "wall niche", "mirror panel" etc.
+  specialFeatures: string[];
 }
 
 export interface InteriorMoodBoard {
@@ -266,17 +258,17 @@ export interface InteriorMoodBoard {
   palette: ColorPalette;
   keyMaterials: string[];
   keyFurniture: string[];
-  imagePrompt: string;    // for AI render
+  imagePrompt: string;
 }
 
 export interface InteriorExecutionPhase {
   id: string;
   phase: string;
   description: string;
-  trade: string;          // "Civil", "Carpenter", "Electrician", "Plumber", "Painter", "Tiling"
+  trade: string;
   durationDays: number;
-  startDay: number;       // relative day from project start
-  dependencies: string[]; // phase ids
+  startDay: number;
+  dependencies: string[];
   materials: string[];
   estimatedCost: number;
 }

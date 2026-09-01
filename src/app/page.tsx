@@ -9,7 +9,6 @@ import { LayoutSelector } from '@/components/LayoutSelector';
 import { IsometricView } from '@/components/IsometricView';
 import { WorkingDrawings } from '@/components/WorkingDrawings';
 import { BOQReport } from '@/components/BOQReport';
-import { ComplianceReport } from '@/components/ComplianceReport';
 import { InteriorDesign } from '@/components/InteriorDesign';
 import ApartmentForm from '@/components/ApartmentForm';
 import { generateLayouts } from '@/utils/layoutGenerator';
@@ -19,7 +18,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useProject } from '@/hooks/useProject';
 import DrawingUpload from '@/components/DrawingUpload';
 import { RateSheet } from '@/components/RateSheet';
-import { Home, Palette, Upload, ArrowRight, CheckCircle, Shield, Zap, Users, Clock, Building, Hammer, Compass, Star, FileText, Eye } from 'lucide-react';
+import { Home, Palette, Upload, ArrowRight, CheckCircle, Zap, Users, Clock, Building, Hammer, Compass, Star, FileText, Eye } from 'lucide-react';
 import { analytics } from '@/utils/analytics';
 
 type AppMode = 'landing' | 'new_build' | 'interior_only' | 'upload_drawing';
@@ -87,8 +86,6 @@ export default function HomePage() {
     switch (target) {
       case 'requirements': return true;
       case 'layouts': return layouts.length > 0;
-      case 'compliance': return selectedLayout !== null;
-
       case 'isometric': return motherLayoutLocked && selectedLayout !== null;
       case 'working': return motherLayoutLocked && selectedLayout !== null;
       case 'rates': return motherLayoutLocked && selectedLayout !== null;
@@ -115,13 +112,13 @@ export default function HomePage() {
 
   const handleLayoutSelect = (layout: Layout) => {
     setSelectedLayout(layout);
-    setMotherLayoutLocked(false);
+    setMotherLayoutLocked(true); // Lock immediately — AI already generated NBC-compliant plan
     if (requirements) {
       const b = calculateBOQ(layout, requirements.floors.length, customRates);
       setBOQ(b);
     }
     analytics.layoutSelected(layout.id);
-    setStep('compliance');
+    setStep('isometric'); // Skip compliance — go straight to 3D View
   };
 
   const handleApartmentSubmit = (layout: Layout, req: ProjectRequirements) => {
@@ -141,19 +138,7 @@ export default function HomePage() {
     localStorage.removeItem('neevv_project_autosave');
   };
 
-  const handleAutoFix = (optimizedLayout: Layout) => {
-    if (!requirements) return;
-    setSelectedLayout(optimizedLayout);
-    setMotherLayoutLocked(false);
-    setLayouts(prev => prev.map(l => l.id === optimizedLayout.id ? optimizedLayout : l));
-    const b = calculateBOQ(optimizedLayout, requirements.floors.length, customRates);
-    setBOQ(b);
-  };
 
-  const handleComplianceProceed = () => {
-    setMotherLayoutLocked(true);
-    setStep('isometric');
-  };
 
   const handleUploadConversion = (layout: Layout, req: ProjectRequirements) => {
     setRequirements(req);
@@ -161,8 +146,9 @@ export default function HomePage() {
     setLayouts([layout]);
     const b = calculateBOQ(layout, req.floors.length, customRates);
     setBOQ(b);
+    setMotherLayoutLocked(true);
     setMode('new_build');
-    setStep('compliance');
+    setStep('isometric');
   };
 
   const handleSave = async () => {
@@ -538,9 +524,6 @@ export default function HomePage() {
             {step === 'requirements' && <RequirementForm onSubmit={handleRequirements} />}
             {step === 'layouts' && requirements && (
               <LayoutSelector layouts={layouts} onSelect={handleLayoutSelect} vastuEnabled={requirements.vastuCompliance} requirements={requirements} />
-            )}
-            {step === 'compliance' && selectedLayout && requirements && (
-              <ComplianceReport layout={selectedLayout} vastuEnabled={requirements.vastuCompliance} facing={requirements.facing} onAutoFix={handleAutoFix} onProceed={handleComplianceProceed} boqTotal={boq?.totalCost} numFloors={requirements.floors.length} customRates={customRates} requirements={requirements} />
             )}
 
             {step === 'isometric' && selectedLayout && requirements && (

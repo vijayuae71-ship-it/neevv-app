@@ -59,10 +59,10 @@ export const LayoutSelector: React.FC<Props> = ({ layouts, onSelect, vastuEnable
       <div className="text-center mb-4">
         <h2 className="text-lg font-bold text-gray-800">Choose Your Floor Plan</h2>
         <p className="text-sm text-gray-500 mt-1">
-          Three distinct layouts generated per your requirements. Each plan shows accurate room dimensions, structural grid, and Vastu placement.
+          Three NBC-compliant layouts generated for your plot. Select one to lock as your Mother Layout — all drawings, elevations, and BOQ will follow it exactly.
         </p>
         <p className="text-xs text-gray-400 mt-1">
-          AI-rendered architectural floor plans • All measurements in mm • NBC 2016 compliant
+          AI-rendered floor plans • NBC 2016 compliant • FSI 1.0 enforced • Best Vastu placement
         </p>
       </div>
 
@@ -165,7 +165,7 @@ export const LayoutSelector: React.FC<Props> = ({ layouts, onSelect, vastuEnable
                 disabled={loading[layout.id]}
                 onClick={(e) => { e.stopPropagation(); onSelect(layout); }}
               >
-                {loading[layout.id] ? 'Generating...' : 'Select This Layout →'}
+                {loading[layout.id] ? 'Generating...' : '🔒 Lock This Layout →'}
               </button>
             </div>
           </div>
