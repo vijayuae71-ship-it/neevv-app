@@ -11,6 +11,7 @@ import {
 } from '../types';
 import { calculateSetbacks, checkNBCCompliance } from './nbcCompliance';
 import { calculateVastuScore, getIdealPlotPosition } from './vastuEngine';
+import { computeProportionalLayout, FloorRequest as ProportionalFloorRequest, RoomAllocation } from './computeProportionalLayout';
 
 const FT_TO_M = 0.3048;
 const SQM_TO_SQFT = 10.764;
@@ -128,6 +129,19 @@ export function generateLayouts(req: ProjectRequirements): Layout[] {
 
   const layouts: Layout[] = [];
 
+  // Compute proportional room budgets
+  const proportionalFloorRequests: ProportionalFloorRequest[] = req.floors.map((fp, fi) => ({
+    floorType: fi === 0 ? 'ground' as const : 'upper' as const,
+    bedroomCount: fp.bedrooms,
+    toiletCount: Math.min(fp.bedrooms, 2),
+    includeKitchen: fp.kitchens > 0,
+    includePooja: fp.hasPuja,
+  }));
+  const proportionalBudget = computeProportionalLayout(
+    { plotWidthM: plotW, plotDepthM: plotD },
+    proportionalFloorRequests
+  );
+
   const strategies = [
     { id: 'vastu', name: 'Vastu-Optimized', desc: 'Strict Vastu placement — Kitchen SE, Master Bed SW, Puja NE. Dedicated zones for each function.' },
     { id: 'space', name: 'Space-Optimized', desc: 'Open-plan Living+Dining, Kitchen near bedrooms. Maximizes carpet area with minimal corridors.' },
@@ -150,7 +164,8 @@ export function generateLayouts(req: ProjectRequirements): Layout[] {
       const rooms = placeRoomsForStrategy(
         adjFp, buildW, buildD, setbacks, fi,
         strat.id, req.facing, isStilt,
-        req.floors.length > 1, hasParking
+        req.floors.length > 1, hasParking,
+        proportionalBudget.floors[fi]?.rooms
       );
 
       const columns = placeColumns(rooms, buildW, buildD, setbacks);
@@ -209,10 +224,16 @@ function placeRoomsForStrategy(
   facing: Facing,
   isStilt: boolean,
   isMultiFloor: boolean,
-  hasParking: boolean
+  hasParking: boolean,
+  roomBudgets?: RoomAllocation[]
 ): Room[] {
   const ox = snap(setbacks.left);
   const oy = snap(setbacks.front);
+
+  const getBudget = (type: string): RoomAllocation | undefined =>
+    roomBudgets?.find(b => b.roomType === type);
+  const getBudgetIdx = (prefix: string, idx: number): RoomAllocation | undefined =>
+    roomBudgets?.find(b => b.roomType === (idx === 0 && prefix === 'Bedroom' ? 'Master Bedroom' : `${prefix} ${idx + 1}`));
 
   if (isStilt) {
     return [
@@ -507,6 +528,25 @@ function placeRoomsForStrategy(
           id: `f${floor}_dining_0`, name: 'Dining', type: 'dining',
           x: fillX, y: oy, width: dw, depth: frontD, floor,
         });
+      }
+    }
+  }
+
+  // ===== APPLY PROPORTIONAL BUDGET DIMENSIONS (keep positions, adjust sizes) =====
+  if (roomBudgets) {
+    for (const room of rooms) {
+      let budget: RoomAllocation | undefined;
+      if (room.type === 'hall') budget = getBudget('Living & Dining');
+      else if (room.type === 'kitchen') budget = getBudget('Kitchen');
+      else if (room.type === 'master_bedroom') budget = getBudget('Master Bedroom');
+      else if (room.type === 'bedroom') budget = getBudgetIdx('Bedroom', parseInt(room.id.split('_').pop() || '1'));
+      else if (room.type === 'toilet') budget = getBudgetIdx('Toilet', parseInt(room.id.split('_').pop() || '0'));
+      else if (room.type === 'puja') budget = getBudget('Pooja Room');
+      else if (room.type === 'store' || room.type === 'utility') budget = getBudget('Store Room');
+
+      if (budget) {
+        room.width = snap(budget.widthM);
+        room.depth = snap(budget.depthM);
       }
     }
   }
