@@ -112,9 +112,9 @@ export interface LayoutBudgetConfig {
 export const DEFAULT_CONFIG: LayoutBudgetConfig = {
   coverageTiers: [
     { maxPlotAreaSqm: 100, maxCoveragePct: 75, label: 'Up to 100 sqm' },
-    { maxPlotAreaSqm: 150, maxCoveragePct: 65, label: 'Up to 150 sqm' },
-    { maxPlotAreaSqm: 300, maxCoveragePct: 55, label: 'Up to 300 sqm' },
-    { maxPlotAreaSqm: null, maxCoveragePct: 50, label: 'Above 300 sqm' },
+    { maxPlotAreaSqm: 200, maxCoveragePct: 65, label: 'Up to 200 sqm' },
+    { maxPlotAreaSqm: 500, maxCoveragePct: 55, label: 'Up to 500 sqm' },
+    { maxPlotAreaSqm: null, maxCoveragePct: 50, label: 'Above 500 sqm' },
   ],
   externalWallDeductionPct: 0.06,
   staircase: {
@@ -161,9 +161,9 @@ export const DEFAULT_CONFIG: LayoutBudgetConfig = {
     masterBedroom: 11.15,
     bedroom: 9.5,
     kitchen: 5.5,
-    toilet: 1.85,
-    pooja: 1.2,
-    store: 1.5,
+    toilet: 2.8,
+    pooja: 2.0,
+    store: 2.0,
     livingDining: 9.5,
     familyLounge: 7.0,
   },
@@ -552,8 +552,15 @@ export function computeProportionalLayout(
   const coverageTier = getCoverageTier(plotAreaSqm, config);
   const maxFootprintSqm = plotAreaSqm * (coverageTier.maxCoveragePct / 100);
 
+  // FSI enforcement: FSI=1 means total built-up ≤ plot area
+  // Per-floor footprint capped to plotArea * FSI / numFloors
+  const FSI = 1.0;
+  const numFloors = floorRequests.length || 1;
+  const fsiMaxPerFloor = plotAreaSqm * FSI / numFloors;
+  const effectiveFootprint = Math.min(maxFootprintSqm, fsiMaxPerFloor);
+
   // Deduct external wall thickness allowance to get usable carpet area per floor.
-  const carpetPerFloor = maxFootprintSqm * (1 - config.externalWallDeductionPct);
+  const carpetPerFloor = effectiveFootprint * (1 - config.externalWallDeductionPct);
 
   const plotWidthM = plot.plotWidthM ?? 0;
   const plotDepthM = plot.plotDepthM ?? 0;
@@ -586,7 +593,14 @@ export function checkPlotFeasibility(
   const plotAreaSqm = resolvePlotArea(plot);
   const coverageTier = getCoverageTier(plotAreaSqm, config);
   const maxFootprintSqm = plotAreaSqm * (coverageTier.maxCoveragePct / 100);
-  const carpetPerFloor = maxFootprintSqm * (1 - config.externalWallDeductionPct);
+
+  // FSI enforcement: FSI=1 means total built-up ≤ plot area
+  // Per-floor footprint capped to plotArea * FSI / numFloors
+  const FSI = 1.0;
+  const numFloors = floorRequests.length || 1;
+  const fsiMaxPerFloor = plotAreaSqm * FSI / numFloors;
+  const effectiveFootprint = Math.min(maxFootprintSqm, fsiMaxPerFloor);
+  const carpetPerFloor = effectiveFootprint * (1 - config.externalWallDeductionPct);
 
   const warnings: string[] = [];
   let requiredMinSqm = 0;

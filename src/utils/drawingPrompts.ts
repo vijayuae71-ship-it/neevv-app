@@ -89,7 +89,13 @@ Project: [from requirements] | Drawing: [type] | Scale: 1:100 | Sheet: A3
 NBC 2016 Compliant ✓ | IS 456:2000 ✓
 
 CRITICAL: Black and white only. No color fills. No gradients. No artistic rendering (except 3D views). This is a CONSTRUCTION DOCUMENT.
-CRITICAL SPELLING: Triple-check every word. Common correct spellings: Reinforcement, Electrical, Plumbing, Foundation, Staircase, Waterproofing, Excavation, Structural, Elevation, Building, Schedule, Residential, Distribution, Drainage, Treatment, Ceiling, Exhaust, Kitchen, Bathroom, Bedroom, Dining, Living.
+CRITICAL SPELLING: Triple-check every word. You MUST use these EXACT spellings:
+REINFORCEMENT (not Reinforement), SCHEDULE (not Shedule), WATERPROOFING (not Waterprofing),
+CALCULATION (not Calcuration), STAIRCASE (not Staircace), ABBREVIATION (not Aberiipation),
+EXCAVATION, STRUCTURAL, ELEVATION, BUILDING, RESIDENTIAL, DISTRIBUTION, DRAINAGE,
+TREATMENT, CEILING, EXHAUST, KITCHEN, BATHROOM, BEDROOM, DINING, LIVING, ELECTRICAL,
+PLUMBING, FOUNDATION, COLUMN, FOOTING, TERRACE, PARAPET, VENTILATION, ARCHITECTURE.
+If generating any table or text label, spell-check every word against this list.
 `;
 
 function generateDesignSeed(): DesignSeed {
@@ -178,7 +184,7 @@ function formatRoomList(rooms: any[]): string {
 
 // Derive architectural consistency brief from layout data
 function buildArchitecturalBrief(layout: any, requirements: any): string {
-  const { plotW, plotD } = getPlotDimensions(layout);
+  const { plotW, plotD } = getPlotDimensions(layout, requirements);
   const facing = requirements?.facing || 'East';
   const floors = layout?.floors || [];
 
@@ -249,9 +255,9 @@ function getColumnPositions(layout: any): string {
   }).join(', ');
 }
 
-function getPlotDimensions(layout: any): { plotW: number; plotD: number } {
-  const plotW = layout?.plot?.width || layout?.plotWidth || layout?.dimensions?.width || 30;
-  const plotD = layout?.plot?.depth || layout?.plotDepth || layout?.dimensions?.depth || 40;
+function getPlotDimensions(layout: any, requirements?: any): { plotW: number; plotD: number } {
+  const plotW = requirements?.plotWidthFt || (layout?.plotWidthM ? Math.round(layout.plotWidthM / 0.3048) : null) || layout?.plot?.width || layout?.plotWidth || 30;
+  const plotD = requirements?.plotDepthFt || (layout?.plotDepthM ? Math.round(layout.plotDepthM / 0.3048) : null) || layout?.plot?.depth || layout?.plotDepth || 40;
   return { plotW, plotD };
 }
 
@@ -269,7 +275,7 @@ function getFloorRooms(layout: any, floorIndex: number): any[] {
 }
 
 export function buildDrawingPrompt(drawingType: DrawingType, layout: any, requirements: any): string {
-  const { plotW, plotD } = getPlotDimensions(layout);
+  const { plotW, plotD } = getPlotDimensions(layout, requirements);
   const groundFloorRooms = getFloorRooms(layout, 0);
   const firstFloorRooms = getFloorRooms(layout, 1);
   const columnPositions = getColumnPositions(layout);

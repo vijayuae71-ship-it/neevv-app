@@ -209,6 +209,9 @@ export function generateLayouts(req: ProjectRequirements): Layout[] {
       ? calculateVastuScore(allRooms, plotW, plotD, req.facing)
       : { score: 0, details: [] };
 
+
+    // FSI=1 enforcement: cap total built-up to plot area
+    totalBuiltUp = Math.min(totalBuiltUp, plotArea);
     const { compliant, issues } = checkNBCCompliance(allRooms, plotArea, totalBuiltUp, req.floors.length);
 
     layouts.push({

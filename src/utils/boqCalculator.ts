@@ -38,8 +38,9 @@ function resolveRate(defaultRate: number, itemKey: string, customRates?: CustomR
  * Pass customRates to override default rates; null/undefined uses defaults.
  */
 export function calculateBOQ(layout: Layout, numFloors: number, customRates?: CustomRateSheet | null): BOQ {
-  const builtUpPerFloor = layout.builtUpAreaSqM;
-  const totalBuiltUpSqM = builtUpPerFloor * numFloors;
+  // FIX: layout.builtUpAreaSqM is already total across all floors
+  const totalBuiltUpSqM = layout.builtUpAreaSqM;
+  const builtUpPerFloor = totalBuiltUpSqM / numFloors;
   const totalBuiltUpSqFt = totalBuiltUpSqM * SQM_TO_SQFT;
   const perimeter = 2 * (layout.buildableWidthM + layout.buildableDepthM);
   const wallHeight = 3.0;
