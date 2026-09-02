@@ -65,8 +65,8 @@ export const RequirementForm: React.FC<Props> = ({ onSubmit, initialValues }) =>
   };
 
   const addFloor = () => {
-    if (floors.length >= 4) return;
-    const labels = ['Ground Floor', 'First Floor', 'Second Floor', 'Third Floor'];
+    if (floors.length >= 2) return; // Cap at G+1 — G+2 not yet validated
+    const labels = ['Ground Floor', 'First Floor'];
     setFloors((prev) => [...prev, defaultFloor(labels[prev.length] || `Floor ${prev.length}`)]);
   };
 
@@ -261,16 +261,19 @@ export const RequirementForm: React.FC<Props> = ({ onSubmit, initialValues }) =>
             <h3 className="font-semibold flex items-center gap-2 text-sm">
               <Home size={16} className="text-blue-600" /> Floor-wise Program
             </h3>
-            <div className="flex gap-1">
+            <div className="flex gap-1 items-center">
               <button className="btn btn-ghost btn-xs" onClick={removeFloor} disabled={floors.length <= 1}>
                 <Minus size={14} />
               </button>
               <span className="text-xs font-medium px-2 flex items-center">
-                {floors.length} Floor{floors.length > 1 ? 's' : ''}
+                {floors.length === 1 ? 'Ground Only' : `G+${floors.length - 1}`}
               </span>
-              <button className="btn btn-ghost btn-xs" onClick={addFloor} disabled={floors.length >= 4}>
+              <button className="btn btn-ghost btn-xs" onClick={addFloor} disabled={floors.length >= 2} title={floors.length >= 2 ? 'G+2 and above coming soon' : 'Add floor'}>
                 <Plus size={14} />
               </button>
+              {floors.length >= 2 && (
+                <span className="text-[10px] text-gray-400 ml-1">G+2 coming soon</span>
+              )}
             </div>
           </div>
 
