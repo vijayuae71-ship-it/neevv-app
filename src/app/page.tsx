@@ -128,7 +128,12 @@ export default function HomePage() {
     setStep('interior');
   };
 
-  const handleBackToLanding = () => {
+  const handleLogoClick = () => {
+    // Keep the current project intact when the logo is clicked.
+    if (requirements !== null) return;
+  };
+
+  const handleNewProject = () => {
     setMode('landing');
     setStep('requirements');
     setRequirements(null);
@@ -198,7 +203,7 @@ export default function HomePage() {
             src={BRAND_LOGO_BASE64}
             alt="neevv"
             className="h-8"
-            onClick={handleBackToLanding}
+            onClick={handleLogoClick}
             style={{ cursor: 'pointer' }}
             title="Back to Home"
           />
@@ -208,6 +213,18 @@ export default function HomePage() {
           </span>
         </div>
         <div className="flex items-center gap-3">
+          {requirements !== null && (
+            <button
+              onClick={() => {
+                if (window.confirm('Start a new project? Current progress will be saved until you begin a new one.')) {
+                  handleNewProject();
+                }
+              }}
+              className="text-sm text-gray-500 hover:text-gray-700 px-2 py-1 rounded hover:bg-gray-100"
+            >
+              🔄 New Project
+            </button>
+          )}
           {selectedLayout && (
             <button
               onClick={() => {
@@ -504,7 +521,7 @@ export default function HomePage() {
 
   /* ============ UPLOAD DRAWING MODE ============ */
   if (mode === 'upload_drawing') {
-    return <DrawingUpload onConversionComplete={handleUploadConversion} onBack={handleBackToLanding} />;
+    return <DrawingUpload onConversionComplete={handleUploadConversion} onBack={handleNewProject} />;
   }
 
   /* ============ MAIN APP ============ */
@@ -521,7 +538,7 @@ export default function HomePage() {
         {/* NEW BUILD MODE */}
         {mode === 'new_build' && (
           <>
-            {step === 'requirements' && <RequirementForm onSubmit={handleRequirements} />}
+            {step === 'requirements' && <RequirementForm onSubmit={handleRequirements} initialValues={requirements} />}
             {step === 'layouts' && requirements && (
               <LayoutSelector layouts={layouts} onSelect={handleLayoutSelect} vastuEnabled={requirements.vastuCompliance} requirements={requirements} />
             )}
@@ -562,7 +579,7 @@ export default function HomePage() {
 
         {/* INTERIOR ONLY MODE */}
         {mode === 'interior_only' && step !== 'interior' && (
-          <ApartmentForm onSubmit={handleApartmentSubmit} onBack={handleBackToLanding} />
+          <ApartmentForm onSubmit={handleApartmentSubmit} onBack={handleNewProject} />
         )}
         {mode === 'interior_only' && step === 'interior' && selectedLayout && requirements && (
           <InteriorDesign layout={selectedLayout} requirements={requirements} />

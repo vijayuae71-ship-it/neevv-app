@@ -6,6 +6,7 @@ import { MapPin, Ruler, Home, Compass, Car, Star, Plus, Minus, IndianRupee, Pale
 
 interface Props {
   onSubmit: (req: ProjectRequirements) => void;
+  initialValues?: ProjectRequirements | null;
 }
 
 const STATES = [
@@ -42,20 +43,22 @@ const defaultFloor = (label: string): FloorProgram => ({
   hasPuja: false,
 });
 
-export const RequirementForm: React.FC<Props> = ({ onSubmit }) => {
-  const [city, setCity] = useState('Bangalore');
-  const [state, setState] = useState('Karnataka');
-  const [plotW, setPlotW] = useState(30);
-  const [plotD, setPlotD] = useState(40);
-  const [facing, setFacing] = useState<Facing>('North');
-  const [vastu, setVastu] = useState(true);
-  const [parking, setParking] = useState<ParkingType>('Open');
-  const [budget, setBudget] = useState<BudgetRange>('standard');
-  const [style, setStyle] = useState<ArchitecturalStyle>('contemporary_indian');
-  const [floors, setFloors] = useState<FloorProgram[]>([
-    defaultFloor('Ground Floor'),
-    defaultFloor('First Floor'),
-  ]);
+export const RequirementForm: React.FC<Props> = ({ onSubmit, initialValues }) => {
+  const [plotW, setPlotW] = useState(initialValues?.plotWidthFt ?? 30);
+  const [plotD, setPlotD] = useState(initialValues?.plotDepthFt ?? 40);
+  const [facing, setFacing] = useState<Facing>(initialValues?.facing ?? 'North');
+  const [city, setCity] = useState(initialValues?.city ?? 'Bangalore');
+  const [state, setState] = useState(initialValues?.state ?? 'Karnataka');
+  const [vastu, setVastu] = useState(initialValues?.vastuCompliance ?? true);
+  const [budget, setBudget] = useState<BudgetRange>(initialValues?.budget ?? 'standard');
+  const [style, setStyle] = useState<ArchitecturalStyle>(initialValues?.architecturalStyle ?? 'contemporary_indian');
+  const [parking, setParking] = useState<ParkingType>(initialValues?.parkingType ?? 'Open');
+  const [floors, setFloors] = useState<FloorProgram[]>(
+    initialValues?.floors?.length ? initialValues.floors : [
+      defaultFloor('Ground Floor'),
+      defaultFloor('First Floor'),
+    ]
+  );
 
   const updateFloor = (idx: number, partial: Partial<FloorProgram>) => {
     setFloors((prev) => prev.map((f, i) => (i === idx ? { ...f, ...partial } : f)));
