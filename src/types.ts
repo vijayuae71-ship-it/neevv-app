@@ -114,6 +114,7 @@ export interface Layout {
   fsiValue?: number;
   nbcMaxCoveragePct?: number;
   constraintBrief?: string;
+  downgradeNote?: string;
   numFloors?: number;
   plotWidthFt?: number;
   plotDepthFt?: number;

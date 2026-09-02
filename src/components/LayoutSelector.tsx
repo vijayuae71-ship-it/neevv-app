@@ -68,6 +68,14 @@ export const LayoutSelector: React.FC<Props> = ({ layouts, onSelect, vastuEnable
         </p>
       </div>
 
+      {/* Auto-downgrade notice */}
+      {layouts.some(l => l.downgradeNote) && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800 flex items-start gap-2">
+          <span className="text-amber-500 mt-0.5">⚠️</span>
+          <span>{layouts.find(l => l.downgradeNote)?.downgradeNote}</span>
+        </div>
+      )}
+
       {/* Layout Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {layouts.map((layout) => {

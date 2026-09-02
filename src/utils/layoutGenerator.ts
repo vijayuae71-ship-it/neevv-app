@@ -122,10 +122,19 @@ export function generateLayouts(req: ProjectRequirements): Layout[] {
   const plotArea = plotW * plotD;
   const setbacks = calculateSetbacks(plotArea, plotW, plotD);
 
-  const buildW = snap(plotW - setbacks.left - setbacks.right);
-  const buildD = snap(plotD - setbacks.front - setbacks.rear);
+  let buildW = snap(plotW - setbacks.left - setbacks.right);
+  let buildD = snap(plotD - setbacks.front - setbacks.rear);
 
   if (buildW < 3 || buildD < 3) return [];
+
+  // NBC coverage enforcement: cap building footprint to coverage tier
+  const maxCoveragePct = plotArea <= 100 ? 75 : plotArea <= 200 ? 65 : plotArea <= 500 ? 55 : 50;
+  const maxFootprintSqM = plotArea * (maxCoveragePct / 100);
+  if (buildW * buildD > maxFootprintSqM) {
+    const scale = Math.sqrt(maxFootprintSqM / (buildW * buildD));
+    buildW = snap(buildW * scale);
+    buildD = snap(buildD * scale);
+  }
 
   const layouts: Layout[] = [];
 
@@ -145,6 +154,7 @@ export function generateLayouts(req: ProjectRequirements): Layout[] {
   );
 
   let effectiveFloors: FloorProgram[] = req.floors;
+  let downgradeNote = '';
   if (!feasibility.feasible) {
     // Auto-downgrade: use suggested floor requests with reduced bedrooms
     const suggested = feasibility.suggestedFloorRequests;
@@ -152,6 +162,11 @@ export function generateLayouts(req: ProjectRequirements): Layout[] {
       ...fp,
       bedrooms: suggested[fi]?.bedroomCount ?? fp.bedrooms,
     }));
+    const origBedrooms = req.floors.reduce((s, f) => s + f.bedrooms, 0);
+    const newBedrooms = effectiveFloors.reduce((s, f) => s + f.bedrooms, 0);
+    if (newBedrooms < origBedrooms) {
+      downgradeNote = `Plot size adjusted: bedrooms reduced from ${origBedrooms} to ${newBedrooms} to meet NBC minimum room sizes. All rooms comply with National Building Code 2016.`;
+    }
     // Rebuild proportional floor requests with downgraded counts
     proportionalFloorRequests = effectiveFloors.map((fp, fi) => ({
       floorType: (fi === 0 ? 'ground' : 'upper') as 'ground' | 'upper',
@@ -244,6 +259,7 @@ export function generateLayouts(req: ProjectRequirements): Layout[] {
       numFloors: effectiveFloors.length,
       plotWidthFt: req.plotWidthFt,
       plotDepthFt: req.plotDepthFt,
+      downgradeNote: downgradeNote || undefined,
       constraintBrief: [
         `BUILDING FOOTPRINT: ${Math.round(buildW * 1000)}mm × ${Math.round(buildD * 1000)}mm.`,
         `PLOT SIZE: ${Math.round(plotW * 1000)}mm × ${Math.round(plotD * 1000)}mm — building is SMALLER than plot due to setbacks.`,
