@@ -60,9 +60,13 @@ const aiDrawingMap: Record<DrawingType, string> = {
 /* Key drawings to auto-generate when component mounts */
 const AUTO_GENERATE: DrawingType[] = ['excavation', 'elevation', 'section'];
 
+/* Drawing types that differ between Ground Floor and First Floor and need separate generation/caching */
+const FLOOR_SPECIFIC: DrawingType[] = ['electrical', 'plumbing', 'tiling', 'brickwork'];
+
 export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq }) => {
   const [activeDrawing, setActiveDrawing] = useState<DrawingType>('excavation');
   const [zoom, setZoom] = useState(100);
+  const [selectedFloor, setSelectedFloor] = useState<'GF' | 'FF'>('GF');
   const [aiImages, setAiImages] = useState<Record<string, string>>({});
   const [aiLoading, setAiLoading] = useState<string | null>(null);
   const [aiError, setAiError] = useState<string | null>(null);
@@ -74,10 +78,19 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq }) 
   const [autoGenStarted, setAutoGenStarted] = useState(false);
   const [autoGenActive, setAutoGenActive] = useState(false);
 
+  const isMultiFloor = (requirements?.floors?.length || layout?.floors?.length || 1) > 1;
+
+  /* Cache key: floor-specific drawings get a separate key per floor, shared drawings don't */
+  const getCacheKey = useCallback((dt: DrawingType, floor: 'GF' | 'FF') => {
+    return FLOOR_SPECIFIC.includes(dt) ? `${dt}-${floor}` : dt;
+  }, []);
+
   /* ---------- Single drawing generation ---------- */
   const generateSingle = useCallback(async (drawingType: DrawingType) => {
     const aiType = aiDrawingMap[drawingType];
     if (!aiType) return;
+
+    const cacheKey = getCacheKey(drawingType, selectedFloor);
 
     setAiLoading(drawingType);
     setAiError(null);
@@ -89,6 +102,7 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq }) 
           drawingType: aiType,
           layout,
           requirements,
+          floor: FLOOR_SPECIFIC.includes(drawingType) ? selectedFloor : undefined,
         }),
       });
       const data = await res.json();
@@ -101,12 +115,12 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq }) 
         let finalImg = img;
         if ((OVERLAY_DRAWING_TYPES as readonly string[]).includes(drawingType) && boq) {
           try {
-            finalImg = await applyTextOverlay(img, drawingType, layout, boq);
+            finalImg = await applyTextOverlay(img, drawingType, layout, boq, selectedFloor);
           } catch (e) {
             console.warn('Text overlay failed, using raw AI image:', e);
           }
         }
-        setAiImages(prev => ({ ...prev, [drawingType]: finalImg }));
+        setAiImages(prev => ({ ...prev, [cacheKey]: finalImg }));
       } else {
         throw new Error('No image in response from neevv Generation Pro');
       }
@@ -117,17 +131,18 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq }) 
     } finally {
       setAiLoading(null);
     }
-  }, [layout, requirements, boq]);
+  }, [layout, requirements, boq, selectedFloor, getCacheKey]);
 
   /* ---------- Click handler for generate button ---------- */
   const handleGenerate = useCallback((drawingType: DrawingType) => {
+    const cacheKey = getCacheKey(drawingType, selectedFloor);
     // If already cached, just view it
-    if (aiImages[drawingType]) {
+    if (aiImages[cacheKey]) {
       setActiveDrawing(drawingType);
       return;
     }
     generateSingle(drawingType);
-  }, [aiImages, generateSingle]);
+  }, [aiImages, generateSingle, getCacheKey, selectedFloor]);
 
   /* ---------- Auto-generate key drawings on mount ---------- */
   useEffect(() => {
@@ -137,6 +152,7 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq }) 
 
     const autoGen = async () => {
       for (const dt of AUTO_GENERATE) {
+        const cacheKey = getCacheKey(dt, selectedFloor);
         setAiLoading(dt);
         // Switch active view to the drawing being generated so user sees progress
         setActiveDrawing(dt);
@@ -148,6 +164,7 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq }) 
               drawingType: aiDrawingMap[dt],
               layout,
               requirements,
+              floor: FLOOR_SPECIFIC.includes(dt) ? selectedFloor : undefined,
             }),
           });
           const data = await res.json();
@@ -155,12 +172,12 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq }) 
             let finalImg = data.imageDataUri;
             if ((OVERLAY_DRAWING_TYPES as readonly string[]).includes(dt) && boq) {
               try {
-                finalImg = await applyTextOverlay(finalImg, dt, layout, boq);
+                finalImg = await applyTextOverlay(finalImg, dt, layout, boq, selectedFloor);
               } catch (e) {
                 console.warn('Text overlay failed, using raw AI image:', e);
               }
             }
-            setAiImages(prev => ({ ...prev, [dt]: finalImg }));
+            setAiImages(prev => ({ ...prev, [cacheKey]: finalImg }));
           }
         } catch {
           // Continue to next drawing on error
@@ -180,7 +197,8 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq }) 
     const allTypes = Object.keys(aiDrawingMap) as DrawingType[];
 
     for (const dt of allTypes) {
-      if (aiImages[dt]) continue; // Skip cached
+      const cacheKey = getCacheKey(dt, selectedFloor);
+      if (aiImages[cacheKey]) continue; // Skip cached
 
       setAiLoading(dt);
       setActiveDrawing(dt);
@@ -192,6 +210,7 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq }) 
             drawingType: aiDrawingMap[dt],
             layout,
             requirements,
+            floor: FLOOR_SPECIFIC.includes(dt) ? selectedFloor : undefined,
           }),
         });
         const data = await res.json();
@@ -199,12 +218,12 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq }) 
           let finalImg = data.imageDataUri;
           if ((OVERLAY_DRAWING_TYPES as readonly string[]).includes(dt) && boq) {
             try {
-              finalImg = await applyTextOverlay(finalImg, dt, layout, boq);
+              finalImg = await applyTextOverlay(finalImg, dt, layout, boq, selectedFloor);
             } catch (e) {
               console.warn('Text overlay failed, using raw AI image:', e);
             }
           }
-          setAiImages(prev => ({ ...prev, [dt]: finalImg }));
+          setAiImages(prev => ({ ...prev, [cacheKey]: finalImg }));
         }
       } catch {
         // Continue to next drawing
@@ -213,7 +232,7 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq }) 
 
     setAiLoading(null);
     setGeneratingAll(false);
-  }, [aiImages, layout, requirements, boq]);
+  }, [aiImages, layout, requirements, boq, selectedFloor, getCacheKey]);
 
   /* ---------- PDF Export ---------- */
   const handleExportPDF = async () => {
@@ -235,18 +254,19 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq }) 
 
   /* ---------- Download single image ---------- */
   const downloadImage = (drawingType: DrawingType) => {
-    const dataUri = aiImages[drawingType];
+    const cacheKey = getCacheKey(drawingType, selectedFloor);
+    const dataUri = aiImages[cacheKey];
     if (!dataUri) return;
     const link = document.createElement('a');
     link.href = dataUri;
-    link.download = `neevv-${drawingType.replace(/([A-Z])/g, '-$1').toLowerCase()}.png`;
+    link.download = `neevv-${cacheKey.replace(/([A-Z])/g, '-$1').toLowerCase()}.png`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
 
   const generatedCount = Object.keys(aiImages).length;
-  const totalDrawings = Object.keys(aiDrawingMap).length;
+  const totalDrawings = Object.keys(aiDrawingMap).length + (isMultiFloor ? FLOOR_SPECIFIC.length : 0);
 
   const tabs: { id: DrawingType; label: string; icon: React.ReactNode; group: string }[] = [
     { id: 'excavation', label: 'Excavation', icon: <Shovel size={12} />, group: 'Site' },
@@ -290,7 +310,8 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq }) 
     stp: 'Sewage Treatment Plant layout: bar screen, settling tank, anaerobic baffled reactor, filter media, chlorination chamber with flow direction per CPCB / NBC Part 9.',
   };
 
-  const activeImage = aiImages[activeDrawing];
+  const cacheKey = getCacheKey(activeDrawing, selectedFloor);
+  const activeImage = aiImages[cacheKey];
   const isLoadingCurrent = aiLoading === activeDrawing;
   const isLoadingOther = !!aiLoading && aiLoading !== activeDrawing;
   const activeTab = tabs.find(t => t.id === activeDrawing);
@@ -307,7 +328,8 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq }) 
               <React.Fragment key={g}>
                 <span className="text-[9px] font-bold uppercase tracking-widest text-gray-400 mr-1 ml-2">{g}</span>
                 {groupTabs.map(t => {
-                  const isGenerated = !!aiImages[t.id];
+                  const tabCacheKey = getCacheKey(t.id, selectedFloor);
+                  const isGenerated = !!aiImages[tabCacheKey];
                   const isCurrentLoading = aiLoading === t.id;
                   return (
                     <button
@@ -337,6 +359,24 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq }) 
         <div className="w-20 bg-gray-200 rounded-full h-1.5">
           <div className="bg-green-500 h-1.5 rounded-full transition-all" style={{ width: `${(generatedCount / totalDrawings) * 100}%` }} />
         </div>
+
+        {/* Floor toggle - only relevant for multi-floor (G+1) projects */}
+        {isMultiFloor && (
+          <div className="flex items-center gap-0.5 ml-2 border border-gray-300 rounded overflow-hidden">
+            <button
+              className={`btn btn-xs rounded-none ${selectedFloor === 'GF' ? 'btn-primary' : 'btn-ghost'}`}
+              onClick={() => setSelectedFloor('GF')}
+            >
+              GF
+            </button>
+            <button
+              className={`btn btn-xs rounded-none ${selectedFloor === 'FF' ? 'btn-primary' : 'btn-ghost'}`}
+              onClick={() => setSelectedFloor('FF')}
+            >
+              FF
+            </button>
+          </div>
+        )}
 
         {/* Generate All */}
         <button

@@ -11,6 +11,7 @@ interface GenerateDrawingRequest {
   drawingType: DrawingType;
   layout: any;
   requirements: any;
+  floor?: 'GF' | 'FF';
 }
 
 export async function POST(request: NextRequest) {
@@ -23,7 +24,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body: GenerateDrawingRequest = await request.json();
-    const { drawingType, layout, requirements } = body;
+    const { drawingType, layout, requirements, floor } = body;
 
     // Rate limiting: 15 drawings per minute per IP
     const { rateLimit: checkRate, getClientIP } = await import('@/utils/rateLimit');
@@ -47,7 +48,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Build the prompt
-    const prompt = buildDrawingPrompt(drawingType, layout, requirements);
+    const prompt = buildDrawingPrompt(drawingType, layout, requirements, floor);
 
     // Call Gemini API
     const geminiResponse = await fetch(MODEL_URL, {

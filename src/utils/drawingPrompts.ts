@@ -274,7 +274,10 @@ function getFloorRooms(layout: any, floorIndex: number): any[] {
   return [];
 }
 
-export function buildDrawingPrompt(drawingType: DrawingType, layout: any, requirements: any): string {
+export function buildDrawingPrompt(drawingType: DrawingType, layout: any, requirements: any, floor?: 'GF' | 'FF'): string {
+  const isFirstFloor = floor === 'FF';
+  const floorContext = isFirstFloor ? 'FIRST FLOOR' : 'GROUND FLOOR';
+
   const { plotW, plotD } = getPlotDimensions(layout, requirements);
   const groundFloorRooms = getFloorRooms(layout, 0);
   const firstFloorRooms = getFloorRooms(layout, 1);
@@ -463,6 +466,21 @@ ${styleSpec}
 ${regionalContext}
 ${designDNA}${isCodeStandards}${dimensionalRule}${vastuContext}${nbcContext}${architecturalBrief}`;
 
+  // Floor-specific context notes for the four floor-specific drawing types.
+  // Only relevant when this project has more than one floor and generation is for FF.
+  const electricalFloorNote = isFirstFloor
+    ? `THIS IS THE FIRST FLOOR ELECTRICAL LAYOUT. Show bedrooms, family room, and attached bathrooms. Upper floor typically has 3-4 bedrooms with individual AC points, fan points, and 5-amp socket outlets. Show separate circuit from first floor DB sub-panel.\n`
+    : '';
+  const plumbingFloorNote = isFirstFloor
+    ? `THIS IS THE FIRST FLOOR PLUMBING LAYOUT. Show attached bathroom connections for bedrooms. No kitchen plumbing on first floor. Bathroom drainage connects to main stack. Show floor trap, WC, wash basin, and shower connections for each bathroom.\n`
+    : '';
+  const tilingFloorNote = isFirstFloor
+    ? `THIS IS THE FIRST FLOOR TILING LAYOUT. Bedroom floors with vitrified tiles, attached bathroom wall and floor tiles. Passage/landing area tiling. No kitchen tiling on first floor.\n`
+    : '';
+  const brickworkFloorNote = isFirstFloor
+    ? `THIS IS THE FIRST FLOOR BRICKWORK LAYOUT. Show bedroom partition walls (115mm internal), attached bathroom walls (230mm where plumbing), landing/passage walls. External walls 230mm continue from ground floor columns.\n`
+    : '';
+
   const prompts: Record<DrawingType, string> = {
     ground_floor: `${BASE_PROMPT}${projectContext}${dimensionVerification}
 CROSS-DRAWING REFERENCE: This is the MASTER drawing — all other drawings derive from this layout.
@@ -523,9 +541,9 @@ RCC Beam and Slab Detail. Beam spans matching structural grid: ${spanW}mm and ${
     bar_bending: `${BASE_PROMPT}${projectContext}
 Bar Bending Schedule table for ${floorLabel} residential building. Column spacing: ${spanW}mm × ${spanD}mm grid. Beam lengths: ${spanW}mm and ${spanD}mm clear span + bearing. Columns: Member, Bar Mark, Dia(mm), Shape Code, No of Bars, Cutting Length(m), Total Length(m), Unit Weight(kg/m), Total Weight(kg). Include: Footings (F1-F16), Columns (C1-C16), Plinth Beams, Ground Floor Beams, GF Slab, FF Beams, FF Slab, Staircase. Shape code diagrams: 00=straight, 21=cranked, 38=rectangular stirrup, 51=L-bend. Summary: Total Steel = ${totalSteel} Tons Fe500D. With 3% Buffer = ${(Number(totalSteel) * 1.03).toFixed(2)} Tons.`,
 
-    electrical: `${BASE_PROMPT}${projectContext}${dimensionVerification}
-CROSS-DRAWING REFERENCE: Room layout MUST match ground floor plan exactly — same room sizes, positions, names.
-Electrical Layout Plan for Ground Floor of ${plotW}ft x ${plotD}ft house.
+    electrical: `${electricalFloorNote}${BASE_PROMPT}${projectContext}${dimensionVerification}
+CROSS-DRAWING REFERENCE: Room layout MUST match ${floorContext.toLowerCase()} plan exactly — same room sizes, positions, names.
+Electrical Layout Plan for ${floorContext} of ${plotW}ft x ${plotD}ft house.
 
 ROOM LAYOUT: Show all room outlines with thick external walls and thin internal partitions. Label each room clearly at center.
 
@@ -566,9 +584,9 @@ TOTAL CONNECTED LOAD: ${electricalLoad} kW
 Ensure ALL spelling is correct - no typos. Double-check: "Electrical", "Socket", "Distribution", "Earthing", "Ceiling", "Exhaust".
 NBC 2016 Compliant badge and neevv Architecture • Structure • MEP • Interiors branding at bottom-right.`,
 
-    plumbing: `${BASE_PROMPT}${projectContext}${dimensionVerification}
-CROSS-DRAWING REFERENCE: Room layout MUST match ground floor plan. Wet area positions from brief.
-Plumbing Layout Plan for Ground Floor. Show room outlines with: water supply lines (solid blue), drainage lines (dashed green), floor traps (circle), fixtures: WC, wash basin, kitchen sink, washing machine point. Inlet from municipal supply. Overhead tank connection. Soil pipe stack location. Vent pipe. STP connection. Plumbing Stack A1: Kitchen (GF) to Master Toilet (FF) vertically aligned. Pipe sizes annotated.`,
+    plumbing: `${plumbingFloorNote}${BASE_PROMPT}${projectContext}${dimensionVerification}
+CROSS-DRAWING REFERENCE: Room layout MUST match ${floorContext.toLowerCase()} plan. Wet area positions from brief.
+Plumbing Layout Plan for ${floorContext}. Show room outlines with: water supply lines (solid blue), drainage lines (dashed green), floor traps (circle), fixtures: WC, wash basin, kitchen sink, washing machine point. Inlet from municipal supply. Overhead tank connection. Soil pipe stack location. Vent pipe. STP connection. Plumbing Stack A1: Kitchen (GF) to Master Toilet (FF) vertically aligned. Pipe sizes annotated.`,
 
     '3d_exterior': `${BASE_PROMPT}
 PROJECT: ${plotW}ft × ${plotD}ft (${plotArea} sq.ft) ${facing}-facing ${floorLabel} Residential Building, ${city || 'India'}, ${state || 'India'}.
@@ -598,10 +616,10 @@ Waterproofing Detail Drawing. Show THREE detail sections: 1) BATHROOM WATERPROOF
     stp_detail: `${BASE_PROMPT}${projectContext}
 Sewage Treatment Plant (STP) Detail for residential building. PLAN VIEW: Compact STP layout showing: Inlet chamber → Bar screen → Anaerobic baffled reactor (2 chambers) → Settling tank → Planted gravel filter → Treated water tank. All chambers with dimensions. SECTION A-A: Vertical section through all chambers showing water levels, baffle walls, gravel media, pipe inverts. Inlet invert level, outlet invert level. Chamber depths: 1.5m to 2.0m. Wall thickness 200mm RCC. FLOW DIAGRAM: Schematic showing treatment stages with arrows. Capacity: 1000-2000 LPD for residential use. Treated water quality: BOD < 30mg/L, TSS < 50mg/L per CPCB norms. All dimensions annotated.`,
 
-    tiling_layout: `${BASE_PROMPT}${projectContext}${dimensionVerification}
-Tiling Layout Plan for Ground Floor of ${plotW}ft x ${plotD}ft house. Show room outlines with tiling patterns: LIVING/DINING: 600x600mm vitrified tiles in stack bond pattern with tile layout grid, show cut tiles at edges with dimensions. KITCHEN: 600x600mm anti-skid tiles, 300x450mm wall tiles up to 600mm dado height. BATHROOM: 300x300mm anti-skid floor tiles with slope towards drain, 300x600mm wall tiles floor to ceiling (2.4m). BEDROOM: 600x600mm vitrified tiles. Show: tile starting point (center of room), cut tile widths at edges, threshold strips at door openings, skirting 100mm height. Tile quantity table: Room, Floor Area, Wall Area, Tile Size, Quantity (add 10% wastage). All dimensions in mm.`,
+    tiling_layout: `${tilingFloorNote}${BASE_PROMPT}${projectContext}${dimensionVerification}
+Tiling Layout Plan for ${floorContext} of ${plotW}ft x ${plotD}ft house. Show room outlines with tiling patterns: LIVING/DINING: 600x600mm vitrified tiles in stack bond pattern with tile layout grid, show cut tiles at edges with dimensions. KITCHEN: 600x600mm anti-skid tiles, 300x450mm wall tiles up to 600mm dado height. BATHROOM: 300x300mm anti-skid floor tiles with slope towards drain, 300x600mm wall tiles floor to ceiling (2.4m). BEDROOM: 600x600mm vitrified tiles. Show: tile starting point (center of room), cut tile widths at edges, threshold strips at door openings, skirting 100mm height. Tile quantity table: Room, Floor Area, Wall Area, Tile Size, Quantity (add 10% wastage). All dimensions in mm.`,
 
-    brickwork_detail: `${BASE_PROMPT}${projectContext}
+    brickwork_detail: `${brickworkFloorNote}${BASE_PROMPT}${projectContext}
 Brickwork Detail Drawing for residential building. WALL SECTION: Show 230mm external wall (English bond) and 115mm internal partition (stretcher bond). Layer detail: External plaster 20mm → Brick masonry 230mm → Internal plaster 15mm. Brick size: 230mm x 115mm x 75mm with 10mm mortar joints (1:6 cement:sand). BONDING PATTERNS: Plan view of English bond showing alternate header and stretcher courses. T-junction detail where internal wall meets external wall. LINTEL DETAIL: RCC lintel 230mm x 150mm over openings, bearing 150mm each side, 2-12mm bars top + 2-12mm bottom, 6mm stirrups at 150mm c/c. SILL DETAIL: Brick on edge sill with weathering slope and drip groove. Wall quantities per floor in table format. All dimensions annotated.`,
   };
 

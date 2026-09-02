@@ -78,10 +78,12 @@ function makeOverlaySections(
   drawingType: string,
   layout: Layout,
   boq: BOQ,
+  floor?: 'GF' | 'FF',
 ): { title: string; sections: OverlaySection[] } | null {
   const concrete = (boq?.concreteBreakdown || {}) as Partial<BOQ['concreteBreakdown']>;
   const columns = columnCount(layout);
   const dims = buildingDimsSection(layout);
+  const floorPrefix = floor === 'FF' ? 'FIRST FLOOR ' : 'GROUND FLOOR ';
 
   switch (drawingType as OverlayDrawingType) {
     case 'structural':
@@ -339,7 +341,7 @@ function makeOverlaySections(
 
     case 'brickwork':
       return {
-        title: 'BRICKWORK DETAIL',
+        title: `${floorPrefix}BRICKWORK DETAIL`,
         sections: [
           dims,
           {
@@ -364,7 +366,7 @@ function makeOverlaySections(
 
     case 'electrical':
       return {
-        title: 'ELECTRICAL LAYOUT',
+        title: `${floorPrefix}ELECTRICAL LAYOUT`,
         sections: [
           dims,
           {
@@ -389,7 +391,7 @@ function makeOverlaySections(
 
     case 'plumbing':
       return {
-        title: 'PLUMBING LAYOUT',
+        title: `${floorPrefix}PLUMBING LAYOUT`,
         sections: [
           dims,
           {
@@ -414,7 +416,7 @@ function makeOverlaySections(
 
     case 'tiling':
       return {
-        title: 'TILING LAYOUT',
+        title: `${floorPrefix}TILING LAYOUT`,
         sections: [
           dims,
           {
@@ -569,8 +571,9 @@ export async function applyTextOverlay(
   drawingType: string,
   layout: Layout,
   boq: BOQ,
+  floor?: 'GF' | 'FF',
 ): Promise<string> {
-  const overlay = makeOverlaySections(drawingType, layout, boq);
+  const overlay = makeOverlaySections(drawingType, layout, boq, floor);
   if (!overlay) return imageDataUri;
 
   const image = await loadImage(imageDataUri);
