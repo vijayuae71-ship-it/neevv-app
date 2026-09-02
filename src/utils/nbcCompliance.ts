@@ -79,17 +79,9 @@ function getMaxFAR(plotAreaSqM: number): number {
  * NBC 2016 Part 3, Table 17 (simplified for residential)
  */
 export function calculateSetbacks(plotAreaSqM: number, plotWidthM: number, plotDepthM: number): Setbacks {
-  if (plotAreaSqM <= 50) {
-    return { front: 1.0, rear: 1.0, left: 0.0, right: 0.0 };
-  } else if (plotAreaSqM <= 100) {
-    return { front: 1.5, rear: 1.0, left: 0.75, right: 0.75 };
-  } else if (plotAreaSqM <= 200) {
-    return { front: 2.0, rear: 1.5, left: 1.0, right: 1.0 };
-  } else if (plotAreaSqM <= 500) {
-    return { front: 3.0, rear: 1.5, left: 1.5, right: 1.5 };
-  } else {
-    return { front: 4.5, rear: 2.0, left: 2.0, right: 2.0 };
-  }
+  // Mandatory residential setbacks — single source of truth
+  // Front: 1.5m, Rear: 1.5m, Sides: 1.0m each
+  return { front: 1.5, rear: 1.5, left: 1.0, right: 1.0 };
 }
 
 /**

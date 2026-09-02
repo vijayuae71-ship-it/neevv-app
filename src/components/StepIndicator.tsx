@@ -36,7 +36,7 @@ export const StepIndicator: React.FC<Props> = ({ current, onNavigate, canNavigat
               <div className={`w-4 h-px flex-shrink-0 ${isDone ? 'bg-blue-600' : 'bg-gray-200'}`} />
             )}
             <button
-              className={`btn btn-xs flex-shrink-0 gap-1 ${
+              className={`btn btn-xs flex-shrink-0 gap-1 relative z-10 ${
                 isActive ? 'btn-primary' : isDone ? 'btn-ghost text-blue-600' : 'btn-ghost text-gray-400'
               } ${!canNav && !isActive ? 'btn-disabled' : ''}`}
               onClick={() => canNav && onNavigate(s.id)}

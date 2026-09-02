@@ -69,6 +69,7 @@ function buildingDimsSection(layout: Layout): OverlaySection {
       ['Building', `${buildWmm} × ${buildDmm}`],
       ['Setbacks', 'F:1.5m R:1.5m L:1.0m R:1.0m'],
       ['Per floor', perFloor],
+      ['Total built-up', layout?.totalBuiltUpSqFt ? `${layout.totalBuiltUpSqFt} sqft` : ''],
       ['Floors', `${nFloors}`],
     ],
   };

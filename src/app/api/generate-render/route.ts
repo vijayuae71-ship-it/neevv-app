@@ -7,7 +7,6 @@ const GCS_BUCKET = process.env.GCS_BUCKET_NAME || '';
 
 const MODELS: Record<string, string> = {
   'neevv-gen': 'gemini-3.1-flash-image',
-  'neevv-gen-2': 'gemini-3.1-flash-image',
   'neevv-gen-pro': 'gemini-3-pro-image',
 };
 
@@ -26,7 +25,7 @@ export async function POST(request: NextRequest) {
     // Rate limiting: 10 renders per minute per IP
     const { rateLimit: checkRate, getClientIP } = await import('@/utils/rateLimit');
     const clientIP = getClientIP(request);
-    const { allowed, remaining, resetIn } = checkRate(clientIP, 10, 60000);
+    const { allowed, remaining, resetIn } = checkRate(clientIP, 5, 60000);
     
     if (!allowed) {
       return Response.json(
@@ -98,8 +97,12 @@ export async function POST(request: NextRequest) {
           metadata: { cacheControl: 'public, max-age=31536000' },
         });
 
-        await file.makePublic();
-        publicUrl = `https://storage.googleapis.com/${GCS_BUCKET}/${filename}`;
+        // Use signed URL instead of public access
+        const [signedUrl] = await file.getSignedUrl({
+          action: 'read' as const,
+          expires: Date.now() + 60 * 60 * 1000,
+        });
+        publicUrl = signedUrl;
       } catch (gcsErr: any) {
         console.warn('GCS upload failed, returning base64 instead:', gcsErr.message);
       }

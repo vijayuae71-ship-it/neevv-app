@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
     // Rate limiting: 15 drawings per minute per IP
     const { rateLimit: checkRate, getClientIP } = await import('@/utils/rateLimit');
     const clientIP = getClientIP(request);
-    const { allowed, remaining, resetIn } = checkRate(clientIP, 15, 60000);
+    const { allowed, remaining, resetIn } = checkRate(clientIP, 10, 60000);
     
     if (!allowed) {
       return Response.json(

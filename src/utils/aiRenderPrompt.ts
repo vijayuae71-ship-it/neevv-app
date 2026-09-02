@@ -41,15 +41,15 @@ export function buildArchitecturalPrompt(
   const windowHeight = 1200; // mm
   const doorHeight = 2100; // mm
 
-  // Calculate setbacks
-  const frontSetback = requirements.plotWidthFt >= 40 ? 3.0 : 1.5;
-  const sideSetback = requirements.plotWidthFt >= 40 ? 1.5 : 1.0;
-  const rearSetback = requirements.plotDepthFt >= 40 ? 1.5 : 1.0;
+  // Use layout's authoritative computed values — single source of truth
+  const frontSetback = layout.setbacks.front;
+  const sideSetback = layout.setbacks.left;
+  const rearSetback = layout.setbacks.rear;
 
-  // Building footprint (plot minus setbacks)
-  const buildingWidthM = layout.plotWidthM - (2 * sideSetback);
-  const buildingDepthM = layout.plotDepthM - frontSetback - rearSetback;
-  const builtUpAreaSqFt = Math.round(buildingWidthM * buildingDepthM * 10.764);
+  // Building footprint from layout (already setback-adjusted)
+  const buildingWidthM = layout.buildableWidthM;
+  const buildingDepthM = layout.buildableDepthM;
+  const builtUpAreaSqFt = layout.effectivePerFloorSqFt || Math.round(buildingWidthM * buildingDepthM * 10.764);
 
   // Per-room dimensions for detail
   const roomDimensions = layout.floors.map(f => {

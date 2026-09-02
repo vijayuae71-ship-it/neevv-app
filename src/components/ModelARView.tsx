@@ -57,14 +57,12 @@ export const ModelARView: React.FC<Props> = ({ layout, requirements }) => {
   const [showQuotePanel, setShowQuotePanel] = useState(false);
 
   // Compute building stats for the quote panel
-  const numFloors = layout.floors.length;
-  const frontSetback = requirements.plotWidthFt >= 40 ? 3.0 : 1.5;
-  const sideSetback = requirements.plotWidthFt >= 40 ? 1.5 : 1.0;
-  const rearSetback = requirements.plotDepthFt >= 40 ? 1.5 : 1.0;
-  const buildW = layout.plotWidthM - 2 * sideSetback;
-  const buildD = layout.plotDepthM - frontSetback - rearSetback;
-  const builtUpPerFloor = Math.round(buildW * buildD * 10.764);
-  const totalBuiltUp = builtUpPerFloor * numFloors;
+  // Use layout's authoritative computed values — single source of truth
+  const numFloors = layout.numFloors || layout.floors.length;
+  const buildW = layout.buildableWidthM;
+  const buildD = layout.buildableDepthM;
+  const builtUpPerFloor = layout.effectivePerFloorSqFt || Math.round(buildW * buildD * 10.764);
+  const totalBuiltUp = layout.totalBuiltUpSqFt || Math.round(layout.builtUpAreaSqM * 10.764);
 
   // Material estimates (approximate)
   const cementBags = Math.round(totalBuiltUp * 0.4);      // ~0.4 bags per sq.ft

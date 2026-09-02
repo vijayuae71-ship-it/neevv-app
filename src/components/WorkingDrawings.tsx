@@ -43,7 +43,7 @@ const aiDrawingMap: Record<DrawingType, string> = {
   footingDetail: 'footing_detail',
   rccDetail: 'beam_slab',
   structural: 'column_detail',
-  reinforcement: 'bar_bending',
+  reinforcement: 'column_detail',
   barBending: 'bar_bending',
   section: 'section_aa',
   elevation: 'front_elevation',

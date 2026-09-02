@@ -7,7 +7,6 @@ import { Camera, RefreshCw, Download, AlertTriangle, Sparkles, Eye } from 'lucid
 
 const MODELS = [
   { id: 'neevv-gen', label: 'neevv Gen' },
-  { id: 'neevv-gen-2', label: 'neevv Gen 2' },
   { id: 'neevv-gen-pro', label: 'neevv Gen Pro' },
 ];
 
@@ -207,7 +206,7 @@ export const AIRenderView: React.FC<Props> = ({ layout, requirements }) => {
                 <p className="text-sm">{error}</p>
                 {error.includes('Rate limit') && (
                   <p className="text-xs mt-1 text-gray-600">
-                    Tip: Enable billing at <a href="https://ai.dev/projects" target="_blank" rel="noopener noreferrer" className="underline">ai.dev/projects</a> for unlimited generations.
+                    neevv Generation Pro has a fair-use limit. Please wait a few minutes before trying again.
                   </p>
                 )}
               </div>

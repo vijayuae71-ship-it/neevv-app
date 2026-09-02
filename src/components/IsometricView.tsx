@@ -9,14 +9,13 @@ import { Box, Sparkles, Ruler, Smartphone } from 'lucide-react';
 
 /** Floating dimension info panel */
 const DimensionPanel: React.FC<{ layout: Layout; requirements: ProjectRequirements }> = ({ layout, requirements }) => {
-  const numFloors = layout.floors.length;
-  const frontSetback = requirements.plotWidthFt >= 40 ? 3.0 : 1.5;
-  const sideSetback = requirements.plotWidthFt >= 40 ? 1.5 : 1.0;
-  const rearSetback = requirements.plotDepthFt >= 40 ? 1.5 : 1.0;
-  const buildW = layout.plotWidthM - 2 * sideSetback;
-  const buildD = layout.plotDepthM - frontSetback - rearSetback;
-  const builtUpPerFloor = Math.round(buildW * buildD * 10.764);
-  const totalBuiltUp = builtUpPerFloor * numFloors;
+  // Use layout's authoritative computed values — single source of truth
+  const numFloors = layout.numFloors || layout.floors.length;
+  const setbacks = layout.setbacks;
+  const buildW = layout.buildableWidthM;
+  const buildD = layout.buildableDepthM;
+  const builtUpPerFloor = layout.effectivePerFloorSqFt || Math.round(buildW * buildD * 10.764);
+  const totalBuiltUp = layout.totalBuiltUpSqFt || Math.round(layout.builtUpAreaSqM * 10.764);
   const totalHeight = numFloors * 3;
 
   return (
@@ -35,9 +34,9 @@ const DimensionPanel: React.FC<{ layout: Layout; requirements: ProjectRequiremen
         <div className="flex justify-between"><span>Built-up/F:</span><span className="font-semibold">{builtUpPerFloor} sq.ft</span></div>
         <div className="flex justify-between"><span>Total:</span><span className="font-semibold text-blue-600">{totalBuiltUp} sq.ft</span></div>
         <div className="border-t border-gray-200 pt-1 mt-1">
-          <div className="flex justify-between"><span>Setback F:</span><span>{frontSetback}m</span></div>
-          <div className="flex justify-between"><span>Setback S:</span><span>{sideSetback}m</span></div>
-          <div className="flex justify-between"><span>Setback R:</span><span>{rearSetback}m</span></div>
+          <div className="flex justify-between"><span>Setback F:</span><span>{setbacks.front}m</span></div>
+          <div className="flex justify-between"><span>Setback S:</span><span>{setbacks.left}m / {setbacks.right}m</span></div>
+          <div className="flex justify-between"><span>Setback R:</span><span>{setbacks.rear}m</span></div>
         </div>
       </div>
     </div>
@@ -68,11 +67,14 @@ export const IsometricView: React.FC<Props> = ({ layout, requirements }) => {
 
     // Wait for THREE and OrbitControls to be available (CDN scripts may still be loading) (CDN scripts may still be loading)
     const waitForThree = () => {
-      return new Promise<any>((resolve) => {
+      return new Promise<any>((resolve, reject) => {
+        let attempts = 0;
         const check = () => {
           const T = (window as any).THREE;
           if (T && T.OrbitControls) {
             resolve(T);
+          } else if (++attempts >= 100) {
+            reject(new Error('Three.js failed to load'));
           } else {
             setTimeout(check, 100);
           }

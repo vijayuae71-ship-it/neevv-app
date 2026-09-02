@@ -68,6 +68,7 @@ export default function HomePage() {
           if (data.requirements) setRequirements(data.requirements);
           if (data.layouts?.length) setLayouts(data.layouts);
           if (data.selectedLayout) setSelectedLayout(data.selectedLayout);
+          if (data.selectedLayout) setMotherLayoutLocked(true);
           if (data.boq) setBOQ(data.boq);
           if (data.customRates) setCustomRates(data.customRates);
           if (data.mode && data.mode !== 'landing') setMode(data.mode);
