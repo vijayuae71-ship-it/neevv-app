@@ -557,7 +557,21 @@ export function computeProportionalLayout(
   const FSI = 1.0;
   const numFloors = floorRequests.length || 1;
   const fsiMaxPerFloor = plotAreaSqm * FSI / numFloors;
-  const effectiveFootprint = Math.min(maxFootprintSqm, fsiMaxPerFloor);
+
+  // SETBACK CONSTRAINT: Building cannot physically exceed setback-adjusted area
+  // NBC residential: Front 1.5m, Rear 1.5m, Each side 1.0m
+  const SETBACK_FRONT = 1.5;
+  const SETBACK_REAR = 1.5;
+  const SETBACK_SIDE = 1.0;
+  const pWidth = plot.plotWidthM ?? 0;
+  const pDepth = plot.plotDepthM ?? 0;
+  const setbackAdjustedW = Math.max(0, pWidth - 2 * SETBACK_SIDE);
+  const setbackAdjustedD = Math.max(0, pDepth - SETBACK_FRONT - SETBACK_REAR);
+  const setbackFootprintSqm = (setbackAdjustedW > 0 && setbackAdjustedD > 0)
+    ? setbackAdjustedW * setbackAdjustedD
+    : Infinity;
+  // Whichever is tightest wins: NBC coverage, FSI per floor, or physical setback area
+  const effectiveFootprint = Math.min(maxFootprintSqm, fsiMaxPerFloor, setbackFootprintSqm);
 
   // Deduct external wall thickness allowance to get usable carpet area per floor.
   const carpetPerFloor = effectiveFootprint * (1 - config.externalWallDeductionPct);
@@ -599,7 +613,21 @@ export function checkPlotFeasibility(
   const FSI = 1.0;
   const numFloors = floorRequests.length || 1;
   const fsiMaxPerFloor = plotAreaSqm * FSI / numFloors;
-  const effectiveFootprint = Math.min(maxFootprintSqm, fsiMaxPerFloor);
+
+  // SETBACK CONSTRAINT: Building cannot physically exceed setback-adjusted area
+  // NBC residential: Front 1.5m, Rear 1.5m, Each side 1.0m
+  const SETBACK_FRONT = 1.5;
+  const SETBACK_REAR = 1.5;
+  const SETBACK_SIDE = 1.0;
+  const pWidth = plot.plotWidthM ?? 0;
+  const pDepth = plot.plotDepthM ?? 0;
+  const setbackAdjustedW = Math.max(0, pWidth - 2 * SETBACK_SIDE);
+  const setbackAdjustedD = Math.max(0, pDepth - SETBACK_FRONT - SETBACK_REAR);
+  const setbackFootprintSqm = (setbackAdjustedW > 0 && setbackAdjustedD > 0)
+    ? setbackAdjustedW * setbackAdjustedD
+    : Infinity;
+  // Whichever is tightest wins: NBC coverage, FSI per floor, or physical setback area
+  const effectiveFootprint = Math.min(maxFootprintSqm, fsiMaxPerFloor, setbackFootprintSqm);
   const carpetPerFloor = effectiveFootprint * (1 - config.externalWallDeductionPct);
 
   const warnings: string[] = [];

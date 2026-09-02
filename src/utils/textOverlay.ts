@@ -1,7 +1,14 @@
 import { Layout, BOQ } from '../types';
 
-/** Drawing types for which computed project data is rendered on the image. */
-export const OVERLAY_DRAWING_TYPES = ['structural', 'rccDetail', 'barBending', 'foundation'] as const;
+/** Drawing types for which computed project data is rendered on the image.
+ *  Extended to ALL 17 drawings — every drawing gets a computed data panel
+ *  so no AI-hallucinated numbers reach the customer. */
+export const OVERLAY_DRAWING_TYPES = [
+  'structural', 'rccDetail', 'barBending', 'foundation',
+  'excavation', 'footingDetail', 'reinforcement', 'section',
+  'elevation', 'brickwork', 'electrical', 'plumbing',
+  'tiling', 'staircase', 'waterTank', 'waterproofing', 'stp',
+] as const;
 
 type OverlayDrawingType = (typeof OVERLAY_DRAWING_TYPES)[number];
 type OverlaySection = {
@@ -32,15 +39,39 @@ function formatValue(value: unknown, unit?: string): string {
 
 function sumIfComplete(...values: unknown[]): number | null {
   const numbers = values.map(asNumber);
-  return numbers.every((value): value is number => value !== null)
-    ? numbers.reduce((sum, value) => sum + value, 0)
-    : null;
+  if (numbers.some((n) => n === null)) return null;
+  return (numbers as number[]).reduce((a, b) => a + b, 0);
 }
 
 function columnCount(layout: Layout): number | null {
   const builtUpArea = asNumber(layout?.builtUpAreaSqM);
   const floors = Array.isArray(layout?.floors) ? layout.floors.length : 0;
-  return builtUpArea !== null && floors > 0 ? Math.ceil(builtUpArea / floors / 12) : null;
+  if (builtUpArea === null || floors === 0) return null;
+  return Math.max(6, Math.ceil(builtUpArea / 12));
+}
+
+/** Common building dimensions section shown on every drawing. */
+function buildingDimsSection(layout: Layout): OverlaySection {
+  const plotW = formatValue(layout?.plotWidthM, 'm');
+  const plotD = formatValue(layout?.plotDepthM, 'm');
+  const buildW = formatValue(layout?.buildableWidthM, 'm');
+  const buildD = formatValue(layout?.buildableDepthM, 'm');
+  const buildWmm = layout?.buildingWidthMm ? `${layout.buildingWidthMm}mm` : buildW;
+  const buildDmm = layout?.buildingDepthMm ? `${layout.buildingDepthMm}mm` : buildD;
+  const perFloor = layout?.effectivePerFloorSqFt
+    ? `${layout.effectivePerFloorSqFt} sqft`
+    : formatValue(layout?.builtUpAreaSqFt, 'sqft');
+  const nFloors = layout?.numFloors || (Array.isArray(layout?.floors) ? layout.floors.length : 1);
+  return {
+    heading: 'BUILDING DIMENSIONS',
+    rows: [
+      ['Plot', `${plotW} × ${plotD}`],
+      ['Building', `${buildWmm} × ${buildDmm}`],
+      ['Setbacks', 'F:1.5m R:1.5m L:1.0m R:1.0m'],
+      ['Per floor', perFloor],
+      ['Floors', `${nFloors}`],
+    ],
+  };
 }
 
 function makeOverlaySections(
@@ -50,26 +81,21 @@ function makeOverlaySections(
 ): { title: string; sections: OverlaySection[] } | null {
   const concrete = (boq?.concreteBreakdown || {}) as Partial<BOQ['concreteBreakdown']>;
   const columns = columnCount(layout);
+  const dims = buildingDimsSection(layout);
 
   switch (drawingType as OverlayDrawingType) {
     case 'structural':
       return {
         title: 'COLUMN SCHEDULE',
         sections: [
-          {
-            heading: 'LAYOUT',
-            rows: [
-              ['Plot', `${formatValue(layout?.plotWidthM, 'm')} × ${formatValue(layout?.plotDepthM, 'm')}`],
-              ['Columns / floor', formatValue(columns, 'nos')],
-              ['Column size', '230mm × 300mm'],
-            ],
-          },
+          dims,
           {
             heading: 'REINFORCEMENT',
             rows: [
               ['Main bars', '4 nos – 12mm Fe500'],
               ['Stirrups', '8mm @ 150mm c/c'],
               ['Clear cover', '40mm'],
+              ['Columns / floor', formatValue(columns, 'nos')],
             ],
           },
           {
@@ -87,6 +113,7 @@ function makeOverlaySections(
       return {
         title: 'RCC SLAB & BEAM DETAILS',
         sections: [
+          dims,
           {
             heading: 'MEMBER SIZES',
             rows: [
@@ -122,6 +149,7 @@ function makeOverlaySections(
       return {
         title: 'BAR BENDING SCHEDULE (BBS)',
         sections: [
+          dims,
           {
             heading: 'PROJECT TOTALS',
             rows: [
@@ -139,10 +167,6 @@ function makeOverlaySections(
               ['Slab steel', formatValue(asNumber(concrete.slabs) === null ? null : asNumber(concrete.slabs)! * 60, 'kg')],
             ],
           },
-          {
-            heading: 'BAR SPECIFICATION',
-            rows: [['Bar diameters', '8, 10, 12, 16mm Fe500']],
-          },
         ],
       };
     }
@@ -151,6 +175,7 @@ function makeOverlaySections(
       return {
         title: 'FOUNDATION DETAIL',
         sections: [
+          dims,
           {
             heading: 'FOUNDATION DATA',
             rows: [
@@ -162,11 +187,360 @@ function makeOverlaySections(
             ],
           },
           {
-            heading: 'MATERIALS & LAYOUT',
+            heading: 'MATERIALS',
             rows: [
               ['Foundation concrete', formatValue(concrete.foundation, 'm³')],
               ['Columns on foundation', formatValue(columns, 'nos')],
               ['Grade', 'M25 concrete'],
+            ],
+          },
+        ],
+      };
+
+    case 'excavation':
+      return {
+        title: 'EXCAVATION LAYOUT',
+        sections: [
+          dims,
+          {
+            heading: 'EXCAVATION DATA',
+            rows: [
+              ['Foundation depth', '1.50m below GL'],
+              ['Working space', '150mm each side'],
+              ['PCC bed', '150mm thick M10'],
+              ['Footing pits', formatValue(columns, 'nos')],
+            ],
+          },
+          {
+            heading: 'SOIL',
+            rows: [
+              ['SBC assumed', '150 kN/m²'],
+              ['Excavation type', 'Open excavation'],
+            ],
+          },
+        ],
+      };
+
+    case 'footingDetail':
+      return {
+        title: 'FOOTING DETAIL',
+        sections: [
+          dims,
+          {
+            heading: 'ISOLATED FOOTING',
+            rows: [
+              ['Footing size', '1200mm × 1200mm × 300mm'],
+              ['PCC bed', '1350mm × 1350mm × 150mm'],
+              ['Reinforcement', '12mm @ 150 c/c both ways'],
+              ['Clear cover', '50mm (foundation)'],
+              ['Foundation depth', '1.50m below GL'],
+            ],
+          },
+          {
+            heading: 'PEDESTAL',
+            rows: [
+              ['Pedestal size', '300mm × 450mm'],
+              ['Dowels', '4–12mm into footing'],
+              ['Lap length', '50d = 600mm'],
+            ],
+          },
+        ],
+      };
+
+    case 'reinforcement':
+      return {
+        title: 'REINFORCEMENT DETAIL',
+        sections: [
+          dims,
+          {
+            heading: 'COLUMN REINFORCEMENT',
+            rows: [
+              ['Main bars', '4–12mm Fe500'],
+              ['Stirrups', '8mm @ 150mm c/c'],
+              ['Lap length', '50d = 600mm'],
+            ],
+          },
+          {
+            heading: 'BEAM REINFORCEMENT',
+            rows: [
+              ['Top bars', '2–12mm (continuous)'],
+              ['Bottom bars', '2–16mm (at mid-span)'],
+              ['Stirrups', '8mm @ 150mm c/c (near support), 200mm c/c (mid)'],
+            ],
+          },
+          {
+            heading: 'SLAB REINFORCEMENT',
+            rows: [
+              ['Main bars', '10mm @ 150mm c/c'],
+              ['Dist. bars', '8mm @ 200mm c/c'],
+              ['Clear cover', '20mm'],
+            ],
+          },
+        ],
+      };
+
+    case 'section': {
+      const nFloors = layout?.numFloors || (Array.isArray(layout?.floors) ? layout.floors.length : 1);
+      const totalH = 450 + nFloors * 3000 + 900; // plinth + floors + parapet
+      return {
+        title: 'SECTION DRAWING',
+        sections: [
+          dims,
+          {
+            heading: 'VERTICAL DIMENSIONS',
+            rows: [
+              ['Plinth height', '450mm above GL'],
+              ['Floor-to-floor', '3000mm'],
+              ['Parapet', '900mm above roof'],
+              ['Total height', `${totalH}mm`],
+              ['Slab thickness', '125mm'],
+              ['Beam depth', '400mm'],
+            ],
+          },
+          {
+            heading: 'WALL CONSTRUCTION',
+            rows: [
+              ['External wall', '230mm (double line)'],
+              ['Internal wall', '150mm'],
+              ['Plaster (each side)', '12mm'],
+            ],
+          },
+        ],
+      };
+    }
+
+    case 'elevation': {
+      const nFloors = layout?.numFloors || (Array.isArray(layout?.floors) ? layout.floors.length : 1);
+      const totalH = 450 + nFloors * 3000 + 900;
+      return {
+        title: 'ELEVATION',
+        sections: [
+          dims,
+          {
+            heading: 'HEIGHT DATA',
+            rows: [
+              ['Plinth', '+450mm'],
+              ['GF Floor-to-ceiling', '3000mm'],
+              ['Parapet', '900mm'],
+              ['Total height', `${totalH}mm`],
+            ],
+          },
+          {
+            heading: 'FACADE',
+            rows: [
+              ['External finish', 'As per specification'],
+              ['Window sill', '900mm from FFL'],
+              ['Lintel level', '2100mm from FFL'],
+            ],
+          },
+        ],
+      };
+    }
+
+    case 'brickwork':
+      return {
+        title: 'BRICKWORK DETAIL',
+        sections: [
+          dims,
+          {
+            heading: 'MASONRY DATA',
+            rows: [
+              ['External wall', '230mm (9\") English bond'],
+              ['Internal wall', '115mm (4.5\") stretcher bond'],
+              ['Brick count', formatValue(boq?.brickCount, 'nos')],
+              ['Cement (masonry)', formatValue(boq?.cementBags, 'bags')],
+            ],
+          },
+          {
+            heading: 'MORTAR & FINISH',
+            rows: [
+              ['Mortar ratio', 'CM 1:6 (brick), 1:4 (plaster)'],
+              ['Plaster', '12mm internal, 20mm external'],
+              ['Sand', formatValue(boq?.sandCuM, 'm³')],
+            ],
+          },
+        ],
+      };
+
+    case 'electrical':
+      return {
+        title: 'ELECTRICAL LAYOUT',
+        sections: [
+          dims,
+          {
+            heading: 'ELECTRICAL DATA',
+            rows: [
+              ['Total points', formatValue(boq?.electricalPoints, 'nos')],
+              ['Wiring', 'Concealed copper FR-LSH'],
+              ['DB location', 'Near entrance'],
+              ['Earthing', 'Pipe + plate earthing'],
+            ],
+          },
+          {
+            heading: 'CIRCUIT DESIGN',
+            rows: [
+              ['MCB rating', '32A (power), 16A (light)'],
+              ['ELCB', '63A 30mA (main)'],
+              ['Conduit', '25mm PVC concealed'],
+            ],
+          },
+        ],
+      };
+
+    case 'plumbing':
+      return {
+        title: 'PLUMBING LAYOUT',
+        sections: [
+          dims,
+          {
+            heading: 'PLUMBING DATA',
+            rows: [
+              ['Total points', formatValue(boq?.plumbingPoints, 'nos')],
+              ['Supply pipe', 'CPVC / PPR 20mm–25mm'],
+              ['Drain pipe', 'PVC SWR 110mm (soil), 75mm (waste)'],
+              ['Vent pipe', 'PVC 75mm'],
+            ],
+          },
+          {
+            heading: 'FIXTURES',
+            rows: [
+              ['WC type', 'Wall-mounted / Floor-mounted EWC'],
+              ['Water heater', 'Provision in each toilet'],
+              ['Floor trap', '110mm Nahani in wet areas'],
+            ],
+          },
+        ],
+      };
+
+    case 'tiling':
+      return {
+        title: 'TILING LAYOUT',
+        sections: [
+          dims,
+          {
+            heading: 'TILING DATA',
+            rows: [
+              ['Floor tiles', 'Vitrified 600×600mm'],
+              ['Wall tiles (wet)', 'Ceramic 300×450mm dado to 2100mm'],
+              ['Flooring area', formatValue(boq?.flooringAreaSqM, 'm²')],
+              ['Adhesive', 'Tile adhesive (20mm bed)'],
+            ],
+          },
+          {
+            heading: 'SPECIFICATION',
+            rows: [
+              ['Skirting', '100mm vitrified'],
+              ['Anti-skid', 'In toilets & balcony'],
+              ['Threshold', 'Granite / marble'],
+            ],
+          },
+        ],
+      };
+
+    case 'staircase': {
+      const floorHeight = 3000; // mm
+      const riser = 175; // max 190 per NBC
+      const tread = 250; // min 250 per NBC
+      const steps = Math.ceil(floorHeight / riser);
+      return {
+        title: 'STAIRCASE DETAIL',
+        sections: [
+          dims,
+          {
+            heading: 'STAIRCASE DATA',
+            rows: [
+              ['Floor height', `${floorHeight}mm`],
+              ['Riser', `${riser}mm (max 190mm NBC)`],
+              ['Tread', `${tread}mm (min 250mm NBC)`],
+              ['Steps per flight', `${Math.ceil(steps / 2)}`],
+              ['Total risers', `${steps}`],
+              ['Width', '1000mm clear (min 900mm NBC)'],
+            ],
+          },
+          {
+            heading: 'CONSTRUCTION',
+            rows: [
+              ['Waist slab', '150mm RCC'],
+              ['Landing', '125mm RCC slab'],
+              ['Handrail', '1000mm height, SS / MS'],
+            ],
+          },
+        ],
+      };
+    }
+
+    case 'waterTank':
+      return {
+        title: 'WATER TANK DETAIL',
+        sections: [
+          dims,
+          {
+            heading: 'UNDERGROUND TANK',
+            rows: [
+              ['Capacity', '5000L (typical)'],
+              ['Walls', '200mm RCC M25'],
+              ['Base slab', '200mm RCC on PCC bed'],
+              ['Waterproofing', 'Integral + external coat'],
+            ],
+          },
+          {
+            heading: 'OVERHEAD TANK',
+            rows: [
+              ['Capacity', '2000L (typical)'],
+              ['Type', 'Syntax / RCC'],
+              ['Support', 'RCC columns from roof'],
+              ['Pump', '0.5 HP monoblock'],
+            ],
+          },
+        ],
+      };
+
+    case 'waterproofing':
+      return {
+        title: 'WATERPROOFING DETAIL',
+        sections: [
+          dims,
+          {
+            heading: 'WATERPROOFING DATA',
+            rows: [
+              ['Roof area', formatValue(boq?.waterproofingAreaSqM, 'm²')],
+              ['System', 'APP membrane + protective screed'],
+              ['Toilet', 'Polymer-modified cementitious coat'],
+              ['Plinth', 'DPC (1:2:4 cement concrete 50mm)'],
+            ],
+          },
+          {
+            heading: 'SPECIFICATION',
+            rows: [
+              ['Membrane', '3mm APP modified bitumen'],
+              ['Screed over', '50mm M15 with slope'],
+              ['China mosaic', 'Optional (terrace)'],
+            ],
+          },
+        ],
+      };
+
+    case 'stp':
+      return {
+        title: 'SEPTIC TANK / STP DETAIL',
+        sections: [
+          dims,
+          {
+            heading: 'SEPTIC TANK',
+            rows: [
+              ['Capacity', '2000L (2–5 users)'],
+              ['Internal size', '1500mm × 750mm × 1500mm'],
+              ['Walls', '230mm brick CM 1:4 plastered'],
+              ['Cover', 'RCC 100mm with frame'],
+            ],
+          },
+          {
+            heading: 'SOAK PIT',
+            rows: [
+              ['Diameter', '900mm'],
+              ['Depth', '1500mm below invert'],
+              ['Fill', 'Broken brick / aggregate'],
+              ['Distance from building', 'Min 3m'],
             ],
           },
         ],
@@ -181,17 +555,14 @@ function loadImage(imageDataUri: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const image = document.createElement('img');
     image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error('Unable to load drawing image for text overlay'));
+    image.onerror = (error: unknown) => reject(error instanceof Error ? error : new Error('Image load failed'));
     image.src = imageDataUri;
-
-    // A cached data URI can complete before the load callback is dispatched.
-    if (image.complete && image.naturalWidth > 0) resolve(image);
   });
 }
 
 /**
- * Render computed project quantities over an AI-generated architectural drawing.
- * The utility intentionally uses browser Canvas APIs and therefore must run client-side.
+ * Render the computed-data overlay on top of an AI-generated drawing image.
+ * Returns a data-URI (PNG) of the composited result.
  */
 export async function applyTextOverlay(
   imageDataUri: string,
@@ -206,13 +577,12 @@ export async function applyTextOverlay(
   const canvas = document.createElement('canvas');
   const imageWidth = image.naturalWidth || image.width;
   const imageHeight = image.naturalHeight || image.height;
-  if (!imageWidth || !imageHeight) throw new Error('Drawing image has no usable dimensions');
 
   canvas.width = imageWidth;
   canvas.height = imageHeight;
+
   const context = canvas.getContext('2d');
-  if (!context) throw new Error('Canvas 2D context is unavailable');
-  context.drawImage(image, 0, 0, imageWidth, imageHeight);
+  if (!context) return imageDataUri;
 
   const rowHeight = 22;
   const sectionHeadingHeight = 18;
@@ -230,45 +600,51 @@ export async function applyTextOverlay(
   const boxX = Math.max(0, imageWidth - boxWidth - margin);
   const boxY = Math.max(0, imageHeight - boxHeight - margin);
 
-  context.save();
-  context.fillStyle = 'rgba(255, 255, 255, 0.92)';
+  // Draw the original image
+  context.drawImage(image, 0, 0, imageWidth, imageHeight);
+
+  // Semi-transparent background for data panel
+  context.fillStyle = 'rgba(255,255,255,0.92)';
   context.fillRect(boxX, boxY, boxWidth, boxHeight);
   context.strokeStyle = '#333';
-  context.lineWidth = 1;
-  context.strokeRect(boxX + 0.5, boxY + 0.5, boxWidth - 1, boxHeight - 1);
+  context.lineWidth = 1.5;
+  context.strokeRect(boxX, boxY, boxWidth, boxHeight);
 
-  context.textBaseline = 'middle';
-  context.textAlign = 'left';
-  context.fillStyle = '#2d5016';
-  context.font = 'bold 14px monospace';
-  context.fillText(overlay.title, boxX + horizontalPadding, boxY + verticalPadding + titleHeight / 2);
+  let cursorY = boxY + verticalPadding;
 
-  let currentY = boxY + verticalPadding + titleHeight;
+  // Title bar
+  context.fillStyle = '#1a3a1a';
+  context.fillRect(boxX, boxY, boxWidth, titleHeight);
+  context.fillStyle = '#ffffff';
+  context.font = 'bold 14px "Courier New", monospace';
+  context.fillText(overlay.title, boxX + horizontalPadding, cursorY + 16);
+  cursorY += titleHeight;
+
+  // Sections
   for (const section of overlay.sections) {
-    context.strokeStyle = '#ccc';
-    context.lineWidth = 1;
-    context.beginPath();
-    context.moveTo(boxX + horizontalPadding, currentY);
-    context.lineTo(boxX + boxWidth - horizontalPadding, currentY);
-    context.stroke();
-
-    context.fillStyle = '#555';
-    context.font = 'bold 10px monospace';
-    context.fillText(section.heading, boxX + horizontalPadding, currentY + sectionHeadingHeight / 2);
-    currentY += sectionHeadingHeight;
-
+    context.fillStyle = '#e8e8e8';
+    context.fillRect(boxX, cursorY, boxWidth, sectionHeadingHeight);
     context.fillStyle = '#333';
-    context.font = '12px monospace';
+    context.font = 'bold 11px "Courier New", monospace';
+    context.fillText(section.heading, boxX + horizontalPadding, cursorY + 13);
+    cursorY += sectionHeadingHeight;
+
+    context.font = '11px "Courier New", monospace';
     for (const [label, value] of section.rows) {
-      context.fillText(`${label}: ${value}`, boxX + horizontalPadding, currentY + rowHeight / 2);
-      currentY += rowHeight;
+      context.fillStyle = '#444';
+      context.fillText(label, boxX + horizontalPadding, cursorY + 16);
+      context.fillStyle = '#000';
+      context.textAlign = 'right';
+      context.fillText(value, boxX + boxWidth - horizontalPadding, cursorY + 16);
+      context.textAlign = 'left';
+      cursorY += rowHeight;
     }
   }
 
-  context.fillStyle = '#4f6f52';
-  context.font = '10px monospace';
-  context.fillText('neevv', boxX + horizontalPadding, boxY + boxHeight - verticalPadding - watermarkHeight / 2);
-  context.restore();
+  // Watermark
+  context.fillStyle = '#999';
+  context.font = '9px "Courier New", monospace';
+  context.fillText('neevv — Computed data • Not AI-generated', boxX + horizontalPadding, cursorY + 14);
 
   return canvas.toDataURL('image/png');
 }

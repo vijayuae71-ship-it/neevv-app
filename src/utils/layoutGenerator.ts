@@ -231,6 +231,27 @@ export function generateLayouts(req: ProjectRequirements): Layout[] {
       plotDepthM: plotD,
       buildableWidthM: buildW,
       buildableDepthM: buildD,
+      // === Setback-adjusted building dimensions (comprehensive fix) ===
+      buildingWidthMm: Math.round(buildW * 1000),
+      buildingDepthMm: Math.round(buildD * 1000),
+      buildingFootprintSqM: round2(buildW * buildD),
+      effectivePerFloorSqFt: Math.round(buildW * buildD * SQM_TO_SQFT),
+      effectivePerFloorSqM: round2(buildW * buildD),
+      totalBuiltUpSqFt: Math.round(totalBuiltUp * SQM_TO_SQFT),
+      totalBuiltUpSqM: round2(totalBuiltUp),
+      fsiValue: 1.0,
+      nbcMaxCoveragePct: proportionalBudget.coverageTier.maxCoveragePct,
+      numFloors: effectiveFloors.length,
+      plotWidthFt: req.plotWidthFt,
+      plotDepthFt: req.plotDepthFt,
+      constraintBrief: [
+        `BUILDING FOOTPRINT: ${Math.round(buildW * 1000)}mm × ${Math.round(buildD * 1000)}mm.`,
+        `PLOT SIZE: ${Math.round(plotW * 1000)}mm × ${Math.round(plotD * 1000)}mm — building is SMALLER than plot due to setbacks.`,
+        `SETBACKS: Front ${setbacks.front}m, Rear ${setbacks.rear}m, Left ${setbacks.left}m, Right ${setbacks.right}m.`,
+        `MAX PER FLOOR: ${Math.round(buildW * buildD * SQM_TO_SQFT)} sqft (${round2(buildW * buildD)} m²). FSI=1.0.`,
+        `NBC COVERAGE: ${proportionalBudget.coverageTier.maxCoveragePct}% max.`,
+        `TOTAL BUILT-UP (${effectiveFloors.length} floors): ${Math.round(totalBuiltUp * SQM_TO_SQFT)} sqft.`,
+      ].join(' '),
     });
   }
 

@@ -102,6 +102,21 @@ export interface Layout {
   plotDepthM: number;
   buildableWidthM: number;
   buildableDepthM: number;
+
+  // === Setback-adjusted building dimensions (comprehensive fix) ===
+  buildingWidthMm?: number;
+  buildingDepthMm?: number;
+  buildingFootprintSqM?: number;
+  effectivePerFloorSqFt?: number;
+  effectivePerFloorSqM?: number;
+  totalBuiltUpSqFt?: number;
+  totalBuiltUpSqM?: number;
+  fsiValue?: number;
+  nbcMaxCoveragePct?: number;
+  constraintBrief?: string;
+  numFloors?: number;
+  plotWidthFt?: number;
+  plotDepthFt?: number;
 }
 
 export interface BOQLineItem {

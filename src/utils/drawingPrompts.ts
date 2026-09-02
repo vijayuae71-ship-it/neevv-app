@@ -331,13 +331,19 @@ export function buildDrawingPrompt(drawingType: DrawingType, layout: any, requir
   };
   const regionalContext = regionMap[state] || `CLIMATE: Design for local ${state} conditions — appropriate roof form, overhang depth, ventilation strategy, and locally available materials.`;
 
-  // Computed grid spans for dimensional accuracy
+  // Plot dimensions in mm (for reference/boundary drawing)
   const plotWidthMM = Math.round(plotW * 304.8); // ft to mm
   const plotDepthMM = Math.round(plotD * 304.8); // ft to mm
+
+  // BUILDING dimensions (after mandatory setbacks) — this is what gets built
+  const buildWidthMM = layout?.buildingWidthMm || Math.round((layout?.buildableWidthM || (plotW * 0.3048 - 2.0)) * 1000);
+  const buildDepthMM = layout?.buildingDepthMm || Math.round((layout?.buildableDepthM || (plotD * 0.3048 - 3.0)) * 1000);
+
+  // Structural grid computed on BUILDING footprint, not plot
   const numGridW = 4; // typical 4 spans along width
   const numGridD = 3; // typical 3 spans along depth
-  const spanW = Math.round(plotWidthMM / numGridW); // mm per span along width
-  const spanD = Math.round(plotDepthMM / numGridD); // mm per span along depth
+  const spanW = Math.round(buildWidthMM / numGridW); // mm per span along width
+  const spanD = Math.round(buildDepthMM / numGridD); // mm per span along depth
   // Compute room dimensions in mm for each floor
   const groundFloorRoomsMM = groundFloorRooms.map((r: any) => {
     const w = r.width || r.w || 0;
@@ -350,34 +356,44 @@ export function buildDrawingPrompt(drawingType: DrawingType, layout: any, requir
     return `${r.name || r.type}: ${Math.round(w * 1000)}mm × ${Math.round(d * 1000)}mm`;
   }).join(', ');
 
+  // Inject constraintBrief from layout if available (computed by layoutGenerator)
+  const constraintBrief = layout?.constraintBrief || '';
+
   const dimensionalRule = `
 CRITICAL DIMENSIONAL ACCURACY RULE:
-- Total plot width = ${plotWidthMM}mm (${plotW}ft). Total plot depth = ${plotDepthMM}mm (${plotD}ft).
-- Structural grid along width: ${numGridW} spans × ${spanW}mm = ${numGridW * spanW}mm.
-- Structural grid along depth: ${numGridD} spans × ${spanD}mm = ${numGridD * spanD}mm.
-- ALL individual dimensions MUST ADD UP to the total plot dimension. VERIFY: sum of all horizontal spans = ${plotWidthMM}mm, sum of all vertical spans = ${plotDepthMM}mm.
-- Column SIZE is 230mm × 300mm (the physical cross-section of one column).
-- Column CENTER-TO-CENTER SPACING is ${spanW}mm horizontally and ${spanD}mm vertically (distance between columns).
+${constraintBrief ? `** HARD CONSTRAINT: ${constraintBrief} **` : ''}
+- PLOT boundary = ${plotWidthMM}mm × ${plotDepthMM}mm (${plotW}ft × ${plotD}ft).
+- BUILDING footprint = ${buildWidthMM}mm × ${buildDepthMM}mm (SMALLER than plot due to mandatory setbacks).
+- MANDATORY SETBACKS: Front 1.5m, Rear 1.5m, Left 1.0m, Right 1.0m — building MUST NOT touch plot boundary.
+- Structural grid along width: ${numGridW} spans × ${spanW}mm = ${numGridW * spanW}mm (fits within ${buildWidthMM}mm building).
+- Structural grid along depth: ${numGridD} spans × ${spanD}mm = ${numGridD * spanD}mm (fits within ${buildDepthMM}mm building).
+- ALL room dimensions MUST ADD UP to BUILDING footprint (${buildWidthMM}mm × ${buildDepthMM}mm), NOT plot size.
+- Column SIZE is 230mm × 300mm (physical cross-section of one column).
+- Column CENTER-TO-CENTER SPACING is ${spanW}mm horizontally and ${spanD}mm vertically.
 - NEVER use 300mm as column spacing — 300mm is column SIZE. Spacing is ${spanW}mm and ${spanD}mm.
 - Ground floor rooms (mm): ${groundFloorRoomsMM || 'per layout'}.
 - First floor rooms (mm): ${firstFloorRoomsMM || 'per layout'}.
-- VERIFY: Sum of all room widths along any row + wall thicknesses (230mm external, 115mm internal) = ${plotWidthMM}mm.
+- VERIFY: Sum of all room widths along any row + wall thicknesses (230mm external, 115mm internal) = ${buildWidthMM}mm.
+- VERIFY: Sum of all room depths along any column + wall thicknesses = ${buildDepthMM}mm.
 - Building heights: Plinth +450mm, GF Floor-to-FF Floor 3000mm, FF Floor-to-Roof 3000mm, Parapet 900mm, Total height 7350mm.
 `;
 
   // Dimension verification block for plan/layout drawings
   const dimensionVerification = `
 DIMENSION VERIFICATION (the AI MUST follow these exact numbers):
-• Plot: ${plotWidthMM}mm × ${plotDepthMM}mm (${plotW}ft × ${plotD}ft)
-• Grid: ${numGridW} spans @ ${spanW}mm = ${numGridW * spanW}mm width ✓
-• Grid: ${numGridD} spans @ ${spanD}mm = ${numGridD * spanD}mm depth ✓
+• PLOT boundary: ${plotWidthMM}mm × ${plotDepthMM}mm (${plotW}ft × ${plotD}ft)
+• BUILDING footprint: ${buildWidthMM}mm × ${buildDepthMM}mm (after setbacks — THIS is what you draw)
+• SETBACKS: Front 1500mm, Rear 1500mm, Left 1000mm, Right 1000mm — show as open space around building
+• Grid: ${numGridW} spans @ ${spanW}mm = ${numGridW * spanW}mm width (within building footprint) ✓
+• Grid: ${numGridD} spans @ ${spanD}mm = ${numGridD * spanD}mm depth (within building footprint) ✓
 • External wall: 230mm thick (shown as double line)
 • Internal partition: 115mm thick (shown as single thick line)
 • Column: 230mm × 300mm (NEVER confuse with spacing)
 • Room dimensions: ${groundFloorRoomsMM || 'per layout'}
-• VERIFY: All horizontal room widths + wall thicknesses = ${plotWidthMM}mm
-• VERIFY: All vertical room depths + wall thicknesses = ${plotDepthMM}mm
+• VERIFY: All horizontal room widths + wall thicknesses = ${buildWidthMM}mm (NOT ${plotWidthMM}mm)
+• VERIFY: All vertical room depths + wall thicknesses = ${buildDepthMM}mm (NOT ${plotDepthMM}mm)
 • DO NOT INVENT DIMENSIONS. Use ONLY the numbers provided above.
+• THE BUILDING IS SMALLER THAN THE PLOT. Show clear setback space around the building.
 `;
 
   // IS Code professional standards
