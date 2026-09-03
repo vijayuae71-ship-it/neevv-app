@@ -601,8 +601,14 @@ export async function applyTextOverlay(
     + watermarkHeight + verticalPadding;
   const boxWidth = Math.min(380, Math.max(1, imageWidth - 40));
   const margin = 20;
+
+  // Section & elevation drawings: panel at TOP-RIGHT to avoid overlapping the cross-section content.
+  // All other drawings: panel at BOTTOM-RIGHT (standard position).
+  const topRightTypes: string[] = ['section', 'elevation'];
+  const placeTop = topRightTypes.includes(drawingType);
+
   const boxX = Math.max(0, imageWidth - boxWidth - margin);
-  const boxY = Math.max(0, imageHeight - boxHeight - margin);
+  const boxY = placeTop ? margin : Math.max(0, imageHeight - boxHeight - margin);
 
   // Draw the original image
   context.drawImage(image, 0, 0, imageWidth, imageHeight);
