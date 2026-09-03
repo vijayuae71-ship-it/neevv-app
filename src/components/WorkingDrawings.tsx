@@ -73,7 +73,7 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq }) 
   const [exportResult, setExportResult] = useState<string | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
 
-  const drawingsStorageKey = `neevv-drawings-${requirements.plotWidth}x${requirements.plotDepth}`;
+  const drawingsStorageKey = `neevv-drawings-${requirements.plotWidthFt}x${requirements.plotDepthFt}`;
 
   const saveDrawings = useCallback((drawings: Record<string, string>) => {
     try {
