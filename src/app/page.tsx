@@ -130,8 +130,13 @@ export default function HomePage() {
   };
 
   const handleLogoClick = () => {
-    // Keep the current project intact when the logo is clicked.
-    if (requirements !== null) return;
+    if (requirements !== null) {
+      if (window.confirm('Return to home page? Your current project will be saved.')) {
+        setMode('landing');
+      }
+    } else {
+      setMode('landing');
+    }
   };
 
   const handleNewProject = () => {
@@ -198,22 +203,22 @@ export default function HomePage() {
     }
     // App mode light navbar
     return (
-      <div className="bg-gray-100 border-b border-gray-300 px-4 py-3 flex items-center justify-between shrink-0">
+      <div className="bg-white shadow-sm border-b border-gray-200 px-4 py-3 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-3">
           <img
             src={BRAND_LOGO_BASE64}
             alt="neevv"
-            className="h-8"
+            className="h-8 hover:opacity-80 transition-opacity"
             onClick={handleLogoClick}
             style={{ cursor: 'pointer' }}
             title="Back to Home"
           />
-          <div className="h-6 w-px bg-gray-300" />
-          <span className="text-xs opacity-80 tracking-wide uppercase">
+          <div className="h-6 w-px bg-gray-300 hidden sm:block" />
+          <span className="text-xs opacity-80 tracking-wide uppercase hidden sm:inline">
             {mode === 'interior_only' ? 'Interior Design Studio' : 'Architecture • Structure • MEP • Interiors'}
           </span>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-1 sm:gap-3">
           {requirements !== null && (
             <button
               onClick={() => {
@@ -221,7 +226,7 @@ export default function HomePage() {
                   handleNewProject();
                 }
               }}
-              className="text-sm text-gray-500 hover:text-gray-700 px-2 py-1 rounded hover:bg-gray-100"
+              className="text-xs sm:text-sm text-gray-500 hover:text-gray-700 px-2 py-1 rounded hover:bg-gray-100"
             >
               🔄 New Project
             </button>
@@ -232,24 +237,24 @@ export default function HomePage() {
                 analytics.pdfExported('full_project');
                 window.print();
               }}
-              className="text-sm bg-green-100 text-green-700 px-3 py-1.5 rounded-lg hover:bg-green-200 transition-colors"
+              className="text-xs sm:text-sm bg-green-100 text-green-700 px-3 py-1.5 rounded-lg hover:bg-green-200 transition-colors"
             >
-              📄 Export Summary
+              📄 <span className="hidden sm:inline">Export Summary</span>
             </button>
           )}
           {user && (
             <button
               onClick={handleSave}
               disabled={saving}
-              className="text-sm bg-blue-100 text-blue-600 px-3 py-1.5 rounded-lg hover:bg-blue-200 transition-colors disabled:opacity-80"
+              className="text-xs sm:text-sm bg-blue-100 text-blue-600 px-3 py-1.5 rounded-lg hover:bg-blue-200 transition-colors disabled:opacity-80"
             >
-              {saving ? 'Saving...' : '💾 Save'}
+              {saving ? 'Saving...' : (<>💾 <span className="hidden sm:inline">Save</span></>)}
             </button>
           )}
           {authLoading ? null : user ? (
-            <button onClick={signOut} className="text-sm opacity-70 hover:opacity-80 transition-opacity">Sign Out</button>
+            <button onClick={signOut} className="text-xs sm:text-sm opacity-70 hover:opacity-80 transition-opacity">Sign Out</button>
           ) : (
-            <button onClick={signInWithGoogle} className="btn btn-sm btn-outline text-sm">Sign In</button>
+            <button onClick={signInWithGoogle} className="btn btn-sm btn-outline text-xs sm:text-sm">Sign In</button>
           )}
         </div>
       </div>
@@ -260,6 +265,14 @@ export default function HomePage() {
   if (mode === 'landing') {
     return (
       <div className="flex flex-col min-h-screen" style={{ backgroundColor: '#ffffff', color: '#1a1a1a', fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif", lineHeight: 1.6 }}>
+        <style jsx global>{`
+          @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+          }
+          .animate-fade-in { animation: fadeInUp 0.5s ease-out forwards; }
+          .animate-fade-in-delay { animation: fadeInUp 0.5s ease-out 0.15s forwards; opacity: 0; }
+        `}</style>
         <Navbar />
         
         {/* Spacer for fixed navbar */}
@@ -270,16 +283,18 @@ export default function HomePage() {
           
           {/* HERO SECTION */}
           <section style={{ padding: '80px 24px 60px', textAlign: 'center', background: 'linear-gradient(135deg, #f0f7f1 0%, #fff 50%, #f5f0eb 100%)' }}>
-            <div style={{ display: 'inline-block', background: '#fff3e0', color: '#e65100', padding: '6px 16px', borderRadius: '20px', fontSize: '13px', fontWeight: 700, marginBottom: '24px', letterSpacing: '0.5px' }}>
-              🎉 BETA — First Design Package Completely FREE
+            <div className="animate-fade-in">
+              <div style={{ display: 'inline-block', background: '#fff3e0', color: '#e65100', padding: '6px 16px', borderRadius: '20px', fontSize: '13px', fontWeight: 700, marginBottom: '24px', letterSpacing: '0.5px' }}>
+                🎉 BETA — First Design Package Completely FREE
+              </div>
+              <h1 className="text-3xl sm:text-4xl md:text-5xl" style={{ fontWeight: 800, color: '#1a1a1a', marginBottom: '16px', lineHeight: 1.15 }}>
+                Design Your Dream Home<br /><span style={{ color: '#4f6f52' }}>In Minutes, Not Months</span>
+              </h1>
+              <p style={{ fontSize: '20px', color: '#666', maxWidth: '700px', margin: '0 auto 32px' }}>
+                Get 13 professional architectural drawings — Floor Plans, 3D Renders, Structural, MEP, BOQ — powered by <strong>neevv Generation Pro™</strong>
+              </p>
             </div>
-            <h1 style={{ fontSize: '48px', fontWeight: 800, color: '#1a1a1a', marginBottom: '16px', lineHeight: 1.15 }} className="md:text-5xl">
-              Design Your Dream Home<br /><span style={{ color: '#4f6f52' }}>In Minutes, Not Months</span>
-            </h1>
-            <p style={{ fontSize: '20px', color: '#666', maxWidth: '700px', margin: '0 auto 32px' }}>
-              Get 13 professional architectural drawings — Floor Plans, 3D Renders, Structural, MEP, BOQ — powered by <strong>neevv Generation Pro™</strong>
-            </p>
-            <div style={{ display: 'flex', gap: '16px', justifyContent: 'center', flexWrap: 'wrap' }}>
+            <div className="animate-fade-in-delay" style={{ display: 'flex', gap: '16px', justifyContent: 'center', flexWrap: 'wrap' }}>
               <button
                 onClick={() => { analytics.modeSelected('new_build'); setMode('new_build'); }}
                 style={{ background: '#4f6f52', color: '#fff', padding: '14px 32px', borderRadius: '10px', fontSize: '16px', fontWeight: 700, border: 'none', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '8px' }}
@@ -533,6 +548,14 @@ export default function HomePage() {
       {/* Step indicator - only for new_build mode */}
       {mode === 'new_build' && (
         <StepIndicator current={step} onNavigate={setStep} canNavigate={canNavigate} />
+      )}
+
+      {mode === 'new_build' && requirements && (
+        <div className="bg-gray-50 border-b border-gray-200 px-4 py-1.5 text-center">
+          <span className="text-xs text-gray-500">
+            {requirements.plotWidthFt}×{requirements.plotDepthFt} ft • {requirements.facing}-Facing • {requirements.floors.length === 1 ? 'Ground Floor' : `G+${requirements.floors.length - 1}`} • {requirements.floors[0]?.bedrooms || 2} BHK
+          </span>
+        </div>
       )}
 
       <div className="flex-1 overflow-y-auto">
