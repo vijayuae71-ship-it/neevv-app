@@ -57,9 +57,6 @@ const aiDrawingMap: Record<DrawingType, string> = {
   tiling: 'tiling_layout',
 };
 
-/* Key drawings to auto-generate when component mounts */
-const AUTO_GENERATE: DrawingType[] = ['excavation', 'elevation', 'section'];
-
 /* Drawing types that differ between Ground Floor and First Floor and need separate generation/caching */
 const FLOOR_SPECIFIC: DrawingType[] = ['electrical', 'plumbing', 'tiling', 'brickwork'];
 
@@ -75,8 +72,31 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq }) 
   const [exportProgress, setExportProgress] = useState<ExportProgress | null>(null);
   const [exportResult, setExportResult] = useState<string | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
-  const [autoGenStarted, setAutoGenStarted] = useState(false);
-  const [autoGenActive, setAutoGenActive] = useState(false);
+
+  const drawingsStorageKey = `neevv-drawings-${requirements.plotWidth}x${requirements.plotDepth}`;
+
+  const saveDrawings = useCallback((drawings: Record<string, string>) => {
+    try {
+      localStorage.setItem(drawingsStorageKey, JSON.stringify(drawings));
+    } catch (e) {
+      console.warn('Failed to save drawings to localStorage:', e);
+    }
+  }, [drawingsStorageKey]);
+
+  /* Load cached drawings for this project on mount */
+  useEffect(() => {
+    try {
+      const cached = localStorage.getItem(drawingsStorageKey);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          setAiImages(parsed as Record<string, string>);
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to load drawings from localStorage:', e);
+    }
+  }, [drawingsStorageKey]);
 
   const isMultiFloor = (requirements?.floors?.length || layout?.floors?.length || 1) > 1;
 
@@ -120,7 +140,11 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq }) 
             console.warn('Text overlay failed, using raw AI image:', e);
           }
         }
-        setAiImages(prev => ({ ...prev, [cacheKey]: finalImg }));
+        setAiImages(prev => {
+          const updated = { ...prev, [cacheKey]: finalImg };
+          saveDrawings(updated);
+          return updated;
+        });
       } else {
         throw new Error('No image in response from neevv Generation Pro');
       }
@@ -131,7 +155,7 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq }) 
     } finally {
       setAiLoading(null);
     }
-  }, [layout, requirements, boq, selectedFloor, getCacheKey]);
+  }, [layout, requirements, boq, selectedFloor, getCacheKey, saveDrawings]);
 
   /* ---------- Click handler for generate button ---------- */
   const handleGenerate = useCallback((drawingType: DrawingType) => {
@@ -143,52 +167,6 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq }) 
     }
     generateSingle(drawingType);
   }, [aiImages, generateSingle, getCacheKey, selectedFloor]);
-
-  /* ---------- Auto-generate key drawings on mount ---------- */
-  useEffect(() => {
-    if (autoGenStarted) return;
-    setAutoGenStarted(true);
-    setAutoGenActive(true);
-
-    const autoGen = async () => {
-      for (const dt of AUTO_GENERATE) {
-        const cacheKey = getCacheKey(dt, selectedFloor);
-        setAiLoading(dt);
-        // Switch active view to the drawing being generated so user sees progress
-        setActiveDrawing(dt);
-        try {
-          const res = await fetch('/api/generate-drawing', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              drawingType: aiDrawingMap[dt],
-              layout,
-              requirements,
-              floor: FLOOR_SPECIFIC.includes(dt) ? selectedFloor : undefined,
-            }),
-          });
-          const data = await res.json();
-          if (data.success && data.imageDataUri) {
-            let finalImg = data.imageDataUri;
-            if ((OVERLAY_DRAWING_TYPES as readonly string[]).includes(dt) && boq) {
-              try {
-                finalImg = await applyTextOverlay(finalImg, dt, layout, boq, selectedFloor);
-              } catch (e) {
-                console.warn('Text overlay failed, using raw AI image:', e);
-              }
-            }
-            setAiImages(prev => ({ ...prev, [cacheKey]: finalImg }));
-          }
-        } catch {
-          // Continue to next drawing on error
-        } finally {
-          setAiLoading(null);
-        }
-      }
-      setAutoGenActive(false);
-    };
-    autoGen();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ---------- Generate All ---------- */
   const generateAll = useCallback(async () => {
@@ -223,7 +201,11 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq }) 
               console.warn('Text overlay failed, using raw AI image:', e);
             }
           }
-          setAiImages(prev => ({ ...prev, [cacheKey]: finalImg }));
+          setAiImages(prev => {
+            const updated = { ...prev, [cacheKey]: finalImg };
+            saveDrawings(updated);
+            return updated;
+          });
         }
       } catch {
         // Continue to next drawing
@@ -232,7 +214,7 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq }) 
 
     setAiLoading(null);
     setGeneratingAll(false);
-  }, [aiImages, layout, requirements, boq, selectedFloor, getCacheKey]);
+  }, [aiImages, layout, requirements, boq, selectedFloor, getCacheKey, saveDrawings]);
 
   /* ---------- PDF Export ---------- */
   const handleExportPDF = async () => {
@@ -380,14 +362,12 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq }) 
 
         {/* Generate All */}
         <button
-          className={`btn btn-xs btn-accent gap-1 ml-2 ${generatingAll || autoGenActive ? 'btn-disabled' : ''}`}
+          className={`btn btn-xs btn-accent gap-1 ml-2 ${generatingAll ? 'btn-disabled' : ''}`}
           onClick={generateAll}
-          disabled={generatingAll || autoGenActive}
+          disabled={generatingAll}
         >
           {generatingAll ? (
             <><Loader2 size={10} className="animate-spin" /> Generating All...</>
-          ) : autoGenActive ? (
-            <><Loader2 size={10} className="animate-spin" /> Auto-generating...</>
           ) : (
             <><PlayCircle size={10} /> Generate All</>
           )}
