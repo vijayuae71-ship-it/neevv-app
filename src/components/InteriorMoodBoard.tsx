@@ -235,15 +235,16 @@ export default function InteriorMoodBoard({ layout, onComplete }: Props) {
     <div className="relative w-full px-4 pb-4 pt-1">
 
       {/* ---------- STEP INDICATOR ---------- */}
-      <div className="flex items-center gap-2 mb-6">
+      <div className="flex items-center gap-2 mb-6 overflow-x-auto" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
         {(['style', 'customize', 'preview'] as SubStep[]).map((step, i) => {
           const labels = ['Style Selection', 'Room Customization', 'Mood Board Preview'];
+          const shortLabels = ['Style', 'Rooms', 'Preview'];
           const active = step === subStep;
           return (
             <React.Fragment key={step}>
-              {i > 0 && <div className="flex-1 h-px bg-whitecontent/20" />}
-              <span className={`badge ${active ? 'badge-primary' : 'badge-ghost'} text-xs`}>
-                {i + 1}. {labels[i]}
+              {i > 0 && <div className="hidden sm:block flex-1 h-px bg-gray-300" />}
+              <span className={`badge ${active ? 'badge-primary' : 'badge-ghost'} text-xs whitespace-nowrap flex-shrink-0`}>
+                {i + 1}. <span className="hidden sm:inline">{labels[i]}</span><span className="sm:hidden">{shortLabels[i]}</span>
               </span>
             </React.Fragment>
           );

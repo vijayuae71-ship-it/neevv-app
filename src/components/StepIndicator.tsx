@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { AppStep } from '../types';
 import { ClipboardList, LayoutGrid, Box, Ruler, Package, Palette, IndianRupee } from 'lucide-react';
 
@@ -22,31 +22,43 @@ const STEPS: { id: AppStep; label: string; icon: React.ReactNode }[] = [
 
 export const StepIndicator: React.FC<Props> = ({ current, onNavigate, canNavigate }) => {
   const currentIndex = STEPS.findIndex((s) => s.id === current);
+  const activeButtonRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    activeButtonRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+  }, [current]);
 
   return (
-    <div className="flex items-center gap-0.5 px-2 py-1.5 bg-gray-100 border-b border-gray-200 overflow-x-auto shrink-0">
-      {STEPS.map((s, i) => {
-        const isActive = s.id === current;
-        const isDone = i < currentIndex;
-        const canNav = canNavigate(s.id);
+    <>
+      <div
+        className="scrollbar-hide flex items-center gap-0.5 px-2 py-1.5 bg-gray-100 border-b border-gray-200 overflow-x-auto shrink-0"
+        style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch' }}
+      >
+        {STEPS.map((s, i) => {
+          const isActive = s.id === current;
+          const isDone = i < currentIndex;
+          const canNav = canNavigate(s.id);
 
-        return (
-          <React.Fragment key={s.id}>
-            {i > 0 && (
-              <div className={`w-4 h-px flex-shrink-0 ${isDone ? 'bg-blue-600' : 'bg-gray-200'}`} />
-            )}
-            <button
-              className={`btn btn-xs flex-shrink-0 gap-1 relative z-10 ${
-                isActive ? 'btn-primary' : isDone ? 'btn-ghost text-blue-600' : 'btn-ghost text-gray-400'
-              } ${!canNav && !isActive ? 'btn-disabled' : ''}`}
-              onClick={() => canNav && onNavigate(s.id)}
-            >
-              {s.icon}
-              <span className="hidden sm:inline">{s.label}</span>
-            </button>
-          </React.Fragment>
-        );
-      })}
-    </div>
+          return (
+            <React.Fragment key={s.id}>
+              {i > 0 && (
+                <div className={`hidden sm:block w-4 h-px flex-shrink-0 ${isDone ? 'bg-blue-600' : 'bg-gray-200'}`} />
+              )}
+              <button
+                ref={isActive ? activeButtonRef : undefined}
+                className={`btn btn-xs flex-shrink-0 gap-1 relative z-10 ${
+                  isActive ? 'btn-primary' : isDone ? 'btn-ghost text-blue-600' : 'btn-ghost text-gray-400'
+                } ${!canNav && !isActive ? 'btn-disabled' : ''}`}
+                onClick={() => canNav && onNavigate(s.id)}
+              >
+                {s.icon}
+                <span className="hidden sm:inline">{s.label}</span>
+              </button>
+            </React.Fragment>
+          );
+        })}
+      </div>
+      <style>{`.scrollbar-hide::-webkit-scrollbar { display: none; }`}</style>
+    </>
   );
 };
