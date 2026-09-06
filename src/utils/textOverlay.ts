@@ -592,13 +592,14 @@ export async function applyTextOverlay(
   const sectionHeadingHeight = 18;
   const titleHeight = 32;
   const watermarkHeight = 20;
+  const disclaimerHeight = 18;
   const horizontalPadding = 14;
   const verticalPadding = 10;
   const rowCount = overlay.sections.reduce((total, section) => total + section.rows.length, 0);
   const boxHeight = verticalPadding + titleHeight
     + overlay.sections.length * sectionHeadingHeight
     + rowCount * rowHeight
-    + watermarkHeight + verticalPadding;
+    + watermarkHeight + disclaimerHeight + verticalPadding;
   const boxWidth = Math.min(380, Math.max(1, imageWidth - 40));
   const margin = 20;
 
@@ -654,7 +655,19 @@ export async function applyTextOverlay(
   // Watermark
   context.fillStyle = '#999';
   context.font = '9px "Courier New", monospace';
-  context.fillText('neevv — Computed data • Not AI-generated', boxX + horizontalPadding, cursorY + 14);
+  context.fillText('neevv — Computed data • Not AI-generated', boxX + horizontalPadding, cursorY + 12);
+  cursorY += watermarkHeight;
+
+  // Execution disclaimer — this must remain the final line in every data panel.
+  context.fillStyle = '#888';
+  context.font = 'italic 8px \"Courier New\", monospace';
+  context.textAlign = 'center';
+  context.fillText(
+    'PRELIMINARY DESIGN — VERIFY WITH LICENSED PROFESSIONAL BEFORE EXECUTION',
+    boxX + boxWidth / 2,
+    cursorY + 11,
+  );
+  context.textAlign = 'left';
 
   return canvas.toDataURL('image/png');
 }

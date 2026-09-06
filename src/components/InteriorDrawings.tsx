@@ -658,6 +658,7 @@ function FurniturePlan({ layout, rooms }: Props) {
           </g>
         );
       })}
+      <text x={maxW / 2} y={maxH - 10} fontSize={7} fill="#999" textAnchor="middle" fontFamily={FONT}>PRELIMINARY DESIGN — VERIFY WITH LICENSED PROFESSIONAL BEFORE EXECUTION</text>
     </svg>
   );
 }
@@ -796,6 +797,7 @@ function CeilingPlan({ layout, rooms }: Props) {
           </g>
         );
       })()}
+      <text x={maxW / 2} y={svgH - 10} fontSize={7} fill="#999" textAnchor="middle" fontFamily={FONT}>PRELIMINARY DESIGN — VERIFY WITH LICENSED PROFESSIONAL BEFORE EXECUTION</text>
     </svg>
   );
 }
@@ -970,6 +972,7 @@ function ElectricalPlan({ layout, rooms }: Props) {
         y={MARGIN + 40}
         items={legendItems}
       />
+      <text x={maxW / 2} y={maxH - 10} fontSize={7} fill="#999" textAnchor="middle" fontFamily={FONT}>PRELIMINARY DESIGN — VERIFY WITH LICENSED PROFESSIONAL BEFORE EXECUTION</text>
     </svg>
   );
 }
@@ -1168,6 +1171,7 @@ function WoodworkDetails({ layout, rooms }: Props) {
           </g>
         );
       })}
+      <text x={svgW / 2} y={svgH - 10} fontSize={7} fill="#999" textAnchor="middle" fontFamily={FONT}>PRELIMINARY DESIGN — VERIFY WITH LICENSED PROFESSIONAL BEFORE EXECUTION</text>
     </svg>
   );
 }
@@ -1278,6 +1282,7 @@ function FlooringPlan({ layout, rooms }: Props) {
           </g>
         );
       })}
+      <text x={maxW / 2} y={maxH - 10} fontSize={7} fill="#999" textAnchor="middle" fontFamily={FONT}>PRELIMINARY DESIGN — VERIFY WITH LICENSED PROFESSIONAL BEFORE EXECUTION</text>
     </svg>
   );
 }

@@ -386,6 +386,9 @@ const InteriorAIDrawings: React.FC<Props> = ({ layout, interiorSelections, moodB
                   <RefreshCw size={13} className="text-gray-700" />
                 </button>
               </div>
+              <p className="mt-2 text-center text-[10px] text-gray-500">
+                PRELIMINARY DESIGN — VERIFY WITH LICENSED PROFESSIONAL BEFORE EXECUTION
+              </p>
             </div>
           ) : !loading ? (
             <div className="flex flex-col items-center gap-4 text-gray-400">
