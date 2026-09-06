@@ -26,7 +26,7 @@ const ANALYSIS_PROMPT = `You are an expert architectural plan reader. Analyze th
 
 IMPORTANT: Be precise with dimensions. If dimensions are shown in meters, convert to feet (1m = 3.281ft). If shown in mm, convert to feet.
 
-Return ONLY valid JSON with this exact structure:
+Return ONLY valid JSON with this exact structure (no markdown, no code fences, no explanation — ONLY the JSON object):
 {
   "plotWidthFt": <number - overall plot width in feet>,
   "plotDepthFt": <number - overall plot depth in feet>,
@@ -53,6 +53,31 @@ Rules:
 - Include ALL rooms visible in the drawing
 - If multiple floors are shown, include each floor separately
 - If only one floor is shown, label it "Ground Floor"`;
+
+/** Try to extract a JSON object from a string that may contain markdown fences, explanatory text, etc. */
+function extractJSON(raw: string): ExtractedData {
+  // Strategy 1: try parsing the whole string directly
+  try { return JSON.parse(raw.trim()); } catch { /* continue */ }
+
+  // Strategy 2: extract from markdown code fences
+  const fenceMatch = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (fenceMatch) {
+    try { return JSON.parse(fenceMatch[1].trim()); } catch { /* continue */ }
+  }
+
+  // Strategy 3: find the first { ... } block (greedy)
+  const braceStart = raw.indexOf('{');
+  const braceEnd = raw.lastIndexOf('}');
+  if (braceStart !== -1 && braceEnd > braceStart) {
+    try { return JSON.parse(raw.slice(braceStart, braceEnd + 1)); } catch { /* continue */ }
+  }
+
+  // Strategy 4: strip common prefixes like "Here is the JSON:" or similar
+  const stripped = raw.replace(/^[\s\S]*?(?=\{)/, '');
+  try { return JSON.parse(stripped); } catch { /* continue */ }
+
+  throw new Error('Could not extract valid JSON from AI response');
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -93,6 +118,7 @@ export async function POST(request: NextRequest) {
         generationConfig: {
           temperature: 0.1,
           maxOutputTokens: 4096,
+          responseMimeType: 'application/json',
         },
       }),
     });
@@ -101,7 +127,7 @@ export async function POST(request: NextRequest) {
       const errorText = await response.text();
       console.error('Gemini Vision API error:', errorText);
       return NextResponse.json(
-        { error: 'AI analysis failed', details: errorText },
+        { error: 'AI analysis failed — please try again', details: errorText },
         { status: response.status }
       );
     }
@@ -119,23 +145,16 @@ export async function POST(request: NextRequest) {
     }
 
     if (!textResponse) {
-      return NextResponse.json({ error: 'No analysis result from AI' }, { status: 500 });
-    }
-
-    // Parse JSON from response (handle markdown code blocks)
-    let jsonStr = textResponse;
-    const jsonMatch = textResponse.match(/```(?:json)?\s*([\s\S]*?)```/);
-    if (jsonMatch) {
-      jsonStr = jsonMatch[1].trim();
+      return NextResponse.json({ error: 'No analysis result from AI — please try again' }, { status: 500 });
     }
 
     let extracted: ExtractedData;
     try {
-      extracted = JSON.parse(jsonStr);
+      extracted = extractJSON(textResponse);
     } catch {
-      console.error('Failed to parse AI response:', textResponse);
+      console.error('Failed to parse AI response:', textResponse.substring(0, 500));
       return NextResponse.json(
-        { error: 'Could not parse AI analysis', rawResponse: textResponse },
+        { error: 'Could not parse AI analysis — please try uploading again', rawResponse: textResponse.substring(0, 200) },
         { status: 500 }
       );
     }
@@ -143,20 +162,32 @@ export async function POST(request: NextRequest) {
     // Validate and sanitize
     if (!extracted.plotWidthFt || !extracted.plotDepthFt || !extracted.floors?.length) {
       return NextResponse.json(
-        { error: 'Incomplete analysis — could not extract dimensions', extracted },
+        { error: 'Incomplete analysis — could not extract dimensions. Please try a clearer image.', extracted },
         { status: 422 }
       );
     }
+
+    // Ensure notes is always an array
+    if (!Array.isArray(extracted.notes)) {
+      extracted.notes = [];
+    }
+
+    // Ensure each floor has rooms array
+    extracted.floors = extracted.floors.map(f => ({
+      ...f,
+      rooms: Array.isArray(f.rooms) ? f.rooms : [],
+    }));
 
     return NextResponse.json({
       success: true,
       extracted,
       imageBase64: `data:${mimeType};base64,${base64}`,
     });
-  } catch (error: any) {
-    console.error('Drawing analysis error:', error);
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'Unknown error';
+    console.error('Drawing analysis error:', msg);
     return NextResponse.json(
-      { error: 'Internal server error', details: error.message },
+      { error: 'Internal server error — please try again', details: msg },
       { status: 500 }
     );
   }
