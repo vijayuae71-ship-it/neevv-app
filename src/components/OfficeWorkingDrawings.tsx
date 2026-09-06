@@ -81,11 +81,11 @@ export const OfficeWorkingDrawings: React.FC<Props> = ({ layout, officeReq }) =>
   /* Stable design seed so repeated generations across drawing types stay visually consistent */
   const designSeed = useMemo(() => {
     try {
-      return getOfficeDesignSeed(officeReq);
+      return getOfficeDesignSeed(layout.id);
     } catch {
       return '';
     }
-  }, [officeReq]);
+  }, [layout.id]);
 
   /* Load any previously cached drawings from localStorage on mount */
   useEffect(() => {
