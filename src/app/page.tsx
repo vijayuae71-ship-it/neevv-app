@@ -18,6 +18,10 @@ import { useAuth } from '@/hooks/useAuth';
 import { useProject } from '@/hooks/useProject';
 import DrawingUpload from '@/components/DrawingUpload';
 import { OfficeRequirementForm } from '@/components/OfficeRequirementForm';
+import { computeOfficeLayout } from '@/utils/computeOfficeLayout';
+import { calculateOfficeBOQ } from '@/utils/officeBoqCalculator';
+import { OfficeWorkingDrawings } from '@/components/OfficeWorkingDrawings';
+import { OfficeBOQReport } from '@/components/OfficeBOQReport';
 import { RateSheet } from '@/components/RateSheet';
 import { Home, Palette, Upload, ArrowRight, CheckCircle, Zap, Users, Clock, Building, Hammer, Compass, Star, FileText, Eye } from 'lucide-react';
 import { analytics } from '@/utils/analytics';
@@ -37,6 +41,7 @@ export default function HomePage() {
   const [customRates, setCustomRates] = useState<CustomRateSheet | null>(null);
   const [motherLayoutLocked, setMotherLayoutLocked] = useState(false);
   const [officeRequirements, setOfficeRequirements] = useState<OfficeRequirements | null>(null);
+  const [officeStep, setOfficeStep] = useState<'requirements' | 'layouts' | 'drawings' | 'boq'>('requirements');
 
   // Auto-save to localStorage
   useEffect(() => {
@@ -149,6 +154,8 @@ export default function HomePage() {
     setSelectedLayout(null);
     setBOQ(null);
     localStorage.removeItem('neevv_project_autosave');
+    setOfficeStep('requirements');
+    setOfficeRequirements(null);
   };
 
 
@@ -166,35 +173,18 @@ export default function HomePage() {
 
   const handleOfficeSubmit = (req: OfficeRequirements) => {
     setOfficeRequirements(req);
-    // Convert office requirements to ProjectRequirements for layout generation
-    const resFloors = req.floors.map(f => ({
-      floorLabel: f.floorLabel,
-      bedrooms: 0,
-      halls: 0,
-      kitchens: 0,
-      hasDining: false,
-      hasPuja: false,
-    }));
-    const projReq: ProjectRequirements = {
-      city: req.city,
-      state: req.state,
-      plotWidthFt: req.plotWidthFt,
-      plotDepthFt: req.plotDepthFt,
-      facing: req.facing,
-      vastuCompliance: false,
-      parkingType: req.parkingType,
-      budget: req.budget,
-      architecturalStyle: 'modern_minimalist',
-      floors: resFloors,
-    };
-    setRequirements(projReq);
-    const generated = generateLayouts(projReq);
-    setLayouts(generated);
+    const result = computeOfficeLayout(req);
+    setLayouts(result.layouts);
     setSelectedLayout(null);
     setBOQ(null);
     setMotherLayoutLocked(false);
-    setMode('new_build');
-    setStep('layouts');
+    setOfficeStep('layouts');
+  };
+
+  const handleOfficeLayoutSelect = (layout: Layout) => {
+    setSelectedLayout(layout);
+    setMotherLayoutLocked(true);
+    setOfficeStep('drawings');
   };
 
   const handleSave = async () => {
@@ -603,15 +593,96 @@ export default function HomePage() {
 
   /* ============ OFFICE DESIGN MODE ============ */
   if (mode === 'office_design') {
+    const officeSteps = ['requirements', 'layouts', 'drawings', 'boq'] as const;
+    const officeStepLabels: Record<string, string> = {
+      requirements: '📋 Requirements',
+      layouts: '🏗️ Layouts',
+      drawings: '📐 Drawings',
+      boq: '💰 BOQ',
+    };
+
     return (
       <div className="flex flex-col h-screen bg-white">
         <Navbar showBack />
+
+        {/* Office Step Indicator */}
+        <div className="bg-white border-b border-gray-200 px-4 py-2 flex items-center justify-center gap-2 overflow-x-auto">
+          {officeSteps.map((s, i) => (
+            <React.Fragment key={s}>
+              {i > 0 && <span className="text-gray-300 text-xs">→</span>}
+              <button
+                className={`text-xs px-3 py-1.5 rounded-full font-medium transition-all ${
+                  officeStep === s
+                    ? 'bg-blue-600 text-white'
+                    : officeSteps.indexOf(officeStep) > i
+                    ? 'bg-blue-50 text-blue-600 hover:bg-blue-100'
+                    : 'bg-gray-100 text-gray-400'
+                }`}
+                onClick={() => {
+                  const idx = officeSteps.indexOf(s);
+                  const currentIdx = officeSteps.indexOf(officeStep);
+                  if (idx <= currentIdx) setOfficeStep(s);
+                }}
+                disabled={officeSteps.indexOf(s) > officeSteps.indexOf(officeStep)}
+              >
+                {officeStepLabels[s]}
+              </button>
+            </React.Fragment>
+          ))}
+        </div>
+
+        {/* Office Project Context Bar */}
+        {officeRequirements && officeStep !== 'requirements' && (
+          <div className="bg-gray-50 border-b border-gray-200 px-4 py-1.5 text-center">
+            <span className="text-xs text-gray-500">
+              🏢 {officeRequirements.companyName || 'Office'} • {officeRequirements.plotWidthFt}×{officeRequirements.plotDepthFt} ft • {officeRequirements.facing}-Facing • {officeRequirements.employeeCount} employees • {officeRequirements.floors.length === 1 ? 'Single Floor' : `${officeRequirements.floors.length} Floors`}
+            </span>
+          </div>
+        )}
+
         <div className="flex-1 overflow-y-auto">
-          <OfficeRequirementForm
-            onSubmit={handleOfficeSubmit}
-            onBack={handleNewProject}
-            initialValues={officeRequirements}
-          />
+          {officeStep === 'requirements' && (
+            <OfficeRequirementForm
+              onSubmit={handleOfficeSubmit}
+              onBack={handleNewProject}
+              initialValues={officeRequirements}
+            />
+          )}
+
+          {officeStep === 'layouts' && layouts.length > 0 && officeRequirements && (
+            <LayoutSelector
+              layouts={layouts}
+              onSelect={handleOfficeLayoutSelect}
+              vastuEnabled={false}
+              requirements={{
+                city: officeRequirements.city,
+                state: officeRequirements.state,
+                plotWidthFt: officeRequirements.plotWidthFt,
+                plotDepthFt: officeRequirements.plotDepthFt,
+                facing: officeRequirements.facing,
+                vastuCompliance: false,
+                parkingType: officeRequirements.parkingType,
+                budget: officeRequirements.budget,
+                architecturalStyle: 'modern_minimalist',
+                floors: officeRequirements.floors.map(f => ({
+                  floorLabel: f.floorLabel,
+                  bedrooms: 0,
+                  halls: 0,
+                  kitchens: 0,
+                  hasDining: false,
+                  hasPuja: false,
+                })),
+              }}
+            />
+          )}
+
+          {officeStep === 'drawings' && selectedLayout && officeRequirements && (
+            <OfficeWorkingDrawings layout={selectedLayout} officeReq={officeRequirements} />
+          )}
+
+          {officeStep === 'boq' && selectedLayout && officeRequirements && (
+            <OfficeBOQReport layout={selectedLayout} officeReq={officeRequirements} />
+          )}
         </div>
       </div>
     );
