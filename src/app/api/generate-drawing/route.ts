@@ -1,141 +1,91 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { buildDrawingPrompt, DrawingType, DRAWING_TYPES } from '../../../utils/drawingPrompts';
+import { GoogleGenAI } from '@google/genai';
+import { verifyAuth, isAuthError } from '@/lib/auth-middleware';
+import { rateLimit, getRateLimitKey } from '@/utils/rateLimit';
+import { checkAndIncrementUsage } from '@/utils/usageTracker';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 120;
 
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-const MODEL_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image:generateContent?key=${GEMINI_API_KEY}`;
-
-interface GenerateDrawingRequest {
-  drawingType: DrawingType;
-  layout: any;
-  requirements: any;
-  floor?: 'GF' | 'FF';
-}
-
 export async function POST(request: NextRequest) {
+  // 1. Authenticate
+  const auth = await verifyAuth(request);
+  if (isAuthError(auth)) return auth;
+
+  // 2. Rate limit (keyed on userId)
+  const rateLimitKey = getRateLimitKey(auth.userId, request);
+  const limiter = rateLimit(rateLimitKey, 10, 60 * 1000); // 10 drawings per minute
+  if (!limiter.allowed) {
+    return NextResponse.json(
+      { error: 'Rate limit exceeded. Please wait before generating more drawings.', resetIn: limiter.resetIn },
+      { status: 429 }
+    );
+  }
+
+  // 3. Usage quota check
+  const usage = await checkAndIncrementUsage(auth.userId, 'drawings');
+  if (!usage.allowed) {
+    return NextResponse.json(
+      { error: `Daily drawing limit reached (${usage.limit}/day). Try again tomorrow.`, remaining: 0 },
+      { status: 429 }
+    );
+  }
+
   try {
-    if (!GEMINI_API_KEY) {
-      return NextResponse.json(
-        { success: false, error: 'neevv Generation Pro engine is not configured' },
-        { status: 500 }
-      );
+    const { prompt, drawingType } = await request.json();
+
+    if (!prompt) {
+      return NextResponse.json({ error: 'Prompt is required' }, { status: 400 });
     }
 
-    const body: GenerateDrawingRequest = await request.json();
-    const { drawingType, layout, requirements, floor } = body;
-
-    // Rate limiting: 15 drawings per minute per IP
-    const { rateLimit: checkRate, getClientIP } = await import('@/utils/rateLimit');
-    const clientIP = getClientIP(request);
-    const { allowed, remaining, resetIn } = checkRate(clientIP, 10, 60000);
-    
-    if (!allowed) {
-      return Response.json(
-        { success: false, error: `Rate limit exceeded. Try again in ${Math.ceil(resetIn / 1000)} seconds.` },
-        { status: 429, headers: { 'Retry-After': String(Math.ceil(resetIn / 1000)) } }
-      );
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      console.error('GEMINI_API_KEY not configured');
+      return NextResponse.json({ error: 'Service configuration error' }, { status: 500 });
     }
 
-    // Validate drawing type
-    const validTypes = DRAWING_TYPES.map((dt) => dt.id);
-    if (!validTypes.includes(drawingType)) {
-      return NextResponse.json(
-        { success: false, error: `Invalid drawing type: ${drawingType}` },
-        { status: 400 }
-      );
-    }
+    const ai = new GoogleGenAI({ apiKey });
 
-    // Build the prompt
-    const prompt = buildDrawingPrompt(drawingType, layout, requirements, floor);
-
-    // Call Gemini API
-    const geminiResponse = await fetch(MODEL_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [
-          {
-            parts: [{ text: prompt }],
-          },
-        ],
-        generationConfig: {
-          responseModalities: ['TEXT', 'IMAGE'],
-          imageConfig: {
-            aspectRatio: drawingType === '3d_exterior' ? '16:9' : '1:1',
-          },
-        },
-      }),
+    const response = await ai.models.generateContent({
+      model: 'gemini-3.1-flash-image',
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      config: {
+        responseModalities: ['TEXT', 'IMAGE'],
+      },
     });
 
-    if (!geminiResponse.ok) {
-      const errorText = await geminiResponse.text();
-      console.error('Gemini API error:', errorText);
-      return NextResponse.json(
-        {
-          success: false,
-          error: `neevv Generation Pro returned ${geminiResponse.status}`,
-          details: errorText,
-        },
-        { status: 502 }
-      );
+    if (!response.candidates?.[0]?.content?.parts) {
+      return NextResponse.json({ error: 'No response from AI' }, { status: 500 });
     }
 
-    const data = await geminiResponse.json();
+    const parts = response.candidates[0].content.parts;
+    let imageDataUri = '';
+    let textResponse = '';
 
-    // Extract image from response
-    const candidates = data?.candidates;
-    if (!candidates || candidates.length === 0) {
-      return NextResponse.json(
-        { success: false, error: 'No output from neevv Generation Pro' },
-        { status: 502 }
-      );
+    for (const part of parts) {
+      if (part.inlineData) {
+        const mimeType = part.inlineData.mimeType || 'image/png';
+        imageDataUri = `data:${mimeType};base64,${part.inlineData.data}`;
+      }
+      if (part.text) {
+        textResponse += part.text;
+      }
     }
 
-    const parts = candidates[0]?.content?.parts;
-    if (!parts || parts.length === 0) {
-      return NextResponse.json(
-        { success: false, error: 'No drawing data in response' },
-        { status: 502 }
-      );
+    if (!imageDataUri) {
+      return NextResponse.json({ error: 'No image generated' }, { status: 500 });
     }
-
-    // Find the image part
-    const imagePart = parts.find(
-      (part: any) => part.inlineData?.mimeType?.startsWith('image/')
-    );
-
-    if (!imagePart) {
-      // Maybe got text instead of image
-      const textPart = parts.find((part: any) => part.text);
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'No image generated. Model returned text instead.',
-          textResponse: textPart?.text || 'Unknown response',
-        },
-        { status: 502 }
-      );
-    }
-
-    const mimeType = imagePart.inlineData.mimeType;
-    const base64Data = imagePart.inlineData.data;
-    const imageDataUri = `data:${mimeType};base64,${base64Data}`;
 
     return NextResponse.json({
-      success: true,
       imageDataUri,
-      prompt,
+      textResponse,
       drawingType,
+      remaining: usage.remaining,
     });
   } catch (error: any) {
-    console.error('Generate drawing error:', error);
+    console.error('Drawing generation error:', error);
     return NextResponse.json(
-      {
-        success: false,
-        error: error.message || 'Internal server error',
-      },
+      { error: 'Failed to generate drawing', details: error.message },
       { status: 500 }
     );
   }

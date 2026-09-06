@@ -28,6 +28,7 @@ import {
   getOfficeDesignSeed,
 } from '../utils/officeDrawingPrompts';
 import { applyOfficeTextOverlay } from '../utils/officeTextOverlay';
+import { authFetch } from '@/utils/authFetch';
 
 interface Props {
   layout: Layout;
@@ -166,7 +167,7 @@ export const OfficeWorkingDrawings: React.FC<Props> = ({ layout, officeReq }) =>
 
       try {
         const prompt = getOfficeDrawingPrompt(type, layout, officeReq, floor);
-        const res = await fetch('/api/generate-drawing', {
+        const res = await authFetch('/api/generate-drawing', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ prompt, type }),

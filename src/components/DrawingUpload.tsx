@@ -3,6 +3,7 @@
 import React, { useState, useRef, useCallback } from 'react';
 import { Upload, FileImage, Loader2, CheckCircle, AlertCircle, ArrowLeft, ArrowRight, Edit3, X } from 'lucide-react';
 import { ProjectRequirements, Layout, FloorLayout, Room, Column, Facing, FloorProgram } from '@/types';
+import { authFetch } from '@/utils/authFetch';
 
 interface ExtractedRoom {
   name: string;
@@ -65,7 +66,7 @@ export default function DrawingUpload({ onConversionComplete, onBack }: DrawingU
       const formData = new FormData();
       formData.append('drawing', file);
 
-      const response = await fetch('/api/analyze-drawing', {
+      const response = await authFetch('/api/analyze-drawing', {
         method: 'POST',
         body: formData,
       });

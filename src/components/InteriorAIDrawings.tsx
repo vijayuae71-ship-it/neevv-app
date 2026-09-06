@@ -5,6 +5,7 @@ import type { Room, RoomInterior, InteriorMoodBoard, Layout } from '../types';
 import { buildInteriorRoomPrompt, InteriorRenderType } from '../utils/interiorRenderPrompt';
 import { STYLE_TEMPLATES } from '../utils/interiorTemplates';
 import { Camera, RefreshCw, Download, AlertTriangle, Sparkles, Eye, ChevronRight } from 'lucide-react';
+import { authFetch } from '@/utils/authFetch';
 
 /* ------------------------------------------------------------------ */
 /*  Constants                                                          */
@@ -101,7 +102,7 @@ const InteriorAIDrawings: React.FC<Props> = ({ layout, interiorSelections, moodB
       const promptText = buildInteriorRoomPrompt(renderType, room, interior, roomMoodBoard);
 
       // Call the API route (same one used for exterior renders)
-      const response = await fetch('/api/generate-render', {
+      const response = await authFetch('/api/generate-render', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

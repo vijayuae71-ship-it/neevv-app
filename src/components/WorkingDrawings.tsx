@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { exportAIPDF, ExportProgress } from '../utils/pdfExport';
 import { applyTextOverlay, OVERLAY_DRAWING_TYPES } from '../utils/textOverlay';
+import { authFetch } from '@/utils/authFetch';
 
 interface Props {
   layout: Layout;
@@ -115,7 +116,7 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq }) 
     setAiLoading(drawingType);
     setAiError(null);
     try {
-      const res = await fetch('/api/generate-drawing', {
+      const res = await authFetch('/api/generate-drawing', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -181,7 +182,7 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq }) 
       setAiLoading(dt);
       setActiveDrawing(dt);
       try {
-        const res = await fetch('/api/generate-drawing', {
+        const res = await authFetch('/api/generate-drawing', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

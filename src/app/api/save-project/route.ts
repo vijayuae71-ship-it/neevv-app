@@ -1,29 +1,58 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAdminDb, getAdminAuth } from '@/lib/firebase-admin';
+import { getAdminDb } from '@/lib/firebase-admin';
+import { verifyAuth, isAuthError } from '@/lib/auth-middleware';
+import { rateLimit, getRateLimitKey } from '@/utils/rateLimit';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
+  // 1. Authenticate
+  const auth = await verifyAuth(request);
+  if (isAuthError(auth)) return auth;
+
+  // 2. Rate limit
+  const rateLimitKey = getRateLimitKey(auth.userId, request);
+  const limiter = rateLimit(rateLimitKey, 20, 60 * 1000); // 20 saves per minute
+  if (!limiter.allowed) {
+    return NextResponse.json(
+      { error: 'Rate limit exceeded.', resetIn: limiter.resetIn },
+      { status: 429 }
+    );
+  }
+
   try {
-    const authHeader = request.headers.get('Authorization');
-    if (!authHeader?.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const token = authHeader.split('Bearer ')[1];
-    const decodedToken = await getAdminAuth().verifyIdToken(token);
-    const userId = decodedToken.uid;
-
     const { projectData, projectId } = await request.json();
 
+    if (!projectData) {
+      return NextResponse.json({ error: 'Project data is required' }, { status: 400 });
+    }
+
     const db = getAdminDb();
+
+    // If updating existing project, verify ownership (IDOR fix)
+    if (projectId) {
+      const existingDoc = await db.collection('projects').doc(projectId).get();
+      if (existingDoc.exists) {
+        const existingData = existingDoc.data();
+        if (existingData?.userId && existingData.userId !== auth.userId) {
+          return NextResponse.json(
+            { error: 'You do not have permission to modify this project.' },
+            { status: 403 }
+          );
+        }
+      }
+    }
+
     const projectRef = projectId
       ? db.collection('projects').doc(projectId)
       : db.collection('projects').doc();
 
+    // Strip any userId from client payload — always use server-verified userId
+    const { userId: _clientUserId, ...safeProjectData } = projectData;
+
     await projectRef.set({
-      ...projectData,
-      userId,
+      ...safeProjectData,
+      userId: auth.userId,
       updatedAt: new Date().toISOString(),
       ...(projectId ? {} : { createdAt: new Date().toISOString() }),
     }, { merge: true });
@@ -42,20 +71,16 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
+  // 1. Authenticate
+  const auth = await verifyAuth(request);
+  if (isAuthError(auth)) return auth;
+
   try {
-    const authHeader = request.headers.get('Authorization');
-    if (!authHeader?.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const token = authHeader.split('Bearer ')[1];
-    const decodedToken = await getAdminAuth().verifyIdToken(token);
-    const userId = decodedToken.uid;
-
     const db = getAdminDb();
+    // Only return projects owned by authenticated user
     const snapshot = await db
       .collection('projects')
-      .where('userId', '==', userId)
+      .where('userId', '==', auth.userId)
       .orderBy('updatedAt', 'desc')
       .limit(50)
       .get();

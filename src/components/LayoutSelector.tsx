@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Layout, ProjectRequirements } from '../types';
 import { CheckCircle, AlertTriangle, ArrowRight, Loader2 } from 'lucide-react';
+import { authFetch } from '@/utils/authFetch';
 
 interface Props {
   layouts: Layout[];
@@ -21,7 +22,7 @@ export const LayoutSelector: React.FC<Props> = ({ layouts, onSelect, vastuEnable
     setErrors(prev => ({ ...prev, [layout.id]: '' }));
 
     try {
-      const res = await fetch('/api/generate-drawing', {
+      const res = await authFetch('/api/generate-drawing', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

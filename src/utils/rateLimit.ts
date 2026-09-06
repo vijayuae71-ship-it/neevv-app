@@ -1,7 +1,17 @@
-// Simple in-memory rate limiter for API routes
-// In production with multiple instances, use Redis instead
+// Rate limiter keyed on userId (authenticated) or IP (fallback)
+// In production with multiple Cloud Run instances, use Redis/Memorystore instead
 
 const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
+
+// Clean up stale entries every 5 minutes to prevent memory leaks
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of rateLimitMap) {
+    if (now > entry.resetTime) {
+      rateLimitMap.delete(key);
+    }
+  }
+}, 5 * 60 * 1000);
 
 export function rateLimit(
   identifier: string,
@@ -24,7 +34,18 @@ export function rateLimit(
   return { allowed: true, remaining: maxRequests - entry.count, resetIn: entry.resetTime - now };
 }
 
-// Get client IP from headers (works with Cloud Run)
+/**
+ * Get rate limit key — prefer userId over IP to prevent header spoofing
+ */
+export function getRateLimitKey(userId: string | null, request: Request): string {
+  if (userId) return `user:${userId}`;
+  // Fallback to IP — only used if auth is somehow bypassed
+  const forwarded = request.headers.get('x-forwarded-for');
+  const ip = forwarded ? forwarded.split(',')[0].trim() : 'unknown';
+  return `ip:${ip}`;
+}
+
+// Keep old export for backward compatibility during transition
 export function getClientIP(request: Request): string {
   const forwarded = request.headers.get('x-forwarded-for');
   if (forwarded) return forwarded.split(',')[0].trim();

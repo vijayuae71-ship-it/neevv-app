@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { Layout, ProjectRequirements } from '../types';
 import { buildArchitecturalPrompt } from '../utils/aiRenderPrompt';
 import { Camera, RefreshCw, Download, AlertTriangle, Sparkles, Eye } from 'lucide-react';
+import { authFetch } from '@/utils/authFetch';
 
 const MODELS = [
   { id: 'neevv-gen', label: 'neevv Gen' },
@@ -47,7 +48,7 @@ export const AIRenderView: React.FC<Props> = ({ layout, requirements }) => {
       
       setProgress('neevv Generation Pro rendering...');
 
-      const response = await fetch('/api/generate-render', {
+      const response = await authFetch('/api/generate-render', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

@@ -22,6 +22,7 @@ import {
   ImageIcon,
 } from 'lucide-react';
 import { DrawingType, DRAWING_TYPES, DrawingTypeInfo } from '../utils/drawingPrompts';
+import { authFetch } from '@/utils/authFetch';
 
 interface Layout {
   [key: string]: any;
@@ -86,7 +87,7 @@ export default function AIDrawingView({ layout, requirements }: Props) {
       setError(null);
 
       try {
-        const response = await fetch('/api/generate-drawing', {
+        const response = await authFetch('/api/generate-drawing', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ drawingType, layout, requirements }),
@@ -123,7 +124,7 @@ export default function AIDrawingView({ layout, requirements }: Props) {
 
       setLoadingType(dt.id);
       try {
-        const response = await fetch('/api/generate-drawing', {
+        const response = await authFetch('/api/generate-drawing', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ drawingType: dt.id, layout, requirements }),
