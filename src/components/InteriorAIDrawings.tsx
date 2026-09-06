@@ -3,6 +3,7 @@
 import React, { useState, useCallback, useRef } from 'react';
 import type { Room, RoomInterior, InteriorMoodBoard, Layout } from '../types';
 import { buildInteriorRoomPrompt, InteriorRenderType } from '../utils/interiorRenderPrompt';
+import { STYLE_TEMPLATES } from '../utils/interiorTemplates';
 import { Camera, RefreshCw, Download, AlertTriangle, Sparkles, Eye, ChevronRight } from 'lucide-react';
 
 /* ------------------------------------------------------------------ */
@@ -95,7 +96,9 @@ const InteriorAIDrawings: React.FC<Props> = ({ layout, interiorSelections, moodB
 
       // Build prompt
       const renderType: InteriorRenderType = type === 'plan' ? 'plan' : type === 'elevation' ? 'elevation' : 'render3d';
-      const promptText = buildInteriorRoomPrompt(renderType, room, interior, moodBoard);
+      // Use per-room style moodBoard — ensures each room's style is reflected
+      const roomMoodBoard = interior ? STYLE_TEMPLATES[interior.style] : moodBoard;
+      const promptText = buildInteriorRoomPrompt(renderType, room, interior, roomMoodBoard);
 
       // Call the API route (same one used for exterior renders)
       const response = await fetch('/api/generate-render', {

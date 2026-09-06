@@ -321,3 +321,135 @@ export interface InteriorDesignData {
     miscellaneous: number;
   };
 }
+
+/* ================================================================
+   LOCKED INTERIOR SCENE TYPES
+   ----------------------------------------------------------------
+   Append to the END of src/types.ts.
+
+   These types back the "Locked Interior Scene" architecture: a
+   single resolved `InteriorScene` object is built once per room
+   (see src/utils/buildInteriorScene.ts) and consumed by every
+   render prompt (plan / elevation / 3D) so all three views describe
+   identical furniture, fixtures, materials, and dimensions.
+
+   All types below reference only types already defined earlier in
+   this file (InteriorStyle, ColorPalette) — no new imports needed.
+   ================================================================ */
+
+export type SceneFurnitureWall = 'north' | 'south' | 'east' | 'west' | 'center';
+export type SceneFixtureWall = 'north' | 'south' | 'east' | 'west' | 'floor' | 'ceiling';
+export type SceneOpeningWall = 'north' | 'south' | 'east' | 'west';
+export type SceneOpeningType = 'door' | 'window';
+
+export interface SceneFurnitureItem {
+  name: string;
+  category: string;
+  widthMM: number;
+  depthMM: number;
+  heightMM: number;
+  material: string;
+  color: string;
+  wall: SceneFurnitureWall;
+  description: string;
+}
+
+export interface SceneFixture {
+  name: string;
+  widthMM: number;
+  depthMM: number;
+  heightMM: number;
+  mountHeightMM: number;
+  wall: SceneFixtureWall;
+  material: string;
+  description: string;
+}
+
+export interface SceneOpening {
+  type: SceneOpeningType;
+  wall: SceneOpeningWall;
+  widthMM: number;
+  heightMM: number;
+  sillHeightMM: number;
+  openDirection?: string;
+  material: string;
+}
+
+export interface SceneZone {
+  name: string;
+  description: string;
+  color: string;
+}
+
+export interface SceneMaterials {
+  flooring: {
+    name: string;
+    finish: string;
+    tileSize?: string;
+  };
+  wallFinish: {
+    name: string;
+    finish: string;
+  };
+  accentWall?: {
+    name: string;
+    description: string;
+  };
+  ceiling: {
+    type: string;
+    height: number;
+    falseCeilingHeight?: number;
+    finish: string;
+  };
+  countertop?: {
+    name: string;
+    thickness: number;
+    finish: string;
+  };
+}
+
+export interface SceneLighting {
+  description: string;
+  fixtures: string[];
+}
+
+export interface SceneDimensions {
+  counterHeight?: number;
+  upperCabinetBottom?: number;
+  backsplashHeight?: number;
+  plinthHeight?: number;
+  dadoHeight?: number;
+}
+
+export interface InteriorScene {
+  roomId: string;
+  roomName: string;
+  roomType: string;
+  widthMM: number;
+  depthMM: number;
+  widthFt: number;
+  depthFt: number;
+  areaSqft: number;
+  clearHeightMM: number; // 3050
+  falseCeilingHeightMM: number; // 2750
+  wallThicknessMM: number; // 230
+  style: InteriorStyle;
+  styleName: string;
+  palette: ColorPalette;
+  materials: SceneMaterials;
+  furniture: SceneFurnitureItem[];
+  fixtures: SceneFixture[];
+  openings: SceneOpening[];
+  zones: SceneZone[];
+  keyDimensions: SceneDimensions;
+  lighting: SceneLighting;
+  specificNotes: string;
+  electricalPoints: {
+    switches: number;
+    sockets: number;
+    dataPoints: number;
+    lightPoints: number;
+    fanPoints: number;
+    acPoints: number;
+  };
+}
