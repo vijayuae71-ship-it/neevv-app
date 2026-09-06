@@ -99,6 +99,19 @@ function serializeKeyDimensions(dims: SceneDimensions): string {
   return lines.length ? lines.join('\n') : 'No special vertical datums for this room.';
 }
 
+function serializeElectricalPoints(ep: InteriorScene['electricalPoints']): string {
+  const lines: string[] = [
+    `S  — Switches: ${ep.switches} nos. (mount height: 1200mm from FFL)`,
+    `P  — Sockets: ${ep.sockets} nos. (mount height: 300mm from FFL, 450mm in kitchen)`,
+    `D  — Data points: ${ep.dataPoints} nos. (mount height: 300mm from FFL)`,
+    `L  — Light points: ${ep.lightPoints} nos. (ceiling-mounted)`,
+    `F  — Fan points: ${ep.fanPoints} nos. (ceiling-mounted)`,
+    `AC — AC points: ${ep.acPoints} nos. (mount height: 1800mm from FFL)`,
+    `Wiring color code per IS 732: Phase = Red, Neutral = Black, Earth = Green`,
+  ];
+  return lines.join('\n');
+}
+
 /** Wall description for the elevation view — the one room-type-aware
  *  decision left in the prompt layer, since it only picks WHICH wall
  *  to draw, not what's on it (that's resolved in the scene already). */
@@ -161,6 +174,15 @@ ${serializeOpenings(scene.openings)}
 
 ZONE MAPPING (color-coded zones with labels):
 ${serializeZones(scene.zones)}
+
+ELECTRICAL POINTS (show with IS standard symbols on plan):
+${serializeElectricalPoints(scene.electricalPoints)}
+- Show switch board near door entry at 1200mm height mark
+- Show socket locations along walls at standard heights
+- Show light points on ceiling with ⊕ symbols
+- Show fan points on ceiling with circled F
+- Show AC points on wall with □AC symbol
+- Dashed wiring runs from DB to each point in appropriate circuit colors
 
 DRAWING REQUIREMENTS:
 1. TOP-DOWN PLAN VIEW — orthographic projection, NO perspective
@@ -228,6 +250,13 @@ ${serializeKeyDimensions(scene.keyDimensions)}
 - FFL +0.000 at floor
 - Ceiling at ${scene.clearHeightMM}mm
 - False ceiling drop at ${scene.falseCeilingHeightMM}mm
+
+ELECTRICAL POINTS ON THIS WALL (show mount heights):
+${serializeElectricalPoints(scene.electricalPoints)}
+- Switch at 1200mm from FFL
+- Socket at 300mm from FFL (450mm in kitchen)
+- AC point at 1800mm from FFL
+- Show as IS standard symbols with height dimension marks
 
 MATERIAL CALLOUTS (leader arrows to each element):
 ${serializeMaterials(scene.materials)}
