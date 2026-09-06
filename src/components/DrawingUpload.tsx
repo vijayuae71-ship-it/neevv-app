@@ -76,7 +76,22 @@ export default function DrawingUpload({ onConversionComplete, onBack }: DrawingU
         throw new Error(data.error || 'Analysis failed');
       }
 
-      setExtracted(data.extracted);
+      // Round plot dimensions to clean values (32.999 → 33)
+      const cleaned: ExtractedData = {
+        ...data.extracted,
+        plotWidthFt: Math.round(data.extracted.plotWidthFt * 10) / 10,
+        plotDepthFt: Math.round(data.extracted.plotDepthFt * 10) / 10,
+        floors: (data.extracted.floors || []).map((f: ExtractedFloor) => ({
+          ...f,
+          rooms: (f.rooms || []).map((r: ExtractedRoom) => ({
+            ...r,
+            widthFt: Math.round(r.widthFt * 100) / 100,
+            depthFt: Math.round(r.depthFt * 100) / 100,
+          })),
+        })),
+      };
+
+      setExtracted(cleaned);
       if (data.imageBase64 && !previewUrl) {
         setPreviewUrl(data.imageBase64);
       }
@@ -138,11 +153,16 @@ export default function DrawingUpload({ onConversionComplete, onBack }: DrawingU
     setExtracted(updated);
   };
 
+  /** Format area with clean rounding */
+  const fmtArea = (n: number) => Math.round(n).toLocaleString('en-IN');
+
   const handleProceed = () => {
     if (!extracted) return;
 
     const facing = (['North', 'South', 'East', 'West'].includes(extracted.facing)
       ? extracted.facing : 'North') as Facing;
+
+    const numFloors = extracted.floors.length;
 
     // Build ProjectRequirements from extracted data
     const floorPrograms: FloorProgram[] = extracted.floors.map((f) => {
@@ -174,11 +194,11 @@ export default function DrawingUpload({ onConversionComplete, onBack }: DrawingU
       floors: floorPrograms,
     };
 
-    // Convert extracted rooms to Layout
+    // NBC-compliant setbacks (single source: nbcCompliance.ts)
     const FT_TO_M = 0.3048;
     const plotWidthM = extracted.plotWidthFt * FT_TO_M;
     const plotDepthM = extracted.plotDepthFt * FT_TO_M;
-    const setbacks = { front: 1.5, rear: 1.0, left: 0.9, right: 0.9 };
+    const setbacks = { front: 1.5, rear: 1.5, left: 1.0, right: 1.0 };
     const buildableWidthM = plotWidthM - setbacks.left - setbacks.right;
     const buildableDepthM = plotDepthM - setbacks.front - setbacks.rear;
 
@@ -215,7 +235,7 @@ export default function DrawingUpload({ onConversionComplete, onBack }: DrawingU
         return room;
       });
 
-      // Generate columns
+      // Generate columns at ~4m spacing
       const columns: Column[] = [];
       const colSpacingX = Math.min(buildableWidthM / 2, 4.0);
       const colSpacingY = Math.min(buildableDepthM / 2, 4.0);
@@ -233,7 +253,10 @@ export default function DrawingUpload({ onConversionComplete, onBack }: DrawingU
       };
     });
 
-    const builtUpAreaSqM = buildableWidthM * buildableDepthM;
+    // builtUpAreaSqM = footprint × numFloors (matches BOQ calculator expectation)
+    const footprintSqM = buildableWidthM * buildableDepthM;
+    const builtUpAreaSqM = footprintSqM * numFloors;
+    const totalBuiltUpSqFt = builtUpAreaSqM * 10.764;
 
     const layout: Layout = {
       id: 'uploaded-plan',
@@ -246,12 +269,15 @@ export default function DrawingUpload({ onConversionComplete, onBack }: DrawingU
       nbcCompliant: true,
       nbcIssues: [],
       builtUpAreaSqM,
-      builtUpAreaSqFt: builtUpAreaSqM * 10.764,
+      builtUpAreaSqFt: totalBuiltUpSqFt,
+      totalBuiltUpSqFt,
       setbacks,
       plotWidthM,
       plotDepthM,
       buildableWidthM,
       buildableDepthM,
+      buildingWidthMm: Math.round(buildableWidthM * 1000),
+      buildingDepthMm: Math.round(buildableDepthM * 1000),
     };
 
     onConversionComplete(layout, requirements);
@@ -386,7 +412,7 @@ export default function DrawingUpload({ onConversionComplete, onBack }: DrawingU
                     </div>
                     <div className="bg-gray-50 rounded-xl p-3 text-center">
                       <p className="text-xs text-gray-500">Plot Area</p>
-                      <p className="text-lg font-bold text-gray-900">{extracted.plotWidthFt * extracted.plotDepthFt} sq.ft</p>
+                      <p className="text-lg font-bold text-gray-900">{fmtArea(extracted.plotWidthFt * extracted.plotDepthFt)} sq.ft</p>
                     </div>
                   </div>
 
@@ -465,7 +491,7 @@ export default function DrawingUpload({ onConversionComplete, onBack }: DrawingU
                             />
                           </td>
                           <td className="py-2 pr-3 text-gray-600">
-                            {(room.widthFt * room.depthFt).toFixed(0)}
+                            {Math.round(room.widthFt * room.depthFt)}
                           </td>
                           <td className="py-2">
                             <div className="flex gap-1">
