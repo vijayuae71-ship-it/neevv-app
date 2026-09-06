@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { AppStep, ProjectRequirements, Layout, BOQ, CustomRateSheet } from '@/types';
+import { AppStep, ProjectRequirements, Layout, BOQ, CustomRateSheet, OfficeRequirements } from '@/types';
 import { StepIndicator } from '@/components/StepIndicator';
 import { RequirementForm } from '@/components/RequirementForm';
 import { LayoutSelector } from '@/components/LayoutSelector';
@@ -17,11 +17,12 @@ import { BRAND_LOGO_BASE64 } from '@/utils/brand';
 import { useAuth } from '@/hooks/useAuth';
 import { useProject } from '@/hooks/useProject';
 import DrawingUpload from '@/components/DrawingUpload';
+import { OfficeRequirementForm } from '@/components/OfficeRequirementForm';
 import { RateSheet } from '@/components/RateSheet';
 import { Home, Palette, Upload, ArrowRight, CheckCircle, Zap, Users, Clock, Building, Hammer, Compass, Star, FileText, Eye } from 'lucide-react';
 import { analytics } from '@/utils/analytics';
 
-type AppMode = 'landing' | 'new_build' | 'interior_only' | 'upload_drawing';
+type AppMode = 'landing' | 'new_build' | 'interior_only' | 'upload_drawing' | 'office_design';
 
 export default function HomePage() {
   const { user, loading: authLoading, signInWithGoogle, signOut } = useAuth();
@@ -35,6 +36,7 @@ export default function HomePage() {
   const [boq, setBOQ] = useState<BOQ | null>(null);
   const [customRates, setCustomRates] = useState<CustomRateSheet | null>(null);
   const [motherLayoutLocked, setMotherLayoutLocked] = useState(false);
+  const [officeRequirements, setOfficeRequirements] = useState<OfficeRequirements | null>(null);
 
   // Auto-save to localStorage
   useEffect(() => {
@@ -162,6 +164,39 @@ export default function HomePage() {
     setStep('isometric');
   };
 
+  const handleOfficeSubmit = (req: OfficeRequirements) => {
+    setOfficeRequirements(req);
+    // Convert office requirements to ProjectRequirements for layout generation
+    const resFloors = req.floors.map(f => ({
+      floorLabel: f.floorLabel,
+      bedrooms: 0,
+      halls: 0,
+      kitchens: 0,
+      hasDining: false,
+      hasPuja: false,
+    }));
+    const projReq: ProjectRequirements = {
+      city: req.city,
+      state: req.state,
+      plotWidthFt: req.plotWidthFt,
+      plotDepthFt: req.plotDepthFt,
+      facing: req.facing,
+      vastuCompliance: false,
+      parkingType: req.parkingType,
+      budget: req.budget,
+      architecturalStyle: 'modern_minimalist',
+      floors: resFloors,
+    };
+    setRequirements(projReq);
+    const generated = generateLayouts(projReq);
+    setLayouts(generated);
+    setSelectedLayout(null);
+    setBOQ(null);
+    setMotherLayoutLocked(false);
+    setMode('new_build');
+    setStep('layouts');
+  };
+
   const handleSave = async () => {
     if (!user) {
       await signInWithGoogle();
@@ -215,7 +250,7 @@ export default function HomePage() {
           />
           <div className="h-6 w-px bg-gray-300 hidden sm:block" />
           <span className="text-xs opacity-80 tracking-wide uppercase hidden sm:inline">
-            {mode === 'interior_only' ? 'Interior Design Studio' : 'Architecture • Structure • MEP • Interiors'}
+            {mode === 'interior_only' ? 'Interior Design Studio' : mode === 'office_design' ? 'Office Design Studio' : 'Architecture • Structure • MEP • Interiors'}
           </span>
         </div>
         <div className="flex items-center gap-1 sm:gap-3">
@@ -308,6 +343,13 @@ export default function HomePage() {
                 className="hover:opacity-90 transition-all"
               >
                 🎨 Interior Design Only
+              </button>
+              <button
+                onClick={() => { analytics.modeSelected('office_design'); setMode('office_design'); }}
+                style={{ background: '#fff', color: '#4f6f52', padding: '14px 32px', borderRadius: '10px', fontSize: '16px', fontWeight: 600, border: '2px solid #4f6f52', cursor: 'pointer' }}
+                className="hover:opacity-90 transition-all"
+              >
+                🏢 Design an Office
               </button>
             </div>
           </section>
@@ -451,7 +493,7 @@ export default function HomePage() {
             <p style={{ fontSize: '18px', color: 'rgba(255,255,255,0.85)', marginBottom: '32px' }}>
               Your first complete design package is FREE during beta. No credit card. No commitment.
             </p>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6" style={{ maxWidth: '900px', margin: '0 auto' }}>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6" style={{ maxWidth: '1200px', margin: '0 auto' }}>
               <div
                 role="button"
                 tabIndex={0}
@@ -508,6 +550,25 @@ export default function HomePage() {
                   Upload Now →
                 </div>
               </div>
+
+              <div
+                role="button"
+                tabIndex={0}
+                className="rounded-xl p-6 cursor-pointer transition-all hover:scale-105"
+                style={{ backgroundColor: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.3)', borderRadius: '12px', padding: '24px' }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'rgba(255,255,255,0.25)'; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'rgba(255,255,255,0.15)'; }}
+                onClick={() => { analytics.modeSelected('office_design'); setMode('office_design'); }}
+              >
+                <div style={{ fontSize: '36px', marginBottom: '12px' }}>🏢</div>
+                <h3 style={{ fontSize: '20px', fontWeight: 700, color: '#fff', marginBottom: '8px' }}>Design an Office</h3>
+                <p style={{ fontSize: '14px', color: 'rgba(255,255,255,0.8)', marginBottom: '12px' }}>
+                  Workspace layout for startups to corporates — workstations, cabins, conference rooms, and full MEP.
+                </p>
+                <div style={{ fontSize: '14px', fontWeight: 600, color: '#fff' }}>
+                  Plan Your Office →
+                </div>
+              </div>
             </div>
           </section>
 
@@ -538,6 +599,22 @@ export default function HomePage() {
   /* ============ UPLOAD DRAWING MODE ============ */
   if (mode === 'upload_drawing') {
     return <DrawingUpload onConversionComplete={handleUploadConversion} onBack={handleNewProject} />;
+  }
+
+  /* ============ OFFICE DESIGN MODE ============ */
+  if (mode === 'office_design') {
+    return (
+      <div className="flex flex-col h-screen bg-white">
+        <Navbar showBack />
+        <div className="flex-1 overflow-y-auto">
+          <OfficeRequirementForm
+            onSubmit={handleOfficeSubmit}
+            onBack={handleNewProject}
+            initialValues={officeRequirements}
+          />
+        </div>
+      </div>
+    );
   }
 
   /* ============ MAIN APP ============ */

@@ -322,6 +322,67 @@ export interface InteriorDesignData {
   };
 }
 
+
+// ============ OFFICE DESIGN TYPES ============
+
+export type ProjectType = 'residential' | 'office';
+
+export type OfficeRoomType =
+  | 'workstation_open'
+  | 'cabin_manager'
+  | 'cabin_director'
+  | 'cabin_md'
+  | 'conference_small'
+  | 'conference_large'
+  | 'board_room'
+  | 'reception'
+  | 'waiting_lounge'
+  | 'pantry'
+  | 'cafeteria'
+  | 'server_room'
+  | 'break_room'
+  | 'washroom_male'
+  | 'washroom_female'
+  | 'washroom_handicap'
+  | 'store_room'
+  | 'electrical_room'
+  | 'ahu_room'
+  | 'lobby'
+  | 'corridor';
+
+export type OfficeStyle = 'corporate' | 'startup' | 'coworking' | 'minimal' | 'biophilic';
+
+export interface OfficeFloorProgram {
+  floorLabel: string;
+  workstations: number;
+  managerCabins: number;
+  directorCabins: number;
+  mdCabin: boolean;
+  conferenceSmall: number;
+  conferenceLarge: number;
+  boardRoom: boolean;
+  hasReception: boolean;
+  hasPantry: boolean;
+  hasCafeteria: boolean;
+  hasServerRoom: boolean;
+  hasBreakRoom: boolean;
+}
+
+export interface OfficeRequirements {
+  projectType: 'office';
+  city: string;
+  state: string;
+  plotWidthFt: number;
+  plotDepthFt: number;
+  facing: Facing;
+  budget: BudgetRange;
+  officeStyle: OfficeStyle;
+  parkingType: ParkingType;
+  companyName?: string;
+  employeeCount: number;
+  floors: OfficeFloorProgram[];
+}
+
 /* ================================================================
    LOCKED INTERIOR SCENE TYPES
    ----------------------------------------------------------------
