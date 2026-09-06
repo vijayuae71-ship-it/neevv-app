@@ -74,7 +74,7 @@ const SummaryStat = ({ label, value }: { label: string; value: string }) => (
   </div>
 );
 
-export default function OfficeBOQReport({ layout, officeReq }: Props) {
+export function OfficeBOQReport({ layout, officeReq }: Props) {
   const [boq] = useState<OfficeBOQ>(() => calculateOfficeBOQ(layout, officeReq));
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 

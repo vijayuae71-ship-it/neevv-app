@@ -19,7 +19,6 @@ import { useProject } from '@/hooks/useProject';
 import DrawingUpload from '@/components/DrawingUpload';
 import { OfficeRequirementForm } from '@/components/OfficeRequirementForm';
 import { computeOfficeLayout } from '@/utils/computeOfficeLayout';
-import { calculateOfficeBOQ } from '@/utils/officeBoqCalculator';
 import { OfficeWorkingDrawings } from '@/components/OfficeWorkingDrawings';
 import { OfficeBOQReport } from '@/components/OfficeBOQReport';
 import { RateSheet } from '@/components/RateSheet';
