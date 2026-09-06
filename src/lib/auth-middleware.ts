@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAdminAuth } from '@/lib/firebase-admin';
+import { createHash } from 'crypto';
 
 export interface AuthenticatedRequest {
   userId: string;
   email?: string;
+  anonymous?: boolean;
 }
 
 /**
@@ -50,6 +52,41 @@ export async function verifyAuth(
       { status: 401 }
     );
   }
+}
+
+/**
+ * Optional auth — returns authenticated user if token present,
+ * falls back to anonymous user (IP-based) for beta.
+ * Never returns a 401 — always returns AuthenticatedRequest.
+ */
+export async function verifyAuthOptional(
+  request: NextRequest
+): Promise<AuthenticatedRequest> {
+  try {
+    const authHeader = request.headers.get('Authorization');
+    if (authHeader?.startsWith('Bearer ')) {
+      const token = authHeader.split('Bearer ')[1];
+      if (token && token !== 'null' && token !== 'undefined') {
+        const decodedToken = await getAdminAuth().verifyIdToken(token);
+        return {
+          userId: decodedToken.uid,
+          email: decodedToken.email,
+          anonymous: false,
+        };
+      }
+    }
+  } catch (error: any) {
+    console.warn('Auth token verification failed, falling back to anonymous:', error.message);
+  }
+
+  // Fallback: anonymous user keyed on IP
+  const forwarded = request.headers.get('x-forwarded-for');
+  const ip = forwarded ? forwarded.split(',')[0].trim() : 'unknown';
+  const ipHash = createHash('sha256').update(ip).digest('hex').substring(0, 16);
+  return {
+    userId: `anon_${ipHash}`,
+    anonymous: true,
+  };
 }
 
 /**

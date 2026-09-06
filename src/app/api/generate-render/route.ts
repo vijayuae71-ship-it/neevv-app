@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenAI } from '@google/genai';
 import { Storage } from '@google-cloud/storage';
-import { verifyAuth, isAuthError } from '@/lib/auth-middleware';
+import { verifyAuthOptional } from '@/lib/auth-middleware';
 import { rateLimit, getRateLimitKey } from '@/utils/rateLimit';
 import { checkAndIncrementUsage } from '@/utils/usageTracker';
 
@@ -9,11 +9,10 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 120;
 
 export async function POST(request: NextRequest) {
-  // 1. Authenticate
-  const auth = await verifyAuth(request);
-  if (isAuthError(auth)) return auth;
+  // 1. Authenticate (optional during beta)
+  const auth = await verifyAuthOptional(request);
 
-  // 2. Rate limit (keyed on userId)
+  // 2. Rate limit (keyed on userId or anon IP hash)
   const rateLimitKey = getRateLimitKey(auth.userId, request);
   const limiter = rateLimit(rateLimitKey, 5, 60 * 1000); // 5 renders per minute
   if (!limiter.allowed) {
@@ -84,7 +83,6 @@ export async function POST(request: NextRequest) {
       try {
         const storage = new Storage();
         const bucket = storage.bucket(bucketName);
-        // User-scoped path: renders/{userId}/{projectId}/{type}_{timestamp}.png
         const safeProjectId = (projectId || 'anonymous').replace(/[^a-zA-Z0-9_-]/g, '_');
         const safeRenderType = (renderType || 'render').replace(/[^a-zA-Z0-9_-]/g, '_');
         const fileName = `renders/${auth.userId}/${safeProjectId}/${safeRenderType}_${Date.now()}.png`;
@@ -104,7 +102,6 @@ export async function POST(request: NextRequest) {
           },
         });
 
-        // Signed URL — 1 hour expiry
         const [signedUrl] = await file.getSignedUrl({
           action: 'read',
           expires: Date.now() + 60 * 60 * 1000,
@@ -112,7 +109,6 @@ export async function POST(request: NextRequest) {
         gcsUrl = signedUrl;
       } catch (gcsError) {
         console.error('GCS upload failed (non-fatal):', gcsError);
-        // Continue without GCS — return base64 instead
       }
     }
 

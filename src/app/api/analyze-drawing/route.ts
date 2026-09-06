@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenAI } from '@google/genai';
-import { verifyAuth, isAuthError } from '@/lib/auth-middleware';
+import { verifyAuthOptional } from '@/lib/auth-middleware';
 import { rateLimit, getRateLimitKey } from '@/utils/rateLimit';
 import { checkAndIncrementUsage } from '@/utils/usageTracker';
 
@@ -34,13 +34,12 @@ Instructions:
 - Return ONLY valid JSON, no markdown or explanation`;
 
 export async function POST(request: NextRequest) {
-  // 1. Authenticate
-  const auth = await verifyAuth(request);
-  if (isAuthError(auth)) return auth;
+  // 1. Authenticate (optional during beta)
+  const auth = await verifyAuthOptional(request);
 
-  // 2. Rate limit (keyed on userId)
+  // 2. Rate limit (keyed on userId or anon IP hash)
   const rateLimitKey = getRateLimitKey(auth.userId, request);
-  const limiter = rateLimit(rateLimitKey, 10, 60 * 1000); // 10 analyses per minute
+  const limiter = rateLimit(rateLimitKey, 10, 60 * 1000);
   if (!limiter.allowed) {
     return NextResponse.json(
       { error: 'Rate limit exceeded. Please wait before analyzing more drawings.', resetIn: limiter.resetIn },
@@ -65,7 +64,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No drawing file provided' }, { status: 400 });
     }
 
-    // Validate file type
     const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'application/pdf'];
     if (!allowedTypes.includes(file.type)) {
       return NextResponse.json(
@@ -74,7 +72,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate file size (max 10MB)
     const maxSize = 10 * 1024 * 1024;
     if (file.size > maxSize) {
       return NextResponse.json(
@@ -120,19 +117,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No analysis result from AI' }, { status: 500 });
     }
 
-    // Multi-strategy JSON extraction
     let analysisResult;
     try {
-      // Strategy 1: Direct parse
       analysisResult = JSON.parse(text);
     } catch {
       try {
-        // Strategy 2: Extract from markdown code fence
         const fenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
         if (fenceMatch) {
           analysisResult = JSON.parse(fenceMatch[1].trim());
         } else {
-          // Strategy 3: Find first { to last }
           const start = text.indexOf('{');
           const end = text.lastIndexOf('}');
           if (start !== -1 && end > start) {
@@ -150,11 +143,9 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Sanitize arrays
     if (!Array.isArray(analysisResult.rooms)) analysisResult.rooms = [];
     if (!Array.isArray(analysisResult.notes)) analysisResult.notes = [];
 
-    // Round dimensions
     if (analysisResult.plotWidth) analysisResult.plotWidth = Math.round(analysisResult.plotWidth * 10) / 10;
     if (analysisResult.plotDepth) analysisResult.plotDepth = Math.round(analysisResult.plotDepth * 10) / 10;
     analysisResult.rooms = analysisResult.rooms.map((room: any) => ({

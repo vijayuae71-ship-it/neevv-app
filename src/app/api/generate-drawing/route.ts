@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenAI } from '@google/genai';
-import { verifyAuth, isAuthError } from '@/lib/auth-middleware';
+import { verifyAuthOptional } from '@/lib/auth-middleware';
 import { rateLimit, getRateLimitKey } from '@/utils/rateLimit';
 import { checkAndIncrementUsage } from '@/utils/usageTracker';
 
@@ -8,11 +8,10 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 120;
 
 export async function POST(request: NextRequest) {
-  // 1. Authenticate
-  const auth = await verifyAuth(request);
-  if (isAuthError(auth)) return auth;
+  // 1. Authenticate (optional during beta — anonymous users get IP-based identity)
+  const auth = await verifyAuthOptional(request);
 
-  // 2. Rate limit (keyed on userId)
+  // 2. Rate limit (keyed on userId or anon IP hash)
   const rateLimitKey = getRateLimitKey(auth.userId, request);
   const limiter = rateLimit(rateLimitKey, 10, 60 * 1000); // 10 drawings per minute
   if (!limiter.allowed) {

@@ -1,18 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAdminDb } from '@/lib/firebase-admin';
-import { verifyAuth, isAuthError } from '@/lib/auth-middleware';
+import { verifyAuthOptional } from '@/lib/auth-middleware';
 import { rateLimit, getRateLimitKey } from '@/utils/rateLimit';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
-  // 1. Authenticate
-  const auth = await verifyAuth(request);
-  if (isAuthError(auth)) return auth;
+  // 1. Authenticate (optional during beta)
+  const auth = await verifyAuthOptional(request);
 
   // 2. Rate limit
   const rateLimitKey = getRateLimitKey(auth.userId, request);
-  const limiter = rateLimit(rateLimitKey, 20, 60 * 1000); // 20 saves per minute
+  const limiter = rateLimit(rateLimitKey, 20, 60 * 1000);
   if (!limiter.allowed) {
     return NextResponse.json(
       { error: 'Rate limit exceeded.', resetIn: limiter.resetIn },
@@ -47,7 +46,6 @@ export async function POST(request: NextRequest) {
       ? db.collection('projects').doc(projectId)
       : db.collection('projects').doc();
 
-    // Strip any userId from client payload — always use server-verified userId
     const { userId: _clientUserId, ...safeProjectData } = projectData;
 
     await projectRef.set({
@@ -71,13 +69,11 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
-  // 1. Authenticate
-  const auth = await verifyAuth(request);
-  if (isAuthError(auth)) return auth;
+  // 1. Authenticate (optional during beta)
+  const auth = await verifyAuthOptional(request);
 
   try {
     const db = getAdminDb();
-    // Only return projects owned by authenticated user
     const snapshot = await db
       .collection('projects')
       .where('userId', '==', auth.userId)
