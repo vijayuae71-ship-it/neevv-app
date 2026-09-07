@@ -670,14 +670,26 @@ export function buildInteriorScene(
     countertop: resolved.materials.countertop,
   };
 
-  const electricalPoints = interior?.electricalPoints || {
-    switches: 2,
-    sockets: 3,
-    dataPoints: 1,
-    lightPoints: 2,
-    fanPoints: 1,
-    acPoints: 0,
-  };
+  // Room-type-specific electrical defaults
+  const defaultElectrical = (() => {
+    switch (room.type) {
+      case 'toilet':
+        return { switches: 2, sockets: 1, dataPoints: 0, lightPoints: 2, fanPoints: 0, acPoints: 0 };
+        // Bathrooms: exhaust fan (not ceiling fan) is in fixtures, no data points needed
+      case 'kitchen':
+        return { switches: 3, sockets: 4, dataPoints: 0, lightPoints: 3, fanPoints: 0, acPoints: 0 };
+        // Kitchens: chimney/exhaust in fixtures, multiple sockets for appliances
+      case 'master_bedroom':
+        return { switches: 4, sockets: 4, dataPoints: 1, lightPoints: 3, fanPoints: 1, acPoints: 1 };
+      case 'bedroom':
+        return { switches: 3, sockets: 3, dataPoints: 1, lightPoints: 2, fanPoints: 1, acPoints: 1 };
+      case 'hall':
+        return { switches: 4, sockets: 4, dataPoints: 1, lightPoints: 4, fanPoints: 1, acPoints: 1 };
+      default:
+        return { switches: 2, sockets: 3, dataPoints: 1, lightPoints: 2, fanPoints: 1, acPoints: 0 };
+    }
+  })();
+  const electricalPoints = interior?.electricalPoints || defaultElectrical;
 
   return {
     roomId: room.id,

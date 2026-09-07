@@ -100,15 +100,14 @@ function serializeKeyDimensions(dims: SceneDimensions): string {
 }
 
 function serializeElectricalPoints(ep: InteriorScene['electricalPoints']): string {
-  const lines: string[] = [
-    `S  — Switches: ${ep.switches} nos. (mount height: 1200mm from FFL)`,
-    `P  — Sockets: ${ep.sockets} nos. (mount height: 300mm from FFL, 450mm in kitchen)`,
-    `D  — Data points: ${ep.dataPoints} nos. (mount height: 300mm from FFL)`,
-    `L  — Light points: ${ep.lightPoints} nos. (ceiling-mounted)`,
-    `F  — Fan points: ${ep.fanPoints} nos. (ceiling-mounted)`,
-    `AC — AC points: ${ep.acPoints} nos. (mount height: 1800mm from FFL)`,
-    `Wiring color code per IS 732: Phase = Red, Neutral = Black, Earth = Green`,
-  ];
+  const lines: string[] = [];
+  if (ep.switches > 0) lines.push(`S  — Switches: ${ep.switches} nos. (mount height: 1200mm from FFL)`);
+  if (ep.sockets > 0) lines.push(`P  — Sockets: ${ep.sockets} nos. (mount height: 300mm from FFL, 450mm in kitchen)`);
+  if (ep.dataPoints > 0) lines.push(`D  — Data points: ${ep.dataPoints} nos. (mount height: 300mm from FFL)`);
+  if (ep.lightPoints > 0) lines.push(`L  — Light points: ${ep.lightPoints} nos. (ceiling-mounted)`);
+  if (ep.fanPoints > 0) lines.push(`F  — Ceiling fan points: ${ep.fanPoints} nos. (ceiling-mounted)`);
+  if (ep.acPoints > 0) lines.push(`AC — AC points: ${ep.acPoints} nos. (mount height: 1800mm from FFL)`);
+  lines.push(`Wiring color code per IS 732: Phase = Red, Neutral = Black, Earth = Green`);
   return lines.join('\n');
 }
 
@@ -217,6 +216,7 @@ NOTES: ${scene.specificNotes}
 STYLE: Clean technical linework. Thin lines (0.25mm) for fixtures, medium (0.5mm) for dimensions, thick (0.7mm) for walls. Blue-gray ink color palette. White/off-white background. Professional architectural sheet appearance.
 
 IMPORTANT: This is a TECHNICAL PLAN drawing, not a decorative illustration. It should look exactly like what a draftsman would produce on a drawing board — precise, measured, annotated. Draw ONLY the items listed above — do not invent additional furniture or fixtures.
+ALL DIMENSIONS ARE IN MILLIMETRES (mm) — NEVER label as metres (m). Example: "2134mm" NOT "2134m".
 
 Small "neevv" brand text at bottom-right corner.
 Image aspect ratio: 1:1 (square).`;
@@ -287,6 +287,7 @@ NOTES: ${scene.specificNotes}
 COLORS: Materials shown with appropriate texture fills on white background. Blue-gray linework. Callout text in black. Zone fills in very light watercolor washes (barely visible tints).
 
 IMPORTANT: Draw ONLY the items listed above, at the exact height ranges given — do not invent additional elements or change stated dimensions.
+ALL DIMENSIONS ARE IN MILLIMETRES (mm) — NEVER label as metres (m). Example: "600mm × 450mm" NOT "600m × 450m".
 
 Small "neevv" brand text at bottom-right corner.
 Image aspect ratio: 16:9 (landscape).`;

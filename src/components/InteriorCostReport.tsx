@@ -85,10 +85,22 @@ function CostSummaryTab({ data }: { data: InteriorDesignData }) {
     });
   }, [categories, total]);
 
-  const totalArea = data.boqItems.reduce((s, item) => {
-    if (item.unit === 'sqft') return s + item.quantity;
-    return s;
-  }, 0);
+  // Calculate actual carpet area from rooms (not BOQ sqft items which double-count)
+  const totalCarpetAreaSqFt = data.rooms
+    ? data.rooms.reduce((s, room) => {
+        // Find matching BOQ flooring item for this room (flooring = actual area)
+        const floorItem = data.boqItems.find(
+          (b) => b.room === room.roomName && b.category === 'flooring' && b.description.includes(room.flooring.name)
+        );
+        return s + (floorItem ? floorItem.quantity : 0);
+      }, 0)
+    : 0;
+  // Fallback: sum only flooring items (one per room, no double-counting)
+  const totalArea = totalCarpetAreaSqFt > 0
+    ? totalCarpetAreaSqFt
+    : data.boqItems
+        .filter(item => item.category === 'flooring' && !item.description.toLowerCase().includes('skirting'))
+        .reduce((s, item) => s + item.quantity, 0);
 
   const costPerSqft = totalArea > 0 ? total / totalArea : 0;
 
