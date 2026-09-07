@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { AppStep, ProjectRequirements, Layout, BOQ, CustomRateSheet, OfficeRequirements } from '@/types';
 import { StepIndicator } from '@/components/StepIndicator';
 import { RequirementForm } from '@/components/RequirementForm';
@@ -22,10 +22,12 @@ import { computeOfficeLayout } from '@/utils/computeOfficeLayout';
 import { OfficeWorkingDrawings } from '@/components/OfficeWorkingDrawings';
 import { OfficeBOQReport } from '@/components/OfficeBOQReport';
 import { RateSheet } from '@/components/RateSheet';
-import { Home, Palette, Upload, ArrowRight, CheckCircle, Zap, Users, Clock, Building, Hammer, Compass, Star, FileText, Eye } from 'lucide-react';
+import { LandingPage } from '@/components/LandingPage';
+import { Home, Palette, Upload, ArrowRight, CheckCircle, Zap, Users, Clock, Building, Hammer, Compass, Star, FileText, Eye, Building2, ShieldCheck, ClipboardList, Layers, FileStack, Lock, Sparkles, ChevronLeft, ChevronRight, Boxes, Wrench, HardHat, CheckCircle2, Award, Briefcase, Ruler } from 'lucide-react';
+import { SHOWCASE_FLOORPLAN, SHOWCASE_ELEVATION, SHOWCASE_3DRENDER, SHOWCASE_ELECTRICAL, SHOWCASE_PLUMBING, SHOWCASE_STRUCTURAL, SHOWCASE_INTERIOR_PLAN, SHOWCASE_INTERIOR_ELEVATION, SHOWCASE_INTERIOR_3D } from '@/utils/showcaseImages';
 import { analytics } from '@/utils/analytics';
 
-type AppMode = 'landing' | 'new_build' | 'interior_only' | 'upload_drawing' | 'office_design';
+type AppMode = 'landing' | 'new_build' | 'interior_only' | 'upload_drawing' | 'office_design' | 'room_design';
 
 export default function HomePage() {
   const { user, loading: authLoading, signInWithGoogle, signOut } = useAuth();
@@ -41,6 +43,11 @@ export default function HomePage() {
   const [motherLayoutLocked, setMotherLayoutLocked] = useState(false);
   const [officeRequirements, setOfficeRequirements] = useState<OfficeRequirements | null>(null);
   const [officeStep, setOfficeStep] = useState<'requirements' | 'layouts' | 'drawings' | 'boq'>('requirements');
+  const [roomDesignType, setRoomDesignType] = useState<string>('');
+  const [roomDesignWidth, setRoomDesignWidth] = useState<number>(12);
+  const [roomDesignDepth, setRoomDesignDepth] = useState<number>(12);
+  const [roomDesignStyle, setRoomDesignStyle] = useState<string>('modern_minimalist');
+
 
   // Auto-save to localStorage
   useEffect(() => {
@@ -155,6 +162,7 @@ export default function HomePage() {
     localStorage.removeItem('neevv_project_autosave');
     setOfficeStep('requirements');
     setOfficeRequirements(null);
+    setRoomDesignType('');
   };
 
 
@@ -178,6 +186,77 @@ export default function HomePage() {
     setBOQ(null);
     setMotherLayoutLocked(false);
     setOfficeStep('layouts');
+  };
+
+  
+  const handleRoomDesignSubmit = () => {
+    const widthM = roomDesignWidth * 0.3048;
+    const depthM = roomDesignDepth * 0.3048;
+    const areaSqFt = roomDesignWidth * roomDesignDepth;
+    const roomTypeMap: Record<string, string> = {
+      'living_room': 'hall', 'bedroom': 'bedroom', 'master_bedroom': 'master_bedroom',
+      'kitchen': 'kitchen', 'bathroom': 'toilet', 'dining': 'dining',
+      'puja': 'puja', 'balcony': 'balcony', 'study': 'bedroom',
+    };
+    const mappedType = roomTypeMap[roomDesignType] || 'hall';
+    const roomName = roomDesignType.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+    
+    const singleRoomLayout: Layout = {
+      id: 'room_design_' + Date.now(),
+      name: roomName + ' Design',
+      strategy: 'room_design',
+      description: 'Individual room design',
+      floors: [{
+        floor: 0,
+        floorLabel: 'Ground Floor',
+        rooms: [{
+          id: 'room_1',
+          name: roomName,
+          type: mappedType as any,
+          x: 0, y: 0,
+          width: widthM,
+          depth: depthM,
+          floor: 0,
+        }],
+        columns: [],
+      }],
+      vastuScore: 0,
+      vastuDetails: [],
+      nbcCompliant: true,
+      nbcIssues: [],
+      builtUpAreaSqM: widthM * depthM,
+      builtUpAreaSqFt: areaSqFt,
+      setbacks: { front: 0, rear: 0, left: 0, right: 0 },
+      plotWidthM: widthM,
+      plotDepthM: depthM,
+      buildableWidthM: widthM,
+      buildableDepthM: depthM,
+    };
+
+    const singleRoomReqs: ProjectRequirements = {
+      city: 'Bangalore',
+      state: 'Karnataka',
+      plotWidthFt: roomDesignWidth,
+      plotDepthFt: roomDesignDepth,
+      facing: 'North',
+      vastuCompliance: false,
+      parkingType: 'None',
+      budget: 'standard',
+      architecturalStyle: roomDesignStyle as any,
+      floors: [{
+        floorLabel: 'Ground Floor',
+        bedrooms: mappedType === 'bedroom' || mappedType === 'master_bedroom' ? 1 : 0,
+        halls: mappedType === 'hall' ? 1 : 0,
+        kitchens: mappedType === 'kitchen' ? 1 : 0,
+        hasDining: mappedType === 'dining',
+        hasPuja: mappedType === 'puja',
+      }],
+    };
+
+    setRequirements(singleRoomReqs);
+    setSelectedLayout(singleRoomLayout);
+    setLayouts([singleRoomLayout]);
+    setStep('interior');
   };
 
   const handleOfficeLayoutSelect = (layout: Layout) => {
@@ -285,301 +364,170 @@ export default function HomePage() {
     );
   };
 
-  /* ============ LANDING PAGE ============ */
+/* ============ LANDING PAGE ============ */
   if (mode === 'landing') {
-    return (
-      <div className="flex flex-col min-h-screen" style={{ backgroundColor: '#ffffff', color: '#1a1a1a', fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif", lineHeight: 1.6 }}>
-        <style jsx global>{`
-          @keyframes fadeInUp {
-            from { opacity: 0; transform: translateY(20px); }
-            to { opacity: 1; transform: translateY(0); }
-          }
-          .animate-fade-in { animation: fadeInUp 0.5s ease-out forwards; }
-          .animate-fade-in-delay { animation: fadeInUp 0.5s ease-out 0.15s forwards; opacity: 0; }
-        `}</style>
-        <Navbar />
-        
-        {/* Spacer for fixed navbar */}
-        <div className="h-14" />
+    const heroCards = [
+      { icon: <Home className="w-6 h-6" />, title: 'Build a New Home', subtitle: 'For homeowners & builders', desc: '17+ construction drawings — plans, structure, electrical, plumbing. All site-ready.', onClick: () => { analytics.modeSelected('new_build'); setMode('new_build'); } },
+      { icon: <Palette className="w-6 h-6" />, title: 'Interior Design', subtitle: 'For homeowners & designers', desc: 'Room layouts, 3D renders, material schedules. Transform any space.', onClick: () => { analytics.modeSelected('interior_only'); setMode('interior_only'); } },
+      { icon: <Building2 className="w-6 h-6" />, title: 'Design an Office', subtitle: 'For businesses & architects', desc: 'Workspace planning, MEP drawings, fire safety. NBC commercial compliant.', onClick: () => { analytics.modeSelected('office_design'); setMode('office_design'); } },
+    ];
 
-        {/* Scrollable content */}
-        <div className="flex-1 overflow-y-auto scroll-smooth">
-          
-          {/* HERO SECTION */}
-          <section style={{ padding: '80px 24px 60px', textAlign: 'center', background: 'linear-gradient(135deg, #f0f7f1 0%, #fff 50%, #f5f0eb 100%)' }}>
-            <div className="animate-fade-in">
-              <div style={{ display: 'inline-block', background: '#fff3e0', color: '#e65100', padding: '6px 16px', borderRadius: '20px', fontSize: '13px', fontWeight: 700, marginBottom: '24px', letterSpacing: '0.5px' }}>
-                🎉 BETA — First Design Package Completely FREE
-              </div>
-              <h1 className="text-3xl sm:text-4xl md:text-5xl" style={{ fontWeight: 800, color: '#1a1a1a', marginBottom: '16px', lineHeight: 1.15 }}>
-                Design Your Dream Home<br /><span style={{ color: '#4f6f52' }}>In Minutes, Not Months</span>
-              </h1>
-              <p style={{ fontSize: '20px', color: '#666', maxWidth: '700px', margin: '0 auto 32px' }}>
-                Get 13 professional architectural drawings — Floor Plans, 3D Renders, Structural, MEP, BOQ — powered by <strong>neevv Generation Pro™</strong>
-              </p>
-            </div>
-            <div className="animate-fade-in-delay" style={{ display: 'flex', gap: '16px', justifyContent: 'center', flexWrap: 'wrap' }}>
-              <button
-                onClick={() => { analytics.modeSelected('new_build'); setMode('new_build'); }}
-                style={{ background: '#4f6f52', color: '#fff', padding: '14px 32px', borderRadius: '10px', fontSize: '16px', fontWeight: 700, border: 'none', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '8px' }}
-                className="hover:opacity-90 transition-all"
-              >
-                🏠 Build a New Home
-              </button>
-              <button
-                onClick={() => { analytics.modeSelected('interior_only'); setMode('interior_only'); }}
-                style={{ background: '#fff', color: '#4f6f52', padding: '14px 32px', borderRadius: '10px', fontSize: '16px', fontWeight: 600, border: '2px solid #4f6f52', cursor: 'pointer' }}
-                className="hover:opacity-90 transition-all"
-              >
-                🎨 Interior Design Only
-              </button>
-              <button
-                onClick={() => { analytics.modeSelected('office_design'); setMode('office_design'); }}
-                style={{ background: '#fff', color: '#4f6f52', padding: '14px 32px', borderRadius: '10px', fontSize: '16px', fontWeight: 600, border: '2px solid #4f6f52', cursor: 'pointer' }}
-                className="hover:opacity-90 transition-all"
-              >
-                🏢 Design an Office
-              </button>
-            </div>
-          </section>
+    const featureItems = [
+      { icon: <FileStack className="w-5 h-5" />, value: '17+', label: 'Construction Drawings' },
+      { icon: <Clock className="w-5 h-5" />, value: '< 5 min', label: 'Ready in Minutes' },
+      { icon: <ShieldCheck className="w-5 h-5" />, value: 'NBC 2016', label: 'Fully Compliant' },
+      { icon: <Layers className="w-5 h-5" />, value: 'IS 962', label: 'Drawing Standards' },
+      { icon: <Lock className="w-5 h-5" />, value: '1 Layout', label: 'All Drawings Follow' },
+    ];
 
-          {/* TRUST BAR */}
-          <div style={{ background: '#f8faf8', padding: '40px 24px', borderTop: '1px solid #e8e8e8', borderBottom: '1px solid #e8e8e8' }}>
-            <div style={{ maxWidth: '1000px', margin: '0 auto', display: 'flex', justifyContent: 'center', gap: '40px', flexWrap: 'wrap' }}>
-              {[
-                { icon: '📋', label: 'NBC 2016 Compliant' },
-                { icon: '🕉️', label: 'Vastu Shastra' },
-                { icon: '📐', label: 'IS 962 & SP 46' },
-                { icon: '🔒', label: 'Data Secure' },
-                { icon: '🇮🇳', label: 'Made for India' },
-              ].map(item => (
-                <div key={item.label} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', color: '#555', fontWeight: 500 }}>
-                  <span style={{ fontSize: '20px' }}>{item.icon}</span>
-                  <span>{item.label}</span>
-                </div>
-              ))}
-            </div>
+    const showcaseItems = [
+      { title: 'Floor Plan', src: SHOWCASE_FLOORPLAN, category: 'Architectural' },
+      { title: 'Front Elevation', src: SHOWCASE_ELEVATION, category: 'Architectural' },
+      { title: '3D Exterior Render', src: SHOWCASE_3DRENDER, category: 'Visualization' },
+      { title: 'Electrical Layout', src: SHOWCASE_ELECTRICAL, category: 'MEP' },
+      { title: 'Plumbing Layout', src: SHOWCASE_PLUMBING, category: 'MEP' },
+      { title: 'Structural Drawing', src: SHOWCASE_STRUCTURAL, category: 'Structural' },
+      { title: 'Interior — Plan', src: SHOWCASE_INTERIOR_PLAN, category: 'Interior' },
+      { title: 'Interior — Wall Elevation', src: SHOWCASE_INTERIOR_ELEVATION, category: 'Interior' },
+      { title: 'Interior — 3D Render', src: SHOWCASE_INTERIOR_3D, category: 'Interior' },
+    ];
+
+    const howSteps = [
+      { icon: <ClipboardList className="w-5 h-5" />, title: 'Enter your plot details', desc: 'Plot size, facing, floors, rooms' },
+      { icon: <Layers className="w-5 h-5" />, title: 'Pick from 3 layouts', desc: 'AI-generated, NBC-compliant, Vastu-optimized' },
+      { icon: <Lock className="w-5 h-5" />, title: 'Lock your design', desc: 'This becomes your single source of truth' },
+      { icon: <FileStack className="w-5 h-5" />, title: 'Download everything', desc: '17+ drawings, renders, BOQ — contractor-ready' },
+    ];
+
+    const tabData = [
+      { label: 'Structural', items: ['Floor Plan', 'Foundation Plan', 'RCC Layout', 'Structural Drawing', 'Column Detail', 'Bar Bending Schedule', 'Section & Elevation'] },
+      { label: 'MEP & Finishes', items: ['Electrical Layout', 'Plumbing Layout', 'Water Tank Design', 'Waterproofing Plan', 'STP Design', 'Tiling Plan', 'Brickwork Layout'] },
+      { label: 'Visualization', items: ['3D Isometric View', 'Interior Renders', 'Material Schedule', 'BOQ Sheet'] },
+    ];
+
+    return <LandingPage
+      heroCards={heroCards}
+      featureItems={featureItems}
+      showcaseItems={showcaseItems}
+      howSteps={howSteps}
+      tabData={tabData}
+      brandGreen={BRAND_GREEN}
+      brandAccent={BRAND_ACCENT}
+      onUploadClick={() => { analytics.modeSelected('upload_drawing'); setMode('upload_drawing'); }}
+      onRoomDesignClick={() => { analytics.modeSelected('room_design'); setMode('room_design'); }}
+      onGetStarted={() => { analytics.modeSelected('new_build'); setMode('new_build'); }}
+    />;
+  }
+
+  /* ============ ROOM DESIGN MODE ============ */
+  if (mode === 'room_design') {
+    if (step === 'interior' && selectedLayout && requirements) {
+      return (
+        <div className="flex flex-col h-screen bg-white">
+          <Navbar showBack />
+          <div className="bg-gray-50 border-b border-gray-200 px-4 py-1.5 text-center">
+            <span className="text-xs text-gray-500">
+              🎨 {roomDesignType.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')} Design • {roomDesignWidth}×{roomDesignDepth} ft
+            </span>
           </div>
+          <div className="flex-1 overflow-y-auto">
+            <InteriorDesign layout={selectedLayout} requirements={requirements} />
+          </div>
+        </div>
+      );
+    }
 
-          {/* STAKEHOLDERS */}
-          <section id="stakeholders" style={{ padding: '80px 24px' }}>
-            <h2 style={{ textAlign: 'center', fontSize: '36px', fontWeight: 800, color: '#1a1a1a', marginBottom: '12px' }}>Built for Every Stakeholder</h2>
-            <p style={{ textAlign: 'center', fontSize: '18px', color: '#666', marginBottom: '48px', maxWidth: '600px', marginLeft: 'auto', marginRight: 'auto' }}>
-              Whether you&apos;re building your first home or your hundredth project — neevv saves time, money, and headaches
-            </p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6" style={{ maxWidth: '1100px', margin: '0 auto' }}>
-              {[
-                { icon: '🏠', title: 'Home Owners', desc: 'See your dream home in 3D before spending a single rupee on construction. Get all drawings in one go.', stat: '₹2-5L', statLabel: 'Saved on consultancy fees' },
-                { icon: '📐', title: 'Architects', desc: 'Generate client presentations in minutes. Focus on creative design, not repetitive drafting.', stat: '80%', statLabel: 'Faster concept delivery' },
-                { icon: '🏗️', title: 'Contractors', desc: 'Get accurate BOQ, structural details, and working drawings. No ambiguity on site.', stat: '0', statLabel: 'Rework from unclear drawings' },
-                { icon: '🧱', title: 'Material Suppliers', desc: 'BOQ with exact quantities and specifications. Plan your inventory with confidence.', stat: '3%', statLabel: 'Wastage buffer built-in' },
-              ].map(card => (
-                <div
-                  key={card.title}
-                  className="transition-all hover:shadow-lg"
-                  style={{ background: '#fff', border: '1px solid #e5e5e5', borderRadius: '16px', padding: '32px 24px', textAlign: 'center', cursor: 'default' }}
-                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = '#4f6f52'; (e.currentTarget as HTMLElement).style.transform = 'translateY(-4px)'; }}
-                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = '#e5e5e5'; (e.currentTarget as HTMLElement).style.transform = 'translateY(0)'; }}
-                >
-                  <div style={{ fontSize: '48px', marginBottom: '16px' }}>{card.icon}</div>
-                  <h3 style={{ fontSize: '20px', fontWeight: 700, color: '#1a1a1a', marginBottom: '8px' }}>{card.title}</h3>
-                  <p style={{ fontSize: '14px', color: '#666', marginBottom: '16px' }}>{card.desc}</p>
-                  <div style={{ fontSize: '28px', fontWeight: 800, color: '#4f6f52' }}>{card.stat}</div>
-                  <div style={{ fontSize: '12px', color: '#888', marginTop: '4px' }}>{card.statLabel}</div>
-                </div>
-              ))}
+    const roomTypes = [
+      { id: 'living_room', name: 'Living Room', icon: '🛋️', defaultW: 15, defaultD: 12 },
+      { id: 'bedroom', name: 'Bedroom', icon: '🛏️', defaultW: 12, defaultD: 12 },
+      { id: 'master_bedroom', name: 'Master Bedroom', icon: '🛌', defaultW: 14, defaultD: 14 },
+      { id: 'kitchen', name: 'Kitchen', icon: '🍳', defaultW: 10, defaultD: 8 },
+      { id: 'bathroom', name: 'Bathroom', icon: '🚿', defaultW: 7, defaultD: 5 },
+      { id: 'dining', name: 'Dining Room', icon: '🍽️', defaultW: 12, defaultD: 10 },
+      { id: 'puja', name: 'Pooja Room', icon: '🕉️', defaultW: 6, defaultD: 6 },
+      { id: 'study', name: 'Study Room', icon: '📚', defaultW: 10, defaultD: 8 },
+      { id: 'balcony', name: 'Balcony', icon: '🌿', defaultW: 10, defaultD: 4 },
+    ];
+
+    const styles = [
+      { id: 'modern_minimalist', name: 'Modern Minimalist' },
+      { id: 'contemporary_indian', name: 'Contemporary Indian' },
+      { id: 'traditional', name: 'Traditional' },
+      { id: 'industrial', name: 'Industrial' },
+      { id: 'scandinavian', name: 'Scandinavian' },
+    ];
+
+    return (
+      <div className="flex flex-col h-screen bg-white">
+        <Navbar showBack />
+        <div className="flex-1 overflow-y-auto">
+          <div className="max-w-2xl mx-auto px-4 py-8">
+            <div className="text-center mb-8">
+              <h2 className="text-2xl font-bold text-gray-800">Design a Single Room</h2>
+              <p className="text-sm text-gray-500 mt-2">Pick a room, set dimensions, choose a style — get complete interior drawings & renders</p>
             </div>
-          </section>
 
-          {/* HOW IT WORKS */}
-          <section id="how-it-works" style={{ padding: '80px 24px', background: '#f8faf8' }}>
-            <h2 style={{ textAlign: 'center', fontSize: '36px', fontWeight: 800, color: '#1a1a1a', marginBottom: '12px' }}>How It Works</h2>
-            <p style={{ textAlign: 'center', fontSize: '18px', color: '#666', marginBottom: '48px', maxWidth: '600px', marginLeft: 'auto', marginRight: 'auto' }}>
-              Three simple steps from dream to professional drawings
-            </p>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8" style={{ maxWidth: '900px', margin: '0 auto' }}>
-              {[
-                { num: '1', title: 'Tell Us Your Requirements', desc: 'Plot size, rooms, budget tier, architectural style, Vastu preferences, and facing direction' },
-                { num: '2', title: 'Choose Your Layout', desc: 'We generate 3 unique floor plan options. Pick the one you love — or customize further' },
-                { num: '3', title: 'Get 13 Pro Drawings', desc: '3D renders, elevations, sections, structural, MEP, BOQ — all consistent and NBC-compliant' },
-              ].map(item => (
-                <div key={item.num} style={{ textAlign: 'center', padding: '24px' }}>
-                  <div style={{ width: '48px', height: '48px', background: '#4f6f52', color: '#fff', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px', fontWeight: 800, margin: '0 auto 16px' }}>
-                    {item.num}
-                  </div>
-                  <h3 style={{ fontSize: '18px', fontWeight: 700, color: '#1a1a1a', marginBottom: '8px' }}>{item.title}</h3>
-                  <p style={{ fontSize: '14px', color: '#666' }}>{item.desc}</p>
-                </div>
-              ))}
+            {/* Room Type Selection */}
+            <div className="mb-6">
+              <label className="block text-sm font-semibold text-gray-700 mb-3">Select Room Type</label>
+              <div className="grid grid-cols-3 gap-3">
+                {roomTypes.map(rt => (
+                  <button
+                    key={rt.id}
+                    onClick={() => { setRoomDesignType(rt.id); setRoomDesignWidth(rt.defaultW); setRoomDesignDepth(rt.defaultD); }}
+                    className={'rounded-xl p-4 text-center border-2 transition-all ' + (roomDesignType === rt.id ? 'border-green-600 bg-green-50 shadow-md' : 'border-gray-200 hover:border-gray-300 bg-white')}
+                  >
+                    <div className="text-2xl mb-1">{rt.icon}</div>
+                    <div className="text-xs font-semibold text-gray-800">{rt.name}</div>
+                  </button>
+                ))}
+              </div>
             </div>
-          </section>
 
-          {/* 13 DELIVERABLES */}
-          <section id="deliverables" style={{ padding: '80px 24px' }}>
-            <h2 style={{ textAlign: 'center', fontSize: '36px', fontWeight: 800, color: '#1a1a1a', marginBottom: '12px' }}>13 Professional Deliverables</h2>
-            <p style={{ textAlign: 'center', fontSize: '18px', color: '#666', marginBottom: '48px', maxWidth: '600px', marginLeft: 'auto', marginRight: 'auto' }}>
-              Everything you need to start construction — generated in minutes
-            </p>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4" style={{ maxWidth: '1100px', margin: '0 auto' }}>
-              {[
-                { icon: '🏠', name: '3D Front View' },
-                { icon: '🌅', name: '3D Aerial View' },
-                { icon: '🌙', name: '3D Night View' },
-                { icon: '📐', name: 'Floor Plan' },
-                { icon: '🏛️', name: 'Front Elevation' },
-                { icon: '✂️', name: 'Cross Section' },
-                { icon: '🧱', name: 'Brickwork Layout' },
-                { icon: '🪜', name: 'Staircase Detail' },
-                { icon: '🔩', name: 'Structural Plan' },
-                { icon: '⚡', name: 'Electrical Layout' },
-                { icon: '🚿', name: 'Plumbing Layout' },
-                { icon: '💰', name: 'BOQ & Estimation' },
-                { icon: '✅', name: 'Compliance Report' },
-              ].map(item => (
-                <div
-                  key={item.name}
-                  className="transition-all hover:shadow-md"
-                  style={{ background: '#fff', border: '1px solid #e5e5e5', borderRadius: '12px', padding: '20px 16px', textAlign: 'center' }}
-                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = '#4f6f52'; }}
-                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = '#e5e5e5'; }}
-                >
-                  <div style={{ fontSize: '32px', marginBottom: '8px' }}>{item.icon}</div>
-                  <h4 style={{ fontSize: '14px', fontWeight: 600, color: '#1a1a1a' }}>{item.name}</h4>
-                </div>
-              ))}
-            </div>
-          </section>
-
-          {/* WHY TRUST neevv? */}
-          <section style={{ padding: '80px 24px', background: '#f8faf8' }}>
-            <h2 style={{ textAlign: 'center', fontSize: '36px', fontWeight: 800, color: '#1a1a1a', marginBottom: '12px' }}>Why Trust neevv?</h2>
-            <p style={{ textAlign: 'center', fontSize: '18px', color: '#666', marginBottom: '48px', maxWidth: '600px', marginLeft: 'auto', marginRight: 'auto' }}>
-              Built on 25 years of industry wisdom
-            </p>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6" style={{ maxWidth: '900px', margin: '0 auto' }}>
-              {[
-                { icon: '📋', title: 'NBC 2016 Compliant', desc: 'Every drawing follows National Building Code minimums — room sizes, staircase headroom, fire safety standards' },
-                { icon: '🕉️', title: 'Vastu Intelligence', desc: 'Kitchen in SE, Master Bedroom in SW, Pooja in NE — automatically applied to every layout' },
-                { icon: '🔗', title: 'Drawing Consistency', desc: 'Floor plan matches elevation matches 3D matches section — no contradictions across your 13 deliverables' },
-                { icon: '📐', title: 'Pro Drafting Standards', desc: 'IS 962:1989 and SP 46:2003 — proper line weights, hatching, grid lines, and section marks' },
-                { icon: '🌍', title: 'Regional Intelligence', desc: 'A Kerala house looks different from a Rajasthan home — climate-appropriate design for your city' },
-                { icon: '🧠', title: 'neevv Generation Pro™', desc: 'Our proprietary AI engine generates unique designs for every client — no two homes look alike' },
-              ].map(item => (
-                <div key={item.title} style={{ background: '#fff', border: '1px solid #e5e5e5', borderRadius: '12px', padding: '24px', display: 'flex', gap: '16px', alignItems: 'flex-start' }}>
-                  <div style={{ fontSize: '28px', flexShrink: 0 }}>{item.icon}</div>
+            {roomDesignType && (
+              <>
+                {/* Dimensions */}
+                <div className="mb-6 grid grid-cols-2 gap-4">
                   <div>
-                    <h4 style={{ fontSize: '16px', fontWeight: 700, color: '#1a1a1a', marginBottom: '4px' }}>{item.title}</h4>
-                    <p style={{ fontSize: '14px', color: '#666' }}>{item.desc}</p>
+                    <label className="block text-sm font-semibold text-gray-700 mb-1">Width (ft)</label>
+                    <input type="number" min={4} max={30} value={roomDesignWidth} onChange={(e) => setRoomDesignWidth(Number(e.target.value))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-1">Depth (ft)</label>
+                    <input type="number" min={4} max={30} value={roomDesignDepth} onChange={(e) => setRoomDesignDepth(Number(e.target.value))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
                   </div>
                 </div>
-              ))}
-            </div>
-          </section>
-
-          {/* CTA SECTION */}
-          <section id="get-started" style={{ background: '#4f6f52', padding: '60px 24px', textAlign: 'center' }}>
-            <h2 style={{ fontSize: '36px', fontWeight: 800, color: '#fff', marginBottom: '12px' }}>Sapno Ka Nirman — Starts Here</h2>
-            <p style={{ fontSize: '18px', color: 'rgba(255,255,255,0.85)', marginBottom: '32px' }}>
-              Your first complete design package is FREE during beta. No credit card. No commitment.
-            </p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6" style={{ maxWidth: '1200px', margin: '0 auto' }}>
-              <div
-                role="button"
-                tabIndex={0}
-                className="rounded-xl p-6 cursor-pointer transition-all hover:scale-105"
-                style={{ backgroundColor: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.3)', borderRadius: '12px', padding: '24px' }}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'rgba(255,255,255,0.25)'; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'rgba(255,255,255,0.15)'; }}
-                onClick={() => { analytics.modeSelected('new_build'); setMode('new_build'); }}
-              >
-                <div style={{ fontSize: '36px', marginBottom: '12px' }}>🏠</div>
-                <h3 style={{ fontSize: '20px', fontWeight: 700, color: '#fff', marginBottom: '8px' }}>Build a New Home</h3>
-                <p style={{ fontSize: '14px', color: 'rgba(255,255,255,0.8)', marginBottom: '12px' }}>
-                  Complete architectural workflow — from plot requirements to construction-ready drawings.
-                </p>
-                <div style={{ fontSize: '14px', fontWeight: 600, color: '#fff' }}>
-                  Start Designing →
+                <div className="mb-6 text-center text-sm text-gray-500">
+                  Room area: <strong>{roomDesignWidth * roomDesignDepth} sqft</strong> ({(roomDesignWidth * roomDesignDepth * 0.0929).toFixed(1)} sqm)
                 </div>
-              </div>
 
-              <div
-                role="button"
-                tabIndex={0}
-                className="rounded-xl p-6 cursor-pointer transition-all hover:scale-105"
-                style={{ backgroundColor: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.3)', borderRadius: '12px', padding: '24px' }}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'rgba(255,255,255,0.25)'; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'rgba(255,255,255,0.15)'; }}
-                onClick={() => { analytics.modeSelected('interior_only'); setMode('interior_only'); }}
-              >
-                <div style={{ fontSize: '36px', marginBottom: '12px' }}>🎨</div>
-                <h3 style={{ fontSize: '20px', fontWeight: 700, color: '#fff', marginBottom: '8px' }}>Interior Design Only</h3>
-                <p style={{ fontSize: '14px', color: 'rgba(255,255,255,0.8)', marginBottom: '12px' }}>
-                  Already have a flat? Get mood boards, interior drawings, and detailed cost estimation.
-                </p>
-                <div style={{ fontSize: '14px', fontWeight: 600, color: '#fff' }}>
-                  Design Interiors →
+                {/* Style */}
+                <div className="mb-8">
+                  <label className="block text-sm font-semibold text-gray-700 mb-3">Design Style</label>
+                  <div className="flex flex-wrap gap-2">
+                    {styles.map(s => (
+                      <button
+                        key={s.id}
+                        onClick={() => setRoomDesignStyle(s.id)}
+                        className={'px-4 py-2 rounded-full text-sm font-medium border transition-all ' + (roomDesignStyle === s.id ? 'border-green-600 bg-green-600 text-white' : 'border-gray-200 text-gray-700 hover:border-gray-400')}
+                      >
+                        {s.name}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
 
-              <div
-                role="button"
-                tabIndex={0}
-                className="rounded-xl p-6 cursor-pointer transition-all hover:scale-105"
-                style={{ backgroundColor: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.3)', borderRadius: '12px', padding: '24px' }}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'rgba(255,255,255,0.25)'; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'rgba(255,255,255,0.15)'; }}
-                onClick={() => { analytics.modeSelected('upload_drawing'); setMode('upload_drawing'); }}
-              >
-                <div style={{ fontSize: '36px', marginBottom: '12px' }}>📤</div>
-                <h3 style={{ fontSize: '20px', fontWeight: 700, color: '#fff', marginBottom: '8px' }}>Upload Drawing</h3>
-                <p style={{ fontSize: '14px', color: 'rgba(255,255,255,0.8)', marginBottom: '12px' }}>
-                  Have an existing plan? Upload it — AI extracts rooms and generates all professional outputs.
-                </p>
-                <div style={{ fontSize: '14px', fontWeight: 600, color: '#fff' }}>
-                  Upload Now →
-                </div>
-              </div>
-
-              <div
-                role="button"
-                tabIndex={0}
-                className="rounded-xl p-6 cursor-pointer transition-all hover:scale-105"
-                style={{ backgroundColor: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.3)', borderRadius: '12px', padding: '24px' }}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'rgba(255,255,255,0.25)'; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'rgba(255,255,255,0.15)'; }}
-                onClick={() => { analytics.modeSelected('office_design'); setMode('office_design'); }}
-              >
-                <div style={{ fontSize: '36px', marginBottom: '12px' }}>🏢</div>
-                <h3 style={{ fontSize: '20px', fontWeight: 700, color: '#fff', marginBottom: '8px' }}>Design an Office</h3>
-                <p style={{ fontSize: '14px', color: 'rgba(255,255,255,0.8)', marginBottom: '12px' }}>
-                  Workspace layout for startups to corporates — workstations, cabins, conference rooms, and full MEP.
-                </p>
-                <div style={{ fontSize: '14px', fontWeight: 600, color: '#fff' }}>
-                  Plan Your Office →
-                </div>
-              </div>
-            </div>
-          </section>
-
-          {/* FOOTER */}
-          <footer style={{ background: '#1a1a1a', color: '#aaa', padding: '48px 24px 24px', textAlign: 'center' }}>
-            <div style={{ maxWidth: '1100px', margin: '0 auto' }}>
-              <img src={BRAND_LOGO_BASE64} alt="neevv" style={{ height: '36px', marginBottom: '4px' }} />
-              <div style={{ color: '#4f6f52', fontSize: '13px', letterSpacing: '2px', marginBottom: '24px', fontWeight: 600 }}>
-                ARCHITECTURE • STRUCTURE • MEP • INTERIORS
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'center', gap: '24px', flexWrap: 'wrap', marginBottom: '24px' }}>
-                <a href="#" style={{ color: '#aaa', textDecoration: 'none', fontSize: '14px' }}>About</a>
-                <a href="#" style={{ color: '#aaa', textDecoration: 'none', fontSize: '14px' }}>Privacy Policy</a>
-                <a href="#" style={{ color: '#aaa', textDecoration: 'none', fontSize: '14px' }}>Terms of Service</a>
-                <a href="#" style={{ color: '#aaa', textDecoration: 'none', fontSize: '14px' }}>Contact</a>
-              </div>
-              <div style={{ fontSize: '12px', color: '#666' }}>
-                © {new Date().getFullYear()} <span style={{ color: '#4f6f52' }}>neevv</span> — Sapno Ka Nirman. All rights reserved.
-              </div>
-            </div>
-          </footer>
-
+                {/* Submit */}
+                <button
+                  onClick={handleRoomDesignSubmit}
+                  className="w-full py-3 rounded-xl text-white font-bold text-base transition-all hover:shadow-lg"
+                  style={{ backgroundColor: '#4f6f52' }}
+                >
+                  🎨 Design This Room →
+                </button>
+              </>
+            )}
+          </div>
         </div>
       </div>
     );
@@ -759,3 +707,4 @@ export default function HomePage() {
     </div>
   );
 }
+
