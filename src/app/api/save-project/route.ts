@@ -95,3 +95,49 @@ export async function GET(request: NextRequest) {
     );
   }
 }
+
+export async function DELETE(request: NextRequest) {
+  const auth = await verifyAuthOptional(request);
+
+  const rateLimitKey = getRateLimitKey(auth.userId, request);
+  const limiter = rateLimit(rateLimitKey, 10, 60 * 1000);
+  if (!limiter.allowed) {
+    return NextResponse.json(
+      { error: 'Rate limit exceeded.', resetIn: limiter.resetIn },
+      { status: 429 }
+    );
+  }
+
+  try {
+    const { projectId } = await request.json();
+    if (!projectId) {
+      return NextResponse.json({ error: 'Project ID is required' }, { status: 400 });
+    }
+
+    const db = getAdminDb();
+    const docRef = db.collection('projects').doc(projectId);
+    const doc = await docRef.get();
+
+    if (!doc.exists) {
+      return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+    }
+
+    const data = doc.data();
+    if (data?.userId && data.userId !== auth.userId) {
+      return NextResponse.json(
+        { error: 'You do not have permission to delete this project.' },
+        { status: 403 }
+      );
+    }
+
+    await docRef.delete();
+
+    return NextResponse.json({ success: true });
+  } catch (error: any) {
+    console.error('Delete project error:', error);
+    return NextResponse.json(
+      { error: 'Failed to delete project', details: error.message },
+      { status: 500 }
+    );
+  }
+}

@@ -50,12 +50,13 @@ interface LandingPageProps {
   onUploadClick: () => void;
   onRoomDesignClick: () => void;
   onGetStarted: () => void;
+  onDashboardClick: () => void;
 }
 
 export const LandingPage: React.FC<LandingPageProps> = ({
   heroCards, featureItems, showcaseItems, howSteps, tabData,
   brandGreen: BRAND, brandAccent: ACCENT,
-  onUploadClick, onRoomDesignClick, onGetStarted,
+  onUploadClick, onRoomDesignClick, onGetStarted, onDashboardClick,
 }) => {
   const heroRef = useRef<HTMLDivElement>(null);
   const [heroVisible, setHeroVisible] = useState(true);
@@ -104,6 +105,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               <a href="#how-it-works" className="hover:text-gray-900 transition-colors">How it works</a>
               <a href="#deliverables" className="hover:text-gray-900 transition-colors">Deliverables</a>
             </nav>
+            <button onClick={onDashboardClick} className="text-sm font-semibold px-4 py-2 rounded-lg border transition-all hover:-translate-y-0.5" style={{ borderColor: BRAND, color: BRAND, background: 'transparent' }}>
+              My Projects
+            </button>
             <button onClick={onGetStarted} className="text-sm font-semibold px-5 py-2 rounded-lg text-white shadow-sm hover:shadow-md transition-all hover:-translate-y-0.5" style={{ backgroundColor: ACCENT }}>
               Get Started Free
             </button>

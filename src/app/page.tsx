@@ -23,11 +23,13 @@ import { OfficeWorkingDrawings } from '@/components/OfficeWorkingDrawings';
 import { OfficeBOQReport } from '@/components/OfficeBOQReport';
 import { RateSheet } from '@/components/RateSheet';
 import { LandingPage } from '@/components/LandingPage';
-import { Home, Palette, Upload, ArrowRight, CheckCircle, Zap, Users, Clock, Building, Hammer, Compass, Star, FileText, Eye, Building2, ShieldCheck, ClipboardList, Layers, FileStack, Lock, Sparkles, ChevronLeft, ChevronRight, Boxes, Wrench, HardHat, CheckCircle2, Award, Briefcase, Ruler } from 'lucide-react';
+import { Dashboard, SavedProject } from '@/components/Dashboard';
+import { useProjectAutoSave } from '@/hooks/useProjectAutoSave';
+import { Home, Palette, Upload, ArrowRight, CheckCircle, Zap, Users, Clock, Building, Hammer, Compass, Star, FileText, Eye, Building2, ShieldCheck, ClipboardList, Layers, FileStack, Lock, Sparkles, ChevronLeft, ChevronRight, Boxes, Wrench, HardHat, CheckCircle2, Award, Briefcase, Ruler, LayoutDashboard } from 'lucide-react';
 import { SHOWCASE_FLOORPLAN, SHOWCASE_ELEVATION, SHOWCASE_3DRENDER, SHOWCASE_ELECTRICAL, SHOWCASE_PLUMBING, SHOWCASE_STRUCTURAL, SHOWCASE_INTERIOR_PLAN, SHOWCASE_INTERIOR_ELEVATION, SHOWCASE_INTERIOR_3D } from '@/utils/showcaseImages';
 import { analytics } from '@/utils/analytics';
 
-type AppMode = 'landing' | 'new_build' | 'interior_only' | 'upload_drawing' | 'office_design' | 'room_design';
+type AppMode = 'landing' | 'new_build' | 'interior_only' | 'upload_drawing' | 'office_design' | 'room_design' | 'dashboard';
 
 export default function HomePage() {
   const { user, loading: authLoading, signInWithGoogle, signOut } = useAuth();
@@ -47,6 +49,16 @@ export default function HomePage() {
   const [roomDesignWidth, setRoomDesignWidth] = useState<number>(12);
   const [roomDesignDepth, setRoomDesignDepth] = useState<number>(12);
   const [roomDesignStyle, setRoomDesignStyle] = useState<string>('modern_minimalist');
+  const [drawingsGenerated, setDrawingsGenerated] = useState<number>(0);
+
+  const { projectId: autoSaveProjectId, saving: autoSaving, lastSaved } = useProjectAutoSave({
+    mode,
+    step,
+    requirements: requirements ?? undefined,
+    selectedLayout: selectedLayout ?? undefined,
+    boq: boq ?? undefined,
+    drawingsGenerated,
+  });
 
 
   // Auto-save to localStorage
@@ -320,6 +332,13 @@ export default function HomePage() {
           <span className="text-xs opacity-80 tracking-wide uppercase hidden sm:inline">
             {mode === 'interior_only' ? 'Interior Design Studio' : mode === 'office_design' ? 'Office Design Studio' : 'Architecture • Structure • MEP • Interiors'}
           </span>
+          <button
+            onClick={() => setMode('dashboard')}
+            title="My Projects"
+            className="flex items-center justify-center w-8 h-8 rounded-lg hover:bg-gray-100 transition-colors"
+          >
+            <LayoutDashboard size={18} className="text-gray-500" />
+          </button>
         </div>
         <div className="flex items-center gap-1 sm:gap-3">
           {requirements !== null && (
@@ -351,7 +370,7 @@ export default function HomePage() {
               disabled={saving}
               className="text-xs sm:text-sm bg-blue-100 text-blue-600 px-3 py-1.5 rounded-lg hover:bg-blue-200 transition-colors disabled:opacity-80"
             >
-              {saving ? 'Saving...' : (<>💾 <span className="hidden sm:inline">Save</span></>)}
+              {saving || autoSaving ? 'Saving...' : (<>💾 <span className="hidden sm:inline">Save</span></>)}
             </button>
           )}
           {authLoading ? null : user ? (
@@ -419,7 +438,49 @@ const BRAND_GREEN = '#4f6f52';
       onUploadClick={() => { analytics.modeSelected('upload_drawing'); setMode('upload_drawing'); }}
       onRoomDesignClick={() => { analytics.modeSelected('room_design'); setMode('room_design'); }}
       onGetStarted={() => { analytics.modeSelected('new_build'); setMode('new_build'); }}
+      onDashboardClick={() => setMode('dashboard')}
     />;
+  }
+
+  /* ============ DASHBOARD MODE ============ */
+  if (mode === 'dashboard') {
+    return (
+      <div className="flex flex-col h-screen bg-gray-50">
+        <Navbar showBack />
+        <div className="flex-1 overflow-auto">
+          <Dashboard
+            onNewProject={() => {
+              handleNewProject();
+            }}
+            onOpenProject={(project: SavedProject) => {
+              if (project.requirements) setRequirements(project.requirements);
+              if (project.selectedLayout) {
+                setSelectedLayout(project.selectedLayout);
+                setMotherLayoutLocked(true);
+                if (project.requirements) {
+                  const b = calculateBOQ(project.selectedLayout, project.requirements.floors?.length || 1, customRates);
+                  setBOQ(b);
+                }
+              }
+              if (project.boq) setBOQ(project.boq);
+              setDrawingsGenerated(project.drawingsGenerated ?? 0);
+
+              const restoredMode = (project.mode || 'new_build') as AppMode;
+              setMode(restoredMode === 'dashboard' ? 'new_build' : restoredMode);
+
+              const restoredStep =
+                (project.step as AppStep) ||
+                (project.drawingsGenerated && project.drawingsGenerated > 0
+                  ? 'working'
+                  : project.selectedLayout
+                  ? 'isometric'
+                  : 'requirements');
+              setStep(restoredStep);
+            }}
+          />
+        </div>
+      </div>
+    );
   }
 
   /* ============ ROOM DESIGN MODE ============ */
