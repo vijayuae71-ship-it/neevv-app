@@ -9,24 +9,21 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 120;
 
 export async function POST(request: NextRequest) {
-  // 1. Authenticate (optional during beta)
   const auth = await verifyAuthOptional(request);
 
-  // 2. Rate limit (keyed on userId or anon IP hash)
   const rateLimitKey = getRateLimitKey(auth.userId, request);
-  const limiter = rateLimit(rateLimitKey, 5, 60 * 1000); // 5 renders per minute
+  const limiter = rateLimit(rateLimitKey, 5, 60 * 1000);
   if (!limiter.allowed) {
     return NextResponse.json(
-      { error: 'Rate limit exceeded. Please wait before generating more renders.', resetIn: limiter.resetIn },
+      { success: false, error: 'Rate limit exceeded. Please wait before generating more renders.', resetIn: limiter.resetIn },
       { status: 429 }
     );
   }
 
-  // 3. Usage quota check
   const usage = await checkAndIncrementUsage(auth.userId, 'renders');
   if (!usage.allowed) {
     return NextResponse.json(
-      { error: `Daily render limit reached (${usage.limit}/day). Try again tomorrow.`, remaining: 0 },
+      { success: false, error: `Daily render limit reached (${usage.limit}/day). Try again tomorrow.`, remaining: 0 },
       { status: 429 }
     );
   }
@@ -35,13 +32,13 @@ export async function POST(request: NextRequest) {
     const { prompt, renderType, projectId } = await request.json();
 
     if (!prompt) {
-      return NextResponse.json({ error: 'Prompt is required' }, { status: 400 });
+      return NextResponse.json({ success: false, error: 'Prompt is required' }, { status: 400 });
     }
 
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
       console.error('GEMINI_API_KEY not configured');
-      return NextResponse.json({ error: 'Service configuration error' }, { status: 500 });
+      return NextResponse.json({ success: false, error: 'Service configuration error' }, { status: 500 });
     }
 
     const ai = new GoogleGenAI({ apiKey });
@@ -55,7 +52,7 @@ export async function POST(request: NextRequest) {
     });
 
     if (!response.candidates?.[0]?.content?.parts) {
-      return NextResponse.json({ error: 'No response from AI' }, { status: 500 });
+      return NextResponse.json({ success: false, error: 'No response from AI' }, { status: 500 });
     }
 
     const parts = response.candidates[0].content.parts;
@@ -73,10 +70,9 @@ export async function POST(request: NextRequest) {
     }
 
     if (!imageDataUri) {
-      return NextResponse.json({ error: 'No image generated' }, { status: 500 });
+      return NextResponse.json({ success: false, error: 'No image generated' }, { status: 500 });
     }
 
-    // Upload to GCS with user-scoped path
     let gcsUrl: string | undefined;
     const bucketName = process.env.GCS_BUCKET_NAME;
     if (bucketName && imageDataUri) {
@@ -113,6 +109,7 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json({
+      success: true,
       imageDataUri: gcsUrl || imageDataUri,
       textResponse,
       renderType,
@@ -121,7 +118,7 @@ export async function POST(request: NextRequest) {
   } catch (error: any) {
     console.error('Render generation error:', error);
     return NextResponse.json(
-      { error: 'Failed to generate render', details: error.message },
+      { success: false, error: 'Failed to generate render', details: error.message },
       { status: 500 }
     );
   }
