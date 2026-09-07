@@ -38,7 +38,7 @@ DRAWING FORMAT:
 - Title block at bottom: "${name} — ${wFt}'×${dFt}'"
 - PRELIMINARY DESIGN — VERIFY WITH LICENSED PROFESSIONAL BEFORE EXECUTION
 SPELLING: SCHEDULE, REINFORCEMENT, WATERPROOFING, CALCULATION, ABBREVIATION, STAIRCASE`;
-  const bedroom = room.type === 'master_bedroom' || room.type === 'bedroom', commonArea = room.type === 'hall' || room.type === 'living';
+  const bedroom = room.type === 'master_bedroom' || room.type === 'bedroom', commonArea = room.type === 'hall';
   switch (type) {
     case 'furniture': return `Generate a professional FURNITURE LAYOUT PLAN for an interior room.\n${common}\nSPECIFIC REQUIREMENTS:
 - Top-down plan view showing all furniture placed inside the room

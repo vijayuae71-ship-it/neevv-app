@@ -364,7 +364,10 @@ export default function HomePage() {
     );
   };
 
-/* ============ LANDING PAGE ============ */
+const BRAND_GREEN = '#4f6f52';
+  const BRAND_ACCENT = '#E86C2C';
+
+  /* ============ LANDING PAGE ============ */
   if (mode === 'landing') {
     const heroCards = [
       { icon: <Home className="w-6 h-6" />, title: 'Build a New Home', subtitle: 'For homeowners & builders', desc: '17+ construction drawings — plans, structure, electrical, plumbing. All site-ready.', onClick: () => { analytics.modeSelected('new_build'); setMode('new_build'); } },
