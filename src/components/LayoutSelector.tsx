@@ -13,14 +13,14 @@ interface Props {
 }
 
 function buildLayoutPrompt(layout: Layout, requirements: ProjectRequirements): string {
-  const plotW = requirements.plotWidth || layout.plotWidth;
-  const plotD = requirements.plotDepth || layout.plotDepth;
-  const facing = requirements.facing || layout.facing || 'North';
+  const plotW = requirements.plotWidthFt || layout.plotWidthFt || layout.plotWidthM;
+  const plotD = requirements.plotDepthFt || layout.plotDepthFt || layout.plotDepthM;
+  const facing = requirements.facing || 'North';
   const numFloors = requirements.floors?.length || 1;
 
   const roomList = layout.floors
     .map(fl =>
-      `${fl.floorLabel}: ${fl.rooms.map(r => `${r.name} (${r.areaSqFt || Math.round((r.widthM || 3) * (r.depthM || 3) * 10.764)} sqft)`).join(', ')}`
+      `${fl.floorLabel}: ${fl.rooms.map(r => `${r.name} (${Math.round((r.width || 3) * (r.depth || 3) * 10.764)} sqft)`).join(', ')}`
     )
     .join('\n');
 
