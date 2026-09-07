@@ -4,12 +4,14 @@ import React, { useState, useCallback, useRef } from 'react';
 import type { Room, RoomInterior, InteriorMoodBoard, Layout } from '../types';
 import { buildInteriorRoomPrompt, InteriorRenderType } from '../utils/interiorRenderPrompt';
 import { STYLE_TEMPLATES } from '../utils/interiorTemplates';
-import { Camera, RefreshCw, Download, AlertTriangle, Sparkles, Eye, ChevronRight } from 'lucide-react';
+import { Camera, RefreshCw, Download, AlertTriangle, Sparkles, Eye, ChevronRight, Pencil, X } from 'lucide-react';
 import { authFetch } from '@/utils/authFetch';
 
 /* ------------------------------------------------------------------ */
 /*  Constants                                                          */
 /* ------------------------------------------------------------------ */
+
+const BRAND_GREEN = '#4f6f52';
 
 const MODELS = [
   { id: 'neevv-gen', label: 'neevv Generation Pro' },
@@ -37,6 +39,75 @@ const ROOM_TYPE_LABELS: Record<string, string> = {
 const ALLOWED_TYPES = Object.keys(ROOM_TYPE_LABELS);
 
 /* ------------------------------------------------------------------ */
+/*  Edit Design — Room-type-aware options                              */
+/* ------------------------------------------------------------------ */
+
+interface EditCategory {
+  label: string;
+  key: string;
+  options: string[];
+}
+
+const COLOR_THEMES: EditCategory = {
+  label: 'Color Theme',
+  key: 'color_theme',
+  options: ['Warm Beige', 'Cool Gray', 'Bold Dark', 'Classic White', 'Earthy Terracotta'],
+};
+
+function getEditCategories(roomType: string): EditCategory[] {
+  const categories: EditCategory[] = [];
+
+  if (roomType === 'toilet') {
+    categories.push(
+      { label: 'WC Position', key: 'wc_position', options: ['Left', 'Right', 'Center'] },
+      { label: 'WC Type', key: 'wc_type', options: ['Wall-hung', 'Floor-mount'] },
+      { label: 'Basin', key: 'basin_type', options: ['Counter-top', 'Under-mount', 'Pedestal', 'Wall-hung'] },
+      { label: 'Shower', key: 'shower_type', options: ['Rain shower', 'Handheld', 'Both', 'Rainfall panel'] },
+      { label: 'Wall Tiles', key: 'wall_tiles', options: ['Ceramic', 'Vitrified', 'Marble', 'Natural Stone', 'Subway'] },
+      { label: 'Floor Tiles', key: 'floor_tiles', options: ['Ceramic', 'Vitrified', 'Marble', 'Anti-skid Stone'] },
+    );
+  } else if (roomType === 'kitchen') {
+    categories.push(
+      { label: 'Countertop', key: 'countertop', options: ['Granite', 'Quartz', 'Marble', 'Corian'] },
+      { label: 'Cabinet Color', key: 'cabinet_color', options: ['White', 'Wood finish', 'Dark Gray', 'Navy Blue'] },
+      { label: 'Backsplash', key: 'backsplash', options: ['Subway tiles', 'Mosaic', 'Full slab', 'Patterned'] },
+      { label: 'Layout', key: 'kitchen_layout', options: ['L-shape', 'U-shape', 'Parallel', 'Island'] },
+    );
+  } else if (roomType === 'bedroom' || roomType === 'master_bedroom') {
+    categories.push(
+      { label: 'Bed Position', key: 'bed_position', options: ['Center wall', 'Left wall', 'Right wall'] },
+      { label: 'Wardrobe', key: 'wardrobe_style', options: ['Sliding doors', 'Hinged doors', 'Walk-in closet'] },
+      { label: 'Flooring', key: 'flooring', options: ['Wood Laminate', 'Vitrified Tiles', 'Marble', 'Carpet'] },
+      { label: 'Headboard', key: 'headboard', options: ['Upholstered', 'Wood panel', 'Fabric panel', 'Wallpaper accent'] },
+    );
+  } else if (roomType === 'hall') {
+    categories.push(
+      { label: 'Sofa Type', key: 'sofa_type', options: ['L-shape', '3-seater', '2+1 set', 'Sectional'] },
+      { label: 'TV Unit', key: 'tv_unit', options: ['Wall-mounted panel', 'Floor-standing', 'Built-in unit'] },
+      { label: 'Flooring', key: 'flooring', options: ['Wood Laminate', 'Vitrified Tiles', 'Marble', 'Polished Concrete'] },
+    );
+  }
+
+  // All rooms get color theme
+  categories.push(COLOR_THEMES);
+  return categories;
+}
+
+function buildModificationString(options: Record<string, string>, freeText: string): string {
+  const parts: string[] = [];
+  Object.entries(options).forEach(([key, value]) => {
+    if (value) {
+      const label = key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+      parts.push(`- ${label}: change to ${value}`);
+    }
+  });
+  if (freeText.trim()) {
+    parts.push(`- Additional changes: ${freeText.trim()}`);
+  }
+  return parts.join('\n');
+}
+
+/* ------------------------------------------------------------------ */
 /*  Types                                                              */
 /* ------------------------------------------------------------------ */
 
@@ -45,8 +116,9 @@ type RenderTypeKey = 'plan' | 'elevation' | 'render3d';
 interface RenderEntry {
   roomId: string;
   type: RenderTypeKey;
-  imageData: string; // data URI or URL
+  imageData: string;
   timestamp: number;
+  isEdited?: boolean;
 }
 
 type RenderCache = Record<string, RenderEntry[]>;
@@ -88,20 +160,27 @@ const InteriorAIDrawings: React.FC<Props> = ({ layout, interiorSelections, moodB
   const [renderCache, setRenderCache] = useState<RenderCache>({});
   const abortRef = useRef(false);
 
+  /* ---------- edit design state ---------- */
+  const [editPanelOpen, setEditPanelOpen] = useState(false);
+  const [editOptions, setEditOptions] = useState<Record<string, string>>({});
+  const [editFreeText, setEditFreeText] = useState('');
+
   /* ---------- generate single image via API route ---------- */
   const generateImage = useCallback(
-    async (roomId: string, type: RenderTypeKey, model: string): Promise<RenderEntry | null> => {
+    async (roomId: string, type: RenderTypeKey, model: string, modificationPrompt?: string): Promise<RenderEntry | null> => {
       const room = rooms.find(r => r.id === roomId);
       if (!room) throw new Error('Room not found');
       const interior = interiorSelections[roomId];
 
-      // Build prompt
       const renderType: InteriorRenderType = type === 'plan' ? 'plan' : type === 'elevation' ? 'elevation' : 'render3d';
-      // Use per-room style moodBoard — ensures each room's style is reflected
       const roomMoodBoard = interior ? STYLE_TEMPLATES[interior.style] : moodBoard;
-      const promptText = buildInteriorRoomPrompt(renderType, room, interior, roomMoodBoard);
+      let promptText = buildInteriorRoomPrompt(renderType, room, interior, roomMoodBoard);
 
-      // Call the API route (same one used for exterior renders)
+      // Append modifications if provided
+      if (modificationPrompt) {
+        promptText += `\n\n--- CUSTOMER MODIFICATIONS ---\nApply the following changes to the design above. Keep everything else exactly the same unless contradicted by these changes.\n${modificationPrompt}`;
+      }
+
       const response = await authFetch('/api/generate-render', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -126,7 +205,6 @@ const InteriorAIDrawings: React.FC<Props> = ({ layout, interiorSelections, moodB
         throw new Error(data.error || 'No image generated');
       }
 
-      // Use either the GCS public URL or the inline base64 data
       const imageUrl = data.imageUrl || data.imageDataUri;
       if (!imageUrl) {
         throw new Error('No image returned from API');
@@ -137,6 +215,7 @@ const InteriorAIDrawings: React.FC<Props> = ({ layout, interiorSelections, moodB
         type,
         imageData: imageUrl,
         timestamp: Date.now(),
+        isEdited: !!modificationPrompt,
       };
     },
     [rooms, interiorSelections, moodBoard],
@@ -144,7 +223,7 @@ const InteriorAIDrawings: React.FC<Props> = ({ layout, interiorSelections, moodB
 
   /* ---------- handle Generate click ---------- */
   const handleGenerate = useCallback(
-    async (types?: RenderTypeKey[]) => {
+    async (types?: RenderTypeKey[], modificationPrompt?: string) => {
       const typesToGen = types || [selectedType];
       setLoading(true);
       setError(null);
@@ -159,7 +238,7 @@ const InteriorAIDrawings: React.FC<Props> = ({ layout, interiorSelections, moodB
         setProgress(`Generating ${typeLabel} for ${room ? roomLabel(room) : 'room'}…`);
 
         try {
-          const entry = await generateImage(selectedRoomId, t, selectedModel);
+          const entry = await generateImage(selectedRoomId, t, selectedModel, modificationPrompt);
           if (entry) {
             const key = cacheKey(selectedRoomId, t);
             updatedCache = {
@@ -168,8 +247,9 @@ const InteriorAIDrawings: React.FC<Props> = ({ layout, interiorSelections, moodB
             };
             setRenderCache(updatedCache);
           }
-        } catch (err: any) {
-          setError(err.message || 'Generation failed');
+        } catch (err: unknown) {
+          const message = err instanceof Error ? err.message : 'Generation failed';
+          setError(message);
           break;
         }
       }
@@ -179,6 +259,29 @@ const InteriorAIDrawings: React.FC<Props> = ({ layout, interiorSelections, moodB
     },
     [selectedRoomId, selectedType, selectedModel, renderCache, rooms, generateImage],
   );
+
+  /* ---------- handle Edit Re-render ---------- */
+  const handleEditRerender = useCallback(() => {
+    const modString = buildModificationString(editOptions, editFreeText);
+    if (!modString) return;
+    handleGenerate(undefined, modString);
+  }, [editOptions, editFreeText, handleGenerate]);
+
+  const handleResetEdit = useCallback(() => {
+    setEditOptions({});
+    setEditFreeText('');
+  }, []);
+
+  const toggleEditOption = useCallback((key: string, value: string) => {
+    setEditOptions(prev => {
+      if (prev[key] === value) {
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      }
+      return { ...prev, [key]: value };
+    });
+  }, []);
 
   /* ---------- download helper ---------- */
   const handleDownload = useCallback(async (imageData: string) => {
@@ -198,9 +301,17 @@ const InteriorAIDrawings: React.FC<Props> = ({ layout, interiorSelections, moodB
   const currentRenders = renderCache[currentKey] || [];
   const latestRender = currentRenders[currentRenders.length - 1] ?? null;
 
-  /* ---------- room render count for sidebar badge ---------- */
   const roomRenderCount = (roomId: string) =>
     RENDER_TYPES.reduce((n, rt) => n + (renderCache[cacheKey(roomId, rt.key)]?.length || 0), 0);
+
+  // Has any render been generated for this room (any type)?
+  const hasAnyRender = roomRenderCount(selectedRoomId) > 0;
+
+  // Edit categories for current room type
+  const editCategories = getEditCategories(selectedRoom?.type || '');
+
+  // Has any edit selections?
+  const hasEditChanges = Object.keys(editOptions).length > 0 || editFreeText.trim().length > 0;
 
   /* ================================================================ */
   /*  RENDER                                                           */
@@ -230,7 +341,7 @@ const InteriorAIDrawings: React.FC<Props> = ({ layout, interiorSelections, moodB
             return (
               <button
                 key={room.id}
-                onClick={() => { setSelectedRoomId(room.id); setError(null); }}
+                onClick={() => { setSelectedRoomId(room.id); setError(null); setEditPanelOpen(false); handleResetEdit(); }}
                 className={`text-sm px-3 py-1.5 rounded-lg flex-shrink-0 md:w-full text-left flex items-center gap-2 transition-colors ${
                   active
                     ? 'bg-blue-600 text-white font-medium'
@@ -318,6 +429,23 @@ const InteriorAIDrawings: React.FC<Props> = ({ layout, interiorSelections, moodB
             All 3
           </button>
 
+          {/* Edit Design button — only shows after renders exist */}
+          {hasAnyRender && (
+            <button
+              className={`text-sm px-3 py-1 rounded-lg flex items-center gap-1 transition-colors ${
+                editPanelOpen
+                  ? 'text-white'
+                  : 'border border-amber-400 text-amber-700 hover:bg-amber-50'
+              }`}
+              style={editPanelOpen ? { backgroundColor: BRAND_GREEN } : undefined}
+              onClick={() => setEditPanelOpen(!editPanelOpen)}
+              disabled={loading}
+            >
+              {editPanelOpen ? <X size={13} /> : <Pencil size={13} />}
+              {editPanelOpen ? 'Close' : 'Edit Design'}
+            </button>
+          )}
+
           {/* stop button */}
           {loading && (
             <button
@@ -342,6 +470,81 @@ const InteriorAIDrawings: React.FC<Props> = ({ layout, interiorSelections, moodB
             </span>
           )}
         </div>
+
+        {/* ========== EDIT DESIGN PANEL ========== */}
+        {editPanelOpen && (
+          <div className="bg-amber-50 border-b border-amber-200 px-4 py-3 space-y-3 overflow-y-auto max-h-64">
+            <div className="flex items-center justify-between">
+              <h4 className="text-sm font-semibold text-gray-800 flex items-center gap-1.5">
+                <Pencil size={14} className="text-amber-600" />
+                Edit Design — {selectedRoom ? roomLabel(selectedRoom) : 'Room'}
+              </h4>
+              {hasEditChanges && (
+                <button
+                  className="text-xs text-gray-500 hover:text-red-500 underline"
+                  onClick={handleResetEdit}
+                >
+                  Reset all
+                </button>
+              )}
+            </div>
+
+            {/* Quick option categories */}
+            {editCategories.map(cat => (
+              <div key={cat.key}>
+                <label className="text-xs font-semibold text-gray-700 mb-1 block">{cat.label}</label>
+                <div className="flex flex-wrap gap-1.5">
+                  {cat.options.map(opt => {
+                    const isActive = editOptions[cat.key] === opt;
+                    return (
+                      <button
+                        key={opt}
+                        onClick={() => toggleEditOption(cat.key, opt)}
+                        className={`px-3 py-1 rounded-full text-xs font-medium border cursor-pointer transition-all ${
+                          isActive
+                            ? 'text-white border-transparent'
+                            : 'bg-white text-gray-600 border-gray-300 hover:border-gray-500'
+                        }`}
+                        style={isActive ? { backgroundColor: BRAND_GREEN, borderColor: BRAND_GREEN } : undefined}
+                      >
+                        {opt}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+
+            {/* Free text */}
+            <div>
+              <label className="text-xs font-semibold text-gray-700 mb-1 block">Additional Changes</label>
+              <textarea
+                className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 bg-white text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-amber-400"
+                rows={2}
+                placeholder="e.g., Add a niche shelf in shower area, use Italian marble look, change door to sliding..."
+                value={editFreeText}
+                onChange={e => setEditFreeText(e.target.value)}
+              />
+            </div>
+
+            {/* Re-render button */}
+            <div className="flex items-center gap-3">
+              <button
+                className="text-sm text-white px-4 py-1.5 rounded-lg hover:opacity-90 disabled:opacity-50 flex items-center gap-1.5 font-medium"
+                style={{ backgroundColor: BRAND_GREEN }}
+                disabled={loading || !hasEditChanges}
+                onClick={handleEditRerender}
+              >
+                <RefreshCw size={13} />
+                Re-render with changes
+              </button>
+              <span className="text-xs text-gray-500">
+                {Object.keys(editOptions).length} option{Object.keys(editOptions).length !== 1 ? 's' : ''} selected
+                {editFreeText.trim() ? ' + custom text' : ''}
+              </span>
+            </div>
+          </div>
+        )}
 
         {/* ---------- ERROR ---------- */}
         {error && (
@@ -370,6 +573,14 @@ const InteriorAIDrawings: React.FC<Props> = ({ layout, interiorSelections, moodB
                 alt={`${selectedType} render`}
                 className="max-h-[480px] w-auto rounded-lg shadow-lg border border-gray-200 object-contain"
               />
+              {/* Badges */}
+              <div className="absolute top-2 left-2 flex gap-1">
+                {latestRender.isEdited && (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-100 text-amber-700 border border-amber-300 flex items-center gap-1">
+                    <Pencil size={10} /> Edited
+                  </span>
+                )}
+              </div>
               <div className="absolute top-2 right-2 flex gap-1">
                 <button
                   className="w-7 h-7 rounded-full bg-white/80 backdrop-blur flex items-center justify-center hover:bg-white shadow"
@@ -423,7 +634,7 @@ const InteriorAIDrawings: React.FC<Props> = ({ layout, interiorSelections, moodB
                     updated[currentKey] = arr;
                     setRenderCache(updated);
                   }}
-                  className={`flex-shrink-0 rounded-md border-2 overflow-hidden transition-all hover:scale-105 ${
+                  className={`flex-shrink-0 rounded-md border-2 overflow-hidden transition-all hover:scale-105 relative ${
                     idx === currentRenders.length - 1 ? 'border-blue-600' : 'border-gray-200'
                   }`}
                 >
@@ -432,6 +643,11 @@ const InteriorAIDrawings: React.FC<Props> = ({ layout, interiorSelections, moodB
                     alt={`v${idx + 1}`}
                     className="w-16 h-12 object-cover"
                   />
+                  {entry.isEdited && (
+                    <span className="absolute top-0.5 right-0.5 w-3 h-3 rounded-full bg-amber-400 flex items-center justify-center">
+                      <Pencil size={7} className="text-white" />
+                    </span>
+                  )}
                 </button>
               ))}
             </div>
