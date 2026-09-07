@@ -554,11 +554,11 @@ const BRAND_GREEN = '#4f6f52';
                 <div className="mb-6 grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-1">Width (ft)</label>
-                    <input type="number" min={4} max={30} value={roomDesignWidth} onChange={(e) => setRoomDesignWidth(Number(e.target.value))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                    <input type="number" min={4} max={30} value={roomDesignWidth || ''} onChange={(e) => setRoomDesignWidth(e.target.value === '' ? 0 : Number(e.target.value))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
                   </div>
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-1">Depth (ft)</label>
-                    <input type="number" min={4} max={30} value={roomDesignDepth} onChange={(e) => setRoomDesignDepth(Number(e.target.value))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                    <input type="number" min={4} max={30} value={roomDesignDepth || ''} onChange={(e) => setRoomDesignDepth(e.target.value === '' ? 0 : Number(e.target.value))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
                   </div>
                 </div>
                 <div className="mb-6 text-center text-sm text-gray-500">

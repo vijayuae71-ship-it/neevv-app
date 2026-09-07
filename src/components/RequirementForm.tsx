@@ -139,8 +139,8 @@ export const RequirementForm: React.FC<Props> = ({ onSubmit, initialValues }) =>
               <input
                 type="number"
                 className="input input-bordered input-sm w-full"
-                value={plotW}
-                onChange={(e) => setPlotW(Number(e.target.value))}
+                value={plotW || ""}
+                onChange={(e) => setPlotW(e.target.value === '' ? 0 : Number(e.target.value))}
                 min={15}
                 max={200}
               />
@@ -150,8 +150,8 @@ export const RequirementForm: React.FC<Props> = ({ onSubmit, initialValues }) =>
               <input
                 type="number"
                 className="input input-bordered input-sm w-full"
-                value={plotD}
-                onChange={(e) => setPlotD(Number(e.target.value))}
+                value={plotD || ""}
+                onChange={(e) => setPlotD(e.target.value === '' ? 0 : Number(e.target.value))}
                 min={15}
                 max={200}
               />
