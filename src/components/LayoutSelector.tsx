@@ -12,6 +12,54 @@ interface Props {
   requirements: ProjectRequirements;
 }
 
+function buildLayoutPrompt(layout: Layout, requirements: ProjectRequirements): string {
+  const plotW = requirements.plotWidth || layout.plotWidth;
+  const plotD = requirements.plotDepth || layout.plotDepth;
+  const facing = requirements.facing || layout.facing || 'North';
+  const numFloors = requirements.floors?.length || 1;
+
+  const roomList = layout.floors
+    .map(fl =>
+      `${fl.floorLabel}: ${fl.rooms.map(r => `${r.name} (${r.areaSqFt || Math.round((r.widthM || 3) * (r.depthM || 3) * 10.764)} sqft)`).join(', ')}`
+    )
+    .join('\n');
+
+  const setbacks = layout.setbacks
+    ? `Front: ${layout.setbacks.front}m, Rear: ${layout.setbacks.rear}m, Left: ${layout.setbacks.left}m, Right: ${layout.setbacks.right}m`
+    : 'Front: 1.5m, Rear: 1.5m, Left: 1.0m, Right: 1.0m';
+
+  return `Generate a professional architectural floor plan drawing for a residential building.
+
+PLOT: ${plotW} × ${plotD} feet, ${facing}-facing
+FLOORS: ${numFloors} (${numFloors === 1 ? 'Ground only' : 'G+' + (numFloors - 1)})
+TOTAL BUILT-UP AREA: ${layout.builtUpAreaSqFt} sqft (FSI 1.0)
+SETBACKS: ${setbacks}
+LAYOUT STRATEGY: ${layout.name} — ${layout.description || ''}
+
+ROOMS:
+${roomList}
+
+DRAWING REQUIREMENTS:
+- Professional black-and-white engineering drawing style
+- External walls: 230mm double-line (0.7mm weight)
+- Internal partitions: 150mm (0.4mm weight)
+- Show all doors (with swing arcs), windows, and openings
+- IS 962:1989 hatching for wet areas (kitchen, bathroom, toilet) at 45°
+- Dimension chains with tick marks showing room sizes in mm
+- Grid circles with alphanumeric labels (A, B, C for columns; 1, 2, 3 for rows)
+- Structural columns shown as filled 230×300mm rectangles
+- North arrow indicator
+- Room names labeled clearly inside each room
+- Staircase with UP/DN arrows if multi-floor
+- Scale: 1:100
+- Clean white background, no color fills
+- Title: "${layout.name} — ${plotW}×${plotD} ft ${facing}-facing"
+
+SPELLING: SCHEDULE, REINFORCEMENT, WATERPROOFING, CALCULATION, ABBREVIATION, STAIRCASE
+
+IMPORTANT: Use building footprint (post-setback dimensions), not raw plot size for the plan outline.`;
+}
+
 export const LayoutSelector: React.FC<Props> = ({ layouts, onSelect, vastuEnabled, requirements }) => {
   const [planImages, setPlanImages] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState<Record<string, boolean>>({});
@@ -22,13 +70,13 @@ export const LayoutSelector: React.FC<Props> = ({ layouts, onSelect, vastuEnable
     setErrors(prev => ({ ...prev, [layout.id]: '' }));
 
     try {
+      const prompt = buildLayoutPrompt(layout, requirements);
       const res = await authFetch('/api/generate-drawing', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          prompt,
           drawingType: 'ground_floor',
-          layout,
-          requirements,
         }),
       });
 
@@ -36,7 +84,7 @@ export const LayoutSelector: React.FC<Props> = ({ layouts, onSelect, vastuEnable
       if (data.imageDataUri) {
         setPlanImages(prev => ({ ...prev, [layout.id]: data.imageDataUri }));
       } else {
-        setErrors(prev => ({ ...prev, [layout.id]: 'Failed to generate plan' }));
+        setErrors(prev => ({ ...prev, [layout.id]: data.error || 'Failed to generate plan' }));
       }
     } catch {
       setErrors(prev => ({ ...prev, [layout.id]: 'Network error' }));
