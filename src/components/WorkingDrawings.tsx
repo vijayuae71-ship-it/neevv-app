@@ -11,6 +11,7 @@ import {
 import { exportAIPDF, ExportProgress } from '../utils/pdfExport';
 import { applyTextOverlay, OVERLAY_DRAWING_TYPES } from '../utils/textOverlay';
 import { authFetch } from '@/utils/authFetch';
+import { buildDrawingPrompt, DrawingType as ApiDrawingType } from '../utils/drawingPrompts';
 
 interface Props {
   layout: Layout;
@@ -120,10 +121,8 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq }) 
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          prompt: buildDrawingPrompt(aiType as ApiDrawingType, layout, requirements, FLOOR_SPECIFIC.includes(drawingType) ? selectedFloor : undefined),
           drawingType: aiType,
-          layout,
-          requirements,
-          floor: FLOOR_SPECIFIC.includes(drawingType) ? selectedFloor : undefined,
         }),
       });
       const data = await res.json();
@@ -186,10 +185,8 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq }) 
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
+            prompt: buildDrawingPrompt(aiDrawingMap[dt] as ApiDrawingType, layout, requirements, FLOOR_SPECIFIC.includes(dt) ? selectedFloor : undefined),
             drawingType: aiDrawingMap[dt],
-            layout,
-            requirements,
-            floor: FLOOR_SPECIFIC.includes(dt) ? selectedFloor : undefined,
           }),
         });
         const data = await res.json();

@@ -16,7 +16,7 @@ export async function POST(request: NextRequest) {
   const limiter = rateLimit(rateLimitKey, 10, 60 * 1000); // 10 drawings per minute
   if (!limiter.allowed) {
     return NextResponse.json(
-      { error: 'Rate limit exceeded. Please wait before generating more drawings.', resetIn: limiter.resetIn },
+      { success: false, error: 'Rate limit exceeded. Please wait before generating more drawings.', resetIn: limiter.resetIn },
       { status: 429 }
     );
   }
@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
   const usage = await checkAndIncrementUsage(auth.userId, 'drawings');
   if (!usage.allowed) {
     return NextResponse.json(
-      { error: `Daily drawing limit reached (${usage.limit}/day). Try again tomorrow.`, remaining: 0 },
+      { success: false, error: `Daily drawing limit reached (${usage.limit}/day). Try again tomorrow.`, remaining: 0 },
       { status: 429 }
     );
   }
@@ -34,13 +34,13 @@ export async function POST(request: NextRequest) {
     const { prompt, drawingType } = await request.json();
 
     if (!prompt) {
-      return NextResponse.json({ error: 'Prompt is required' }, { status: 400 });
+      return NextResponse.json({ success: false, error: 'Prompt is required' }, { status: 400 });
     }
 
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
       console.error('GEMINI_API_KEY not configured');
-      return NextResponse.json({ error: 'Service configuration error' }, { status: 500 });
+      return NextResponse.json({ success: false, error: 'Service configuration error' }, { status: 500 });
     }
 
     const ai = new GoogleGenAI({ apiKey });
@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
     });
 
     if (!response.candidates?.[0]?.content?.parts) {
-      return NextResponse.json({ error: 'No response from AI' }, { status: 500 });
+      return NextResponse.json({ success: false, error: 'No response from AI' }, { status: 500 });
     }
 
     const parts = response.candidates[0].content.parts;
@@ -72,10 +72,11 @@ export async function POST(request: NextRequest) {
     }
 
     if (!imageDataUri) {
-      return NextResponse.json({ error: 'No image generated' }, { status: 500 });
+      return NextResponse.json({ success: false, error: 'No image generated' }, { status: 500 });
     }
 
     return NextResponse.json({
+      success: true,
       imageDataUri,
       textResponse,
       drawingType,
@@ -84,7 +85,7 @@ export async function POST(request: NextRequest) {
   } catch (error: any) {
     console.error('Drawing generation error:', error);
     return NextResponse.json(
-      { error: 'Failed to generate drawing', details: error.message },
+      { success: false, error: 'Failed to generate drawing', details: error.message },
       { status: 500 }
     );
   }
