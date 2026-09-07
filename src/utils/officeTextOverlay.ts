@@ -384,13 +384,14 @@ export function applyOfficeTextOverlay(
   const boxWidth = Math.min(380, Math.max(1, imageWidth - 40));
   const margin = 20;
 
-  // Section & elevation drawings: panel at TOP-RIGHT to avoid overlapping cross-section content.
+  // Section & elevation drawings: panel at BOTTOM-LEFT to avoid overlapping the AI-generated
+  // title block and section content that typically occupy the right side.
   // All other drawings: panel at BOTTOM-RIGHT (standard position).
-  const topRightTypes: OfficeDrawingType[] = ['section', 'elevation'];
-  const placeTop = topRightTypes.includes(drawingType);
+  const bottomLeftTypes: OfficeDrawingType[] = ['section', 'elevation'];
+  const placeLeft = bottomLeftTypes.includes(drawingType);
 
-  const boxX = Math.max(0, imageWidth - boxWidth - margin);
-  const boxY = placeTop ? margin : Math.max(0, imageHeight - boxHeight - margin);
+  const boxX = placeLeft ? margin : Math.max(0, imageWidth - boxWidth - margin);
+  const boxY = Math.max(0, imageHeight - boxHeight - margin);
 
   // Semi-transparent dark background for the data panel.
   context.fillStyle = 'rgba(26,26,46,0.92)'; // #1a1a2e @ 0.92

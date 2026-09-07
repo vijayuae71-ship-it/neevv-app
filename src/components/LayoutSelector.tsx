@@ -55,9 +55,16 @@ DRAWING REQUIREMENTS:
 - Clean white background, no color fills
 - Title: "${layout.name} — ${plotW}×${plotD} ft ${facing}-facing"
 
+SCHEDULE OF OPENINGS (MANDATORY — include as a table in the drawing):
+| Opening | Type | Width (mm) | Height (mm) | Sill Height (mm) |
+Show all doors (D1, D2...) and windows (W1, W2...) with sizes.
+Main door: 1050×2100mm, Internal doors: 900×2100mm, Bathroom: 750×2100mm
+Windows: Bedroom 1500×1200mm sill 900mm, Kitchen 1200×1050mm sill 1050mm, Bathroom 600×450mm sill 1800mm
+
 SPELLING: SCHEDULE, REINFORCEMENT, WATERPROOFING, CALCULATION, ABBREVIATION, STAIRCASE
 
-IMPORTANT: Use building footprint (post-setback dimensions), not raw plot size for the plan outline.`;
+IMPORTANT: Use building footprint (post-setback dimensions), not raw plot size for the plan outline.
+The Schedule of Openings table MUST appear clearly on every layout — position it in an empty area of the drawing.`;
 }
 
 export const LayoutSelector: React.FC<Props> = ({ layouts, onSelect, vastuEnabled, requirements }) => {

@@ -29,6 +29,7 @@ import {
 } from '../utils/officeDrawingPrompts';
 import { applyOfficeTextOverlay } from '../utils/officeTextOverlay';
 import { authFetch } from '@/utils/authFetch';
+import { getCachedDrawing, setCachedDrawing, removeCachedDrawing, getAllCachedDrawings, clearCachedDrawings as clearCachedDrawingsDB, migrateFromLocalStorage } from '../utils/drawingCache';
 
 interface Props {
   layout: Layout;
@@ -87,23 +88,20 @@ export const OfficeWorkingDrawings: React.FC<Props> = ({ layout, officeReq }) =>
     }
   }, [layout.id]);
 
-  /* Load any previously cached drawings from localStorage on mount */
+  /* Load any previously cached drawings from IndexedDB on mount */
   useEffect(() => {
-    try {
-      const loaded: Record<string, string> = {};
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key && key.startsWith(LOCAL_STORAGE_PREFIX)) {
-          const val = localStorage.getItem(key);
-          if (val) loaded[key] = val;
+    const loadCache = async () => {
+      await migrateFromLocalStorage(LOCAL_STORAGE_PREFIX);
+      try {
+        const loaded = await getAllCachedDrawings(LOCAL_STORAGE_PREFIX);
+        if (Object.keys(loaded).length > 0) {
+          setImages(loaded);
         }
+      } catch (e) {
+        console.warn('Failed to load cached office drawings:', e);
       }
-      if (Object.keys(loaded).length > 0) {
-        setImages(loaded);
-      }
-    } catch (e) {
-      console.warn('Failed to load cached office drawings:', e);
-    }
+    };
+    loadCache();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -121,6 +119,8 @@ export const OfficeWorkingDrawings: React.FC<Props> = ({ layout, officeReq }) =>
   /* ---------- Apply canvas text overlay onto a freshly generated / cached image ---------- */
   const applyOverlay = useCallback(
     (cacheKey: string, type: OfficeDrawingType, floor?: number) => {
+      const srcData = images[cacheKey];
+      if (!srcData) return;
       const img = new Image();
       img.onload = () => {
         try {
@@ -133,18 +133,14 @@ export const OfficeWorkingDrawings: React.FC<Props> = ({ layout, officeReq }) =>
           applyOfficeTextOverlay(canvas, type, layout, officeReq, floor);
           const overlaid = canvas.toDataURL('image/png');
           setImages(prev => ({ ...prev, [cacheKey]: overlaid }));
-          try {
-            localStorage.setItem(cacheKey, overlaid);
-          } catch (e) {
-            console.warn('Failed to persist overlaid drawing:', e);
-          }
+          setCachedDrawing(cacheKey, overlaid).catch(e => console.warn('Failed to persist overlaid drawing:', e));
         } catch (e) {
           console.warn('Text overlay failed:', e);
         }
       };
-      img.src = localStorage.getItem(cacheKey) || '';
+      img.src = srcData;
     },
-    [layout, officeReq]
+    [layout, officeReq, images]
   );
 
   /* ---------- Generate (or load cached) drawing ---------- */
@@ -152,7 +148,8 @@ export const OfficeWorkingDrawings: React.FC<Props> = ({ layout, officeReq }) =>
     async (type: OfficeDrawingType, floor?: number) => {
       const cacheKey = buildCacheKey(type, floor);
 
-      const cached = localStorage.getItem(cacheKey);
+      // Check IndexedDB cache first
+      const cached = await getCachedDrawing(cacheKey);
       if (cached) {
         setImages(prev => ({ ...prev, [cacheKey]: cached }));
         return;
@@ -174,7 +171,7 @@ export const OfficeWorkingDrawings: React.FC<Props> = ({ layout, officeReq }) =>
         });
         const data = await res.json();
         if (data.imageDataUri) {
-          localStorage.setItem(cacheKey, data.imageDataUri);
+          await setCachedDrawing(cacheKey, data.imageDataUri);
           setImages(prev => ({ ...prev, [cacheKey]: data.imageDataUri }));
           applyOverlay(cacheKey, type, floor);
         } else {
@@ -192,9 +189,9 @@ export const OfficeWorkingDrawings: React.FC<Props> = ({ layout, officeReq }) =>
   );
 
   const regenerateDrawing = useCallback(
-    (type: OfficeDrawingType, floor?: number) => {
+    async (type: OfficeDrawingType, floor?: number) => {
       const cacheKey = buildCacheKey(type, floor);
-      localStorage.removeItem(cacheKey);
+      await removeCachedDrawing(cacheKey);
       setImages(prev => {
         const next = { ...prev };
         delete next[cacheKey];
@@ -205,8 +202,8 @@ export const OfficeWorkingDrawings: React.FC<Props> = ({ layout, officeReq }) =>
     [generateDrawing]
   );
 
-  const downloadDrawing = useCallback((cacheKey: string) => {
-    const dataUri = localStorage.getItem(cacheKey) || '';
+  const downloadDrawing = useCallback(async (cacheKey: string) => {
+    const dataUri = images[cacheKey] || await getCachedDrawing(cacheKey) || '';
     if (!dataUri) return;
     const link = document.createElement('a');
     link.href = dataUri;
@@ -214,10 +211,12 @@ export const OfficeWorkingDrawings: React.FC<Props> = ({ layout, officeReq }) =>
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-  }, []);
+  }, [images]);
 
-  const clearAllOfficeDrawings = useCallback(() => {
+  const clearAllOfficeDrawings = useCallback(async () => {
     try {
+      await clearCachedDrawingsDB(LOCAL_STORAGE_PREFIX);
+      // Also clear any remaining localStorage entries
       const keysToRemove: string[] = [];
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);

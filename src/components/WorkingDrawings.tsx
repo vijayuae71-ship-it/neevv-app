@@ -11,6 +11,7 @@ import {
 import { exportAIPDF, ExportProgress } from '../utils/pdfExport';
 import { applyTextOverlay, OVERLAY_DRAWING_TYPES } from '../utils/textOverlay';
 import { authFetch } from '@/utils/authFetch';
+import { getCachedDrawing, setCachedDrawing, getAllCachedDrawings, clearCachedDrawings, migrateFromLocalStorage } from '../utils/drawingCache';
 import { buildDrawingPrompt, DrawingType as ApiDrawingType } from '../utils/drawingPrompts';
 
 interface Props {
@@ -77,27 +78,34 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq }) 
 
   const drawingsStorageKey = `neevv-drawings-${requirements.plotWidthFt}x${requirements.plotDepthFt}`;
 
-  const saveDrawings = useCallback((drawings: Record<string, string>) => {
+  const saveDrawingToCache = useCallback(async (cacheKey: string, imageData: string) => {
     try {
-      localStorage.setItem(drawingsStorageKey, JSON.stringify(drawings));
+      await setCachedDrawing(drawingsStorageKey + ':' + cacheKey, imageData);
     } catch (e) {
-      console.warn('Failed to save drawings to localStorage:', e);
+      console.warn('Failed to save drawing to cache:', e);
     }
   }, [drawingsStorageKey]);
 
   /* Load cached drawings for this project on mount */
   useEffect(() => {
-    try {
-      const cached = localStorage.getItem(drawingsStorageKey);
-      if (cached) {
-        const parsed = JSON.parse(cached);
-        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-          setAiImages(parsed as Record<string, string>);
+    const loadCache = async () => {
+      // One-time migration from localStorage to IndexedDB
+      await migrateFromLocalStorage('neevv-drawings-');
+      try {
+        const cached = await getAllCachedDrawings(drawingsStorageKey + ':');
+        if (Object.keys(cached).length > 0) {
+          // Strip the storage prefix from keys for internal state
+          const cleaned: Record<string, string> = {};
+          for (const [k, v] of Object.entries(cached)) {
+            cleaned[k.replace(drawingsStorageKey + ':', '')] = v;
+          }
+          setAiImages(cleaned);
         }
+      } catch (e) {
+        console.warn('Failed to load drawings from cache:', e);
       }
-    } catch (e) {
-      console.warn('Failed to load drawings from localStorage:', e);
-    }
+    };
+    loadCache();
   }, [drawingsStorageKey]);
 
   const isMultiFloor = (requirements?.floors?.length || layout?.floors?.length || 1) > 1;
@@ -142,9 +150,9 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq }) 
         }
         setAiImages(prev => {
           const updated = { ...prev, [cacheKey]: finalImg };
-          saveDrawings(updated);
           return updated;
         });
+        saveDrawingToCache(cacheKey, finalImg);
       } else {
         throw new Error('No image in response from neevv Generation Pro');
       }
@@ -155,7 +163,7 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq }) 
     } finally {
       setAiLoading(null);
     }
-  }, [layout, requirements, boq, selectedFloor, getCacheKey, saveDrawings]);
+  }, [layout, requirements, boq, selectedFloor, getCacheKey, saveDrawingToCache]);
 
   /* ---------- Click handler for generate button ---------- */
   const handleGenerate = useCallback((drawingType: DrawingType) => {
@@ -201,9 +209,9 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq }) 
           }
           setAiImages(prev => {
             const updated = { ...prev, [cacheKey]: finalImg };
-            saveDrawings(updated);
             return updated;
           });
+          saveDrawingToCache(cacheKey, finalImg);
         }
       } catch {
         // Continue to next drawing
@@ -212,7 +220,7 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq }) 
 
     setAiLoading(null);
     setGeneratingAll(false);
-  }, [aiImages, layout, requirements, boq, selectedFloor, getCacheKey, saveDrawings]);
+  }, [aiImages, layout, requirements, boq, selectedFloor, getCacheKey, saveDrawingToCache]);
 
   /* ---------- PDF Export ---------- */
   const handleExportPDF = async () => {
