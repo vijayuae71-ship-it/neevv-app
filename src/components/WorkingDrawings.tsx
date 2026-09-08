@@ -130,7 +130,7 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq, on
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          prompt: buildDrawingPrompt(aiType as ApiDrawingType, layout, requirements, FLOOR_SPECIFIC.includes(drawingType) ? selectedFloor : undefined),
+          prompt: buildDrawingPrompt(aiType as ApiDrawingType, layout, requirements, FLOOR_SPECIFIC.includes(drawingType) ? selectedFloor : undefined, layout.designSeed),
           drawingType: aiType,
         }),
       });
@@ -195,7 +195,7 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq, on
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            prompt: buildDrawingPrompt(aiDrawingMap[dt] as ApiDrawingType, layout, requirements, FLOOR_SPECIFIC.includes(dt) ? selectedFloor : undefined),
+            prompt: buildDrawingPrompt(aiDrawingMap[dt] as ApiDrawingType, layout, requirements, FLOOR_SPECIFIC.includes(dt) ? selectedFloor : undefined, layout.designSeed),
             drawingType: aiDrawingMap[dt],
           }),
         });

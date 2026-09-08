@@ -1,3 +1,5 @@
+import type { DesignSeed } from './utils/drawingPrompts';
+
 export type Facing = 'North' | 'South' | 'East' | 'West';
 export type ParkingType = 'Stilt' | 'Open' | 'None';
 export type BudgetRange = 'economy' | 'standard' | 'premium' | 'luxury';
@@ -118,6 +120,7 @@ export interface Layout {
   numFloors?: number;
   plotWidthFt?: number;
   plotDepthFt?: number;
+  designSeed?: DesignSeed;
 }
 
 export interface BOQLineItem {

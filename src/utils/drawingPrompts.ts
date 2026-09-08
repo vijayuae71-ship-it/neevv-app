@@ -30,7 +30,7 @@ export interface DrawingTypeInfo {
   category: 'Floor Plans' | 'Elevations & 3D' | 'Structural' | 'MEP';
 }
 
-interface DesignSeed {
+export interface DesignSeed {
   palette: string;
   facade: string;
   windows: string;
@@ -98,7 +98,7 @@ PLUMBING, FOUNDATION, COLUMN, FOOTING, TERRACE, PARAPET, VENTILATION, ARCHITECTU
 If generating any table or text label, spell-check every word against this list.
 `;
 
-function generateDesignSeed(): DesignSeed {
+export function generateDesignSeed(): DesignSeed {
   const timestamp = Date.now();
   const random = Math.random();
   // Use timestamp + random to pick from design variation pools
@@ -274,7 +274,7 @@ function getFloorRooms(layout: any, floorIndex: number): any[] {
   return [];
 }
 
-export function buildDrawingPrompt(drawingType: DrawingType, layout: any, requirements: any, floor?: 'GF' | 'FF'): string {
+export function buildDrawingPrompt(drawingType: DrawingType, layout: any, requirements: any, floor?: 'GF' | 'FF', designSeed?: DesignSeed): string {
   const isFirstFloor = floor === 'FF';
   const floorContext = isFirstFloor ? 'FIRST FLOOR' : 'GROUND FLOOR';
 
@@ -297,8 +297,8 @@ export function buildDrawingPrompt(drawingType: DrawingType, layout: any, requir
   const state = requirements?.state || '';
   const plotArea = Math.round(plotW * plotD);
 
-  // Generate unique design seed for this client
-  const seed = generateDesignSeed();
+  // Use the locked layout's design seed for visual consistency across all drawings.
+  const seed = designSeed || generateDesignSeed();
 
   // Budget-driven material specifications — makes every budget tier look different
   const budgetMaterials: Record<string, string> = {
