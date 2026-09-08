@@ -18,6 +18,8 @@ import {
   Layers,
   ArrowRight,
   LayoutDashboard,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 
 const BRAND_GREEN = '#4f6f52';
@@ -31,6 +33,7 @@ export interface SavedProject {
   selectedLayout?: Layout;
   boq?: BOQ;
   drawingsGenerated?: number;
+  generatedDrawingTypes?: string[]; // list of drawing type keys that were generated
   step?: string;
   createdAt: string;
   updatedAt: string;
@@ -39,6 +42,38 @@ export interface SavedProject {
 interface DashboardProps {
   onNewProject: () => void;
   onOpenProject: (project: SavedProject) => void;
+}
+
+// ---------- drawing type label map ----------
+
+const DRAWING_TYPE_LABELS: { [key: string]: string } = {
+  floor_plan: 'Floor Plan',
+  elevation: 'Front Elevation',
+  section: 'Section Drawing',
+  excavation: 'Excavation',
+  foundation: 'Foundation',
+  footing_detail: 'Footing Detail',
+  rcc_layout: 'RCC Layout',
+  structural_layout: 'Structural Layout',
+  column_detail: 'Column Detail',
+  bbs: 'Bar Bending Schedule',
+  staircase: 'Staircase Detail',
+  water_tank: 'Water Tank',
+  waterproofing: 'Waterproofing',
+  stp: 'STP Detail',
+  electrical: 'Electrical Layout',
+  plumbing: 'Plumbing Layout',
+  tiling: 'Tiling Layout',
+  brickwork: 'Brickwork Layout',
+  furniture_layout: 'Furniture Layout',
+  false_ceiling: 'False Ceiling',
+  electrical_interior: 'Electrical Interior',
+  woodwork_detail: 'Woodwork Details',
+  flooring_layout: 'Flooring Layout',
+};
+
+function getDrawingTypeLabel(key: string): string {
+  return DRAWING_TYPE_LABELS[key] || key;
 }
 
 // ---------- formatting helpers ----------
@@ -141,6 +176,37 @@ function getDimensionsLabel(project: SavedProject): string {
   return '—';
 }
 
+function formatFloorSummary(floor: ProjectRequirements['floors'][number]): string {
+  const parts: string[] = [];
+  if (floor.bedrooms > 0) {
+    parts.push(`${floor.bedrooms}BHK`);
+  }
+  if (floor.kitchens > 0) {
+    parts.push(floor.kitchens > 1 ? `${floor.kitchens} Kitchens` : 'Kitchen');
+  }
+  if (floor.halls > 0) {
+    parts.push(floor.halls > 1 ? `${floor.halls} Halls` : 'Hall');
+  }
+  if (floor.hasDining) {
+    parts.push('Dining');
+  }
+  if (floor.hasPuja) {
+    parts.push('Puja');
+  }
+  return parts.length > 0 ? parts.join(' + ') : 'No rooms specified';
+}
+
+function formatBudgetLabel(budget: string): string {
+  return budget.charAt(0).toUpperCase() + budget.slice(1);
+}
+
+function formatStyleLabel(style: string): string {
+  return style
+    .split('_')
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ');
+}
+
 // ---------- component ----------
 
 export function Dashboard({ onNewProject, onOpenProject }: DashboardProps) {
@@ -149,6 +215,7 @@ export function Dashboard({ onNewProject, onOpenProject }: DashboardProps) {
   const [error, setError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const fetchProjects = useCallback(async () => {
     setLoading(true);
@@ -190,6 +257,10 @@ export function Dashboard({ onNewProject, onOpenProject }: DashboardProps) {
   const handleDownloadZip = useCallback((project: SavedProject) => {
     // Placeholder — ZIP export of drawings will be implemented later.
     alert(`Download ZIP for "${project.name}" is coming soon.`);
+  }, []);
+
+  const toggleExpanded = useCallback((projectId: string) => {
+    setExpandedId((prev) => (prev === projectId ? null : projectId));
   }, []);
 
   // ---------- derived stats ----------
@@ -273,6 +344,12 @@ export function Dashboard({ onNewProject, onOpenProject }: DashboardProps) {
               const status = getStatus(project);
               const drawings = project.drawingsGenerated || 0;
               const boqTotal = project.boq?.totalCost;
+              const isExpanded = expandedId === project.id;
+              const hasRequirements = !!project.requirements;
+              const hasLayout = !!project.selectedLayout;
+              const hasDrawingTypes = !!(project.generatedDrawingTypes && project.generatedDrawingTypes.length > 0);
+              const hasBOQ = !!project.boq;
+              const hasDetails = hasRequirements || hasLayout || hasDrawingTypes || hasBOQ;
 
               return (
                 <div key={project.id} style={styles.card}>
@@ -311,6 +388,111 @@ export function Dashboard({ onNewProject, onOpenProject }: DashboardProps) {
                     <Clock size={14} color="#888" />
                     <span style={styles.cardMetaText}>{formatRelativeDate(project.createdAt)}</span>
                   </div>
+
+                  {/* View Details toggle */}
+                  {hasDetails && (
+                    <button style={styles.detailsToggleBtn} onClick={() => toggleExpanded(project.id)}>
+                      {isExpanded ? 'Hide Details' : 'View Details'}
+                      {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                    </button>
+                  )}
+
+                  {/* Expanded details section */}
+                  {isExpanded && hasDetails && (
+                    <div style={styles.detailsSection}>
+                      {hasRequirements && project.requirements && (
+                        <div style={styles.detailsBlock}>
+                          <h4 style={styles.detailsBlockTitle}>Requirements</h4>
+                          <div style={styles.detailsRow}>
+                            <span style={styles.detailsLabel}>Plot:</span>
+                            <span style={styles.detailsValue}>
+                              {project.requirements.plotWidthFt} × {project.requirements.plotDepthFt} ft
+                            </span>
+                          </div>
+                          <div style={styles.detailsRow}>
+                            <span style={styles.detailsLabel}>Facing:</span>
+                            <span style={styles.detailsValue}>{project.requirements.facing}</span>
+                          </div>
+                          <div style={styles.detailsRow}>
+                            <span style={styles.detailsLabel}>Budget:</span>
+                            <span style={styles.detailsValue}>{formatBudgetLabel(project.requirements.budget)}</span>
+                          </div>
+                          <div style={styles.detailsRow}>
+                            <span style={styles.detailsLabel}>Style:</span>
+                            <span style={styles.detailsValue}>{formatStyleLabel(project.requirements.architecturalStyle)}</span>
+                          </div>
+                          {project.requirements.floors && project.requirements.floors.length > 0 && (
+                            <div style={styles.detailsFloorsWrap}>
+                              <span style={styles.detailsLabel}>Floors:</span>
+                              <ul style={styles.detailsFloorsList}>
+                                {project.requirements.floors.map((floor, idx) => (
+                                  <li key={idx} style={styles.detailsFloorsItem}>
+                                    <strong>{floor.floorLabel}:</strong> {formatFloorSummary(floor)}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {hasLayout && project.selectedLayout && (
+                        <div style={styles.detailsBlock}>
+                          <h4 style={styles.detailsBlockTitle}>Layout</h4>
+                          {project.selectedLayout.buildingWidthMm && project.selectedLayout.buildingDepthMm ? (
+                            <div style={styles.detailsRow}>
+                              <span style={styles.detailsLabel}>Building footprint:</span>
+                              <span style={styles.detailsValue}>
+                                {(project.selectedLayout.buildingWidthMm / 1000).toFixed(2)} × {(project.selectedLayout.buildingDepthMm / 1000).toFixed(2)} m
+                              </span>
+                            </div>
+                          ) : (
+                            <div style={styles.detailsRow}>
+                              <span style={styles.detailsLabel}>Plot:</span>
+                              <span style={styles.detailsValue}>
+                                {project.selectedLayout.plotWidthM} × {project.selectedLayout.plotDepthM} m
+                              </span>
+                            </div>
+                          )}
+                          <div style={styles.detailsRow}>
+                            <span style={styles.detailsLabel}>Rooms:</span>
+                            <span style={styles.detailsValue}>
+                              {project.selectedLayout.floors.reduce((sum, f) => sum + f.rooms.length, 0)}
+                            </span>
+                          </div>
+                          <div style={styles.detailsRow}>
+                            <span style={styles.detailsLabel}>Columns:</span>
+                            <span style={styles.detailsValue}>
+                              {project.selectedLayout.floors.reduce((sum, f) => sum + f.columns.length, 0)}
+                            </span>
+                          </div>
+                        </div>
+                      )}
+
+                      {hasDrawingTypes && project.generatedDrawingTypes && (
+                        <div style={styles.detailsBlock}>
+                          <h4 style={styles.detailsBlockTitle}>Drawings</h4>
+                          <div style={styles.drawingPillsWrap}>
+                            {project.generatedDrawingTypes.map((typeKey) => (
+                              <span key={typeKey} style={styles.drawingPill}>
+                                {getDrawingTypeLabel(typeKey)}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {hasBOQ && project.boq && (
+                        <div style={styles.detailsBlock}>
+                          <h4 style={styles.detailsBlockTitle}>BOQ Summary</h4>
+                          <div style={styles.detailsRow}>
+                            <span style={styles.detailsLabel}>Total:</span>
+                            <span style={styles.detailsValue}>{formatINR(project.boq.totalCost)}</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   <div style={styles.cardActions}>
                     <button style={styles.openBtn} onClick={() => onOpenProject(project)}>
@@ -570,6 +752,90 @@ const styles: { [key: string]: React.CSSProperties } = {
   cardMetaText: {
     fontSize: 13,
     color: '#555',
+  },
+  detailsToggleBtn: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginTop: 10,
+    marginBottom: 4,
+    padding: '7px 10px',
+    borderRadius: 8,
+    border: '1px solid #ddd',
+    backgroundColor: '#fafafa',
+    color: BRAND_GREEN,
+    fontSize: 12,
+    fontWeight: 600,
+    cursor: 'pointer',
+  },
+  detailsSection: {
+    marginTop: 8,
+    marginBottom: 8,
+    padding: '14px',
+    borderRadius: 10,
+    backgroundColor: '#fafbfa',
+    border: '1px solid #eee',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 14,
+  },
+  detailsBlock: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 4,
+  },
+  detailsBlockTitle: {
+    fontSize: 12,
+    fontWeight: 700,
+    color: BRAND_GREEN,
+    margin: '0 0 4px 0',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  detailsRow: {
+    display: 'flex',
+    alignItems: 'baseline',
+    gap: 6,
+    fontSize: 13,
+  },
+  detailsLabel: {
+    color: '#888',
+    fontWeight: 600,
+    flexShrink: 0,
+  },
+  detailsValue: {
+    color: '#333',
+  },
+  detailsFloorsWrap: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 4,
+    marginTop: 2,
+  },
+  detailsFloorsList: {
+    margin: '4px 0 0 0',
+    padding: '0 0 0 18px',
+  },
+  detailsFloorsItem: {
+    fontSize: 13,
+    color: '#333',
+    marginBottom: 3,
+  },
+  drawingPillsWrap: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 2,
+  },
+  drawingPill: {
+    fontSize: 11,
+    fontWeight: 600,
+    color: '#1e7d4d',
+    backgroundColor: '#e8f5e9',
+    padding: '4px 10px',
+    borderRadius: 14,
+    whiteSpace: 'nowrap',
   },
   cardActions: {
     display: 'flex',

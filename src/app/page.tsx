@@ -50,6 +50,7 @@ export default function HomePage() {
   const [roomDesignDepth, setRoomDesignDepth] = useState<number>(12);
   const [roomDesignStyle, setRoomDesignStyle] = useState<string>('modern_minimalist');
   const [drawingsGenerated, setDrawingsGenerated] = useState<number>(0);
+  const [generatedDrawingTypes, setGeneratedDrawingTypes] = useState<string[]>([]);
 
   const { projectId: autoSaveProjectId, saving: autoSaving, lastSaved } = useProjectAutoSave({
     mode,
@@ -58,7 +59,16 @@ export default function HomePage() {
     selectedLayout: selectedLayout ?? undefined,
     boq: boq ?? undefined,
     drawingsGenerated,
+    generatedDrawingTypes,
   });
+
+  const handleDrawingGenerated = useCallback((drawingType: string) => {
+    setGeneratedDrawingTypes(prev => {
+      if (prev.includes(drawingType)) return prev;
+      return [...prev, drawingType];
+    });
+    setDrawingsGenerated(prev => prev + 1);
+  }, []);
 
 
   // Auto-save to localStorage
@@ -464,6 +474,7 @@ const BRAND_GREEN = '#4f6f52';
               }
               if (project.boq) setBOQ(project.boq);
               setDrawingsGenerated(project.drawingsGenerated ?? 0);
+              setGeneratedDrawingTypes(project.generatedDrawingTypes ?? []);
 
               const restoredMode = (project.mode || 'new_build') as AppMode;
               setMode(restoredMode === 'dashboard' ? 'new_build' : restoredMode);
@@ -730,7 +741,7 @@ const BRAND_GREEN = '#4f6f52';
               <IsometricView layout={selectedLayout} requirements={requirements} />
             )}
             {step === 'working' && selectedLayout && requirements && (
-              <WorkingDrawings layout={selectedLayout} requirements={requirements} boq={boq} />
+              <WorkingDrawings layout={selectedLayout} requirements={requirements} boq={boq} onDrawingGenerated={handleDrawingGenerated} />
             )}
             {step === 'rates' && selectedLayout && requirements && (
               <RateSheet

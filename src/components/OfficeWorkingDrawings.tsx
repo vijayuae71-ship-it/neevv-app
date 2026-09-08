@@ -36,6 +36,10 @@ interface Props {
   officeReq: OfficeRequirements;
 }
 
+/* Brand colors */
+const BRAND_GREEN = '#4f6f52';
+const BRAND_ORANGE = '#e8734a';
+
 /* Drawing types whose content differs per floor and therefore need a GF/FF (or per-floor) toggle */
 const FLOOR_SPECIFIC_TYPES: OfficeDrawingType[] = [
   'electrical',
@@ -44,6 +48,41 @@ const FLOOR_SPECIFIC_TYPES: OfficeDrawingType[] = [
   'fireSafety',
   'plumbing',
 ];
+
+/* === 3D Visualization: additional drawing types not part of OFFICE_DRAWING_TYPES ===
+   These are handled locally (own prompt builder, own cache keys) since they don't
+   correspond to a floor-plan style technical drawing — they are photorealistic
+   full-building / full-space renders instead. */
+type Office3DDrawingType = 'office_3d_exterior' | 'office_3d_interior';
+type ExtendedOfficeDrawingType = OfficeDrawingType | Office3DDrawingType;
+
+interface DrawingTypeInfo {
+  id: ExtendedOfficeDrawingType;
+  label: string;
+  description: string;
+  icon: string;
+  category: string;
+}
+
+const OFFICE_3D_DRAWING_TYPES: DrawingTypeInfo[] = [
+  {
+    id: 'office_3d_exterior',
+    label: '3D Exterior Render',
+    description: 'Photorealistic 3D exterior view of the office building, entrance and facade.',
+    icon: '🏗️',
+    category: '3D Visualization',
+  },
+  {
+    id: 'office_3d_interior',
+    label: '3D Interior Render',
+    description: 'Photorealistic 3D interior view of the reception / main workspace area.',
+    icon: '🏗️',
+    category: '3D Visualization',
+  },
+];
+
+const isOffice3DType = (type: ExtendedOfficeDrawingType): type is Office3DDrawingType =>
+  type === 'office_3d_exterior' || type === 'office_3d_interior';
 
 /* Map icon name strings (as stored on OFFICE_DRAWING_TYPES) to lucide-react components */
 type IconComponent = typeof Layers;
@@ -62,13 +101,80 @@ const ICON_MAP: Record<string, IconComponent> = {
   Type,
 };
 
-const getIcon = (name: string): IconComponent => {
-  return ICON_MAP[name] || Layers;
+const getIcon = (name: string): IconComponent | null => {
+  return ICON_MAP[name] || null;
 };
 
 const LOCAL_STORAGE_PREFIX = 'office-';
 
-const buildCacheKey = (type: OfficeDrawingType, floor?: number) => `${LOCAL_STORAGE_PREFIX}${type}-${floor || 0}`;
+const buildCacheKey = (type: ExtendedOfficeDrawingType, floor?: number) => `${LOCAL_STORAGE_PREFIX}${type}-${floor || 0}`;
+
+/* ---------- Helpers for building 3D render prompts from office requirements ---------- */
+
+const OFFICE_STYLE_LABEL: Record<string, string> = {
+  corporate: 'corporate',
+  startup: 'startup',
+  coworking: 'coworking',
+  minimal: 'minimal',
+  biophilic: 'biophilic',
+};
+
+function summarizeOfficeFloors(officeReq: OfficeRequirements): string {
+  if (!officeReq?.floors?.length) return 'a modern office layout';
+  return officeReq.floors
+    .map((f, idx) => {
+      const parts: string[] = [];
+      if (f.workstations) parts.push(`${f.workstations} open workstations`);
+      if (f.managerCabins) parts.push(`${f.managerCabins} manager cabins`);
+      if (f.directorCabins) parts.push(`${f.directorCabins} director cabins`);
+      if (f.mdCabin) parts.push('an MD cabin');
+      if (f.conferenceSmall) parts.push(`${f.conferenceSmall} small conference room(s)`);
+      if (f.conferenceLarge) parts.push(`${f.conferenceLarge} large conference room(s)`);
+      if (f.boardRoom) parts.push('a board room');
+      if (f.hasReception) parts.push('a reception area');
+      if (f.hasPantry) parts.push('a pantry');
+      if (f.hasCafeteria) parts.push('a cafeteria');
+      if (f.hasServerRoom) parts.push('a server room');
+      if (f.hasBreakRoom) parts.push('a break room');
+      const label = f.floorLabel || (idx === 0 ? 'Ground Floor' : `Floor ${idx}`);
+      return `${label}: ${parts.join(', ') || 'general office space'}`;
+    })
+    .join(' | ');
+}
+
+function buildOffice3DExteriorPrompt(layout: Layout, officeReq: OfficeRequirements): string {
+  const style = OFFICE_STYLE_LABEL[officeReq?.officeStyle] || 'modern corporate';
+  const width = officeReq?.plotWidthFt ?? layout?.plotWidthM;
+  const depth = officeReq?.plotDepthFt ?? layout?.plotDepthM;
+  const floorCount = officeReq?.floors?.length ?? layout?.floors?.length ?? 1;
+  const roomSummary = summarizeOfficeFloors(officeReq);
+
+  return `Generate a photorealistic 3D exterior render of a modern ${style} office building.
+Plot: ${width}${width ? ' ft' : ''} × ${depth}${depth ? ' ft' : ''}, ${floorCount} floor(s).
+Building features (by floor): ${roomSummary}.
+Style: ${style}.
+Show the building from a 3/4 perspective view with landscaping, entrance, signage area, and parking (${officeReq?.parkingType || 'as available'}).
+Professional architectural visualization, daytime lighting, high quality.
+ALL DIMENSIONS IN MILLIMETRES (mm) — NEVER label as metres (m).`;
+}
+
+function buildOffice3DInteriorPrompt(layout: Layout, officeReq: OfficeRequirements): string {
+  const style = OFFICE_STYLE_LABEL[officeReq?.officeStyle] || 'modern corporate';
+  const roomSummary = summarizeOfficeFloors(officeReq);
+
+  return `Generate a photorealistic 3D interior render of a ${style} office space.
+Room layout: ${roomSummary}.
+Style: ${style} with appropriate furniture, lighting, and decor.
+Show the main workspace/reception area from an eye-level perspective.
+Modern corporate interior design, natural lighting through windows.
+Professional architectural visualization, high quality render.`;
+}
+
+function buildOffice3DPrompt(type: Office3DDrawingType, layout: Layout, officeReq: OfficeRequirements): string {
+  return type === 'office_3d_exterior'
+    ? buildOffice3DExteriorPrompt(layout, officeReq)
+    : buildOffice3DInteriorPrompt(layout, officeReq);
+}
 
 export const OfficeWorkingDrawings: React.FC<Props> = ({ layout, officeReq }) => {
   const [images, setImages] = useState<Record<string, string>>({});
@@ -105,20 +211,25 @@ export const OfficeWorkingDrawings: React.FC<Props> = ({ layout, officeReq }) =>
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const isFloorSpecific = useCallback((type: OfficeDrawingType) => FLOOR_SPECIFIC_TYPES.includes(type), []);
+  const isFloorSpecific = useCallback(
+    (type: ExtendedOfficeDrawingType) => !isOffice3DType(type) && FLOOR_SPECIFIC_TYPES.includes(type as OfficeDrawingType),
+    []
+  );
 
   const getFloorForType = useCallback(
-    (type: OfficeDrawingType) => floorSelection[type] ?? 0,
+    (type: ExtendedOfficeDrawingType) => floorSelection[type] ?? 0,
     [floorSelection]
   );
 
-  const setFloorForType = useCallback((type: OfficeDrawingType, floor: number) => {
+  const setFloorForType = useCallback((type: ExtendedOfficeDrawingType, floor: number) => {
     setFloorSelection(prev => ({ ...prev, [type]: floor }));
   }, []);
 
   /* ---------- Apply canvas text overlay onto a freshly generated / cached image ---------- */
+  /* Note: 3D photorealistic renders never receive the technical-drawing text overlay. */
   const applyOverlay = useCallback(
-    (cacheKey: string, type: OfficeDrawingType, floor?: number) => {
+    (cacheKey: string, type: ExtendedOfficeDrawingType, floor?: number) => {
+      if (isOffice3DType(type)) return;
       const srcData = images[cacheKey];
       if (!srcData) return;
       const img = new Image();
@@ -130,7 +241,7 @@ export const OfficeWorkingDrawings: React.FC<Props> = ({ layout, officeReq }) =>
           const ctx = canvas.getContext('2d');
           if (!ctx) return;
           ctx.drawImage(img, 0, 0);
-          applyOfficeTextOverlay(canvas, type, layout, officeReq, floor);
+          applyOfficeTextOverlay(canvas, type as OfficeDrawingType, layout, officeReq, floor);
           const overlaid = canvas.toDataURL('image/png');
           setImages(prev => ({ ...prev, [cacheKey]: overlaid }));
           setCachedDrawing(cacheKey, overlaid).catch(e => console.warn('Failed to persist overlaid drawing:', e));
@@ -145,7 +256,7 @@ export const OfficeWorkingDrawings: React.FC<Props> = ({ layout, officeReq }) =>
 
   /* ---------- Generate (or load cached) drawing ---------- */
   const generateDrawing = useCallback(
-    async (type: OfficeDrawingType, floor?: number) => {
+    async (type: ExtendedOfficeDrawingType, floor?: number) => {
       const cacheKey = buildCacheKey(type, floor);
 
       // Check IndexedDB cache first
@@ -163,7 +274,9 @@ export const OfficeWorkingDrawings: React.FC<Props> = ({ layout, officeReq }) =>
       });
 
       try {
-        const prompt = getOfficeDrawingPrompt(type, layout, officeReq, floor);
+        const prompt = isOffice3DType(type)
+          ? buildOffice3DPrompt(type, layout, officeReq)
+          : getOfficeDrawingPrompt(type as OfficeDrawingType, layout, officeReq, floor);
         const res = await authFetch('/api/generate-drawing', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -189,7 +302,7 @@ export const OfficeWorkingDrawings: React.FC<Props> = ({ layout, officeReq }) =>
   );
 
   const regenerateDrawing = useCallback(
-    async (type: OfficeDrawingType, floor?: number) => {
+    async (type: ExtendedOfficeDrawingType, floor?: number) => {
       const cacheKey = buildCacheKey(type, floor);
       await removeCachedDrawing(cacheKey);
       setImages(prev => {
@@ -230,29 +343,55 @@ export const OfficeWorkingDrawings: React.FC<Props> = ({ layout, officeReq }) =>
     }
   }, []);
 
+  /* Combined list: existing technical drawing types + the new 3D Visualization types */
+  const allDrawingTypes: DrawingTypeInfo[] = useMemo(
+    () => [...OFFICE_DRAWING_TYPES, ...OFFICE_3D_DRAWING_TYPES],
+    []
+  );
+
   const categories = useMemo(() => {
     const set = new Set<string>();
-    OFFICE_DRAWING_TYPES.forEach(d => set.add(d.category));
+    allDrawingTypes.forEach(d => set.add(d.category));
     return Array.from(set);
-  }, []);
+  }, [allDrawingTypes]);
 
   const visibleDrawingTypes = useMemo(() => {
-    if (activeCategory === 'All') return OFFICE_DRAWING_TYPES;
-    return OFFICE_DRAWING_TYPES.filter(d => d.category === activeCategory);
-  }, [activeCategory]);
+    if (activeCategory === 'All') return allDrawingTypes;
+    return allDrawingTypes.filter(d => d.category === activeCategory);
+  }, [activeCategory, allDrawingTypes]);
 
   const generatedCount = useMemo(() => Object.keys(images).length, [images]);
 
   return (
-    <div className="flex flex-col w-full bg-white">
+    <div style={{ display: 'flex', flexDirection: 'column', width: '100%', backgroundColor: '#ffffff' }}>
       {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b border-gray-200">
+      <div
+        style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 12,
+          padding: '12px 16px',
+          borderBottom: '1px solid #e5e7eb',
+        }}
+      >
         <div>
-          <h2 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
-            <Sparkles size={18} className="text-blue-600" />
+          <h2
+            style={{
+              fontSize: 18,
+              fontWeight: 600,
+              color: '#1f2937',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              margin: 0,
+            }}
+          >
+            <Sparkles size={18} style={{ color: BRAND_GREEN }} />
             Office Working Drawings
           </h2>
-          <p className="text-xs text-gray-500 mt-0.5">
+          <p style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>
             {generatedCount} drawing{generatedCount === 1 ? '' : 's'} generated
             {designSeed ? ` · Design seed: ${designSeed}` : ''}
           </p>
@@ -260,7 +399,19 @@ export const OfficeWorkingDrawings: React.FC<Props> = ({ layout, officeReq }) =>
         <button
           type="button"
           onClick={clearAllOfficeDrawings}
-          className="flex items-center gap-1.5 text-sm font-medium text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 rounded-md px-3 py-1.5 transition-colors"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            fontSize: 14,
+            fontWeight: 500,
+            color: '#dc2626',
+            backgroundColor: '#fef2f2',
+            border: '1px solid #fecaca',
+            borderRadius: 6,
+            padding: '6px 12px',
+            cursor: 'pointer',
+          }}
         >
           <Trash2 size={14} />
           Clear All Office Drawings
@@ -268,17 +419,32 @@ export const OfficeWorkingDrawings: React.FC<Props> = ({ layout, officeReq }) =>
       </div>
 
       {/* Category tabs */}
-      <div className="flex flex-wrap gap-2 px-4 py-3 border-b border-gray-100 bg-gray-50">
+      <div
+        style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: 8,
+          padding: '12px 16px',
+          borderBottom: '1px solid #f3f4f6',
+          backgroundColor: '#f9fafb',
+        }}
+      >
         {['All', ...categories].map(cat => (
           <button
             key={cat}
             type="button"
             onClick={() => setActiveCategory(cat)}
-            className={`text-sm font-medium rounded-full px-3 py-1.5 transition-colors ${
-              activeCategory === cat
-                ? 'bg-blue-600 text-white'
-                : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-100'
-            }`}
+            style={{
+              fontSize: 14,
+              fontWeight: 500,
+              borderRadius: 9999,
+              padding: '6px 12px',
+              cursor: 'pointer',
+              transition: 'background-color 0.15s, color 0.15s',
+              backgroundColor: activeCategory === cat ? BRAND_GREEN : '#ffffff',
+              color: activeCategory === cat ? '#ffffff' : '#4b5563',
+              border: activeCategory === cat ? `1px solid ${BRAND_GREEN}` : '1px solid #e5e7eb',
+            }}
           >
             {cat}
           </button>
@@ -286,8 +452,16 @@ export const OfficeWorkingDrawings: React.FC<Props> = ({ layout, officeReq }) =>
       </div>
 
       {/* Drawing cards grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 p-4">
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+          gap: 16,
+          padding: 16,
+        }}
+      >
         {visibleDrawingTypes.map(drawingInfo => {
+          const is3D = isOffice3DType(drawingInfo.id);
           const Icon = getIcon(drawingInfo.icon);
           const floorSpecific = isFloorSpecific(drawingInfo.id);
           const floor = floorSpecific ? getFloorForType(drawingInfo.id) : undefined;
@@ -299,31 +473,80 @@ export const OfficeWorkingDrawings: React.FC<Props> = ({ layout, officeReq }) =>
           return (
             <div
               key={drawingInfo.id}
-              className="flex flex-col bg-gray-100 rounded-lg border border-gray-200 hover:shadow-md transition-shadow overflow-hidden"
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                backgroundColor: '#f3f4f6',
+                borderRadius: 8,
+                border: '1px solid #e5e7eb',
+                overflow: 'hidden',
+              }}
             >
-              <div className="flex items-start gap-3 p-4">
-                <div className="flex items-center justify-center w-10 h-10 rounded-md bg-blue-600/10 text-blue-600 shrink-0">
-                  <Icon size={20} />
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: 16 }}>
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    width: 40,
+                    height: 40,
+                    borderRadius: 6,
+                    backgroundColor: is3D ? `${BRAND_ORANGE}1a` : `${BRAND_GREEN}1a`,
+                    color: is3D ? BRAND_ORANGE : BRAND_GREEN,
+                    flexShrink: 0,
+                    fontSize: 20,
+                  }}
+                >
+                  {Icon ? <Icon size={20} /> : <span>{drawingInfo.icon}</span>}
                 </div>
-                <div className="min-w-0 flex-1">
-                  <h3 className="text-sm font-semibold text-gray-800 truncate">{drawingInfo.label}</h3>
-                  <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{drawingInfo.description}</p>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <h3
+                    style={{
+                      fontSize: 14,
+                      fontWeight: 600,
+                      color: '#1f2937',
+                      margin: 0,
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                    }}
+                  >
+                    {drawingInfo.label}
+                  </h3>
+                  <p
+                    style={{
+                      fontSize: 12,
+                      color: '#6b7280',
+                      marginTop: 2,
+                      display: '-webkit-box',
+                      WebkitLineClamp: 2,
+                      WebkitBoxOrient: 'vertical',
+                      overflow: 'hidden',
+                    }}
+                  >
+                    {drawingInfo.description}
+                  </p>
                 </div>
               </div>
 
               {/* Floor toggle */}
               {floorSpecific && isMultiFloor && (
-                <div className="flex items-center gap-1 px-4 pb-2">
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '0 16px 8px' }}>
                   {officeReq.floors.map((f, idx) => (
                     <button
                       key={idx}
                       type="button"
                       onClick={() => setFloorForType(drawingInfo.id, idx)}
-                      className={`text-[11px] font-mono rounded px-2 py-1 border transition-colors ${
-                        (floor ?? 0) === idx
-                          ? 'bg-blue-600 text-white border-blue-600'
-                          : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
-                      }`}
+                      style={{
+                        fontSize: 11,
+                        fontFamily: 'monospace',
+                        borderRadius: 4,
+                        padding: '4px 8px',
+                        cursor: 'pointer',
+                        backgroundColor: (floor ?? 0) === idx ? BRAND_GREEN : '#ffffff',
+                        color: (floor ?? 0) === idx ? '#ffffff' : '#4b5563',
+                        border: (floor ?? 0) === idx ? `1px solid ${BRAND_GREEN}` : '1px solid #d1d5db',
+                      }}
                     >
                       {f.floorLabel || (idx === 0 ? 'GF' : `F${idx}`)}
                     </button>
@@ -332,36 +555,98 @@ export const OfficeWorkingDrawings: React.FC<Props> = ({ layout, officeReq }) =>
               )}
 
               {/* Image / state area */}
-              <div className="flex-1 flex items-center justify-center bg-white mx-4 mb-3 rounded border border-gray-200 min-h-[140px] overflow-hidden">
+              <div
+                style={{
+                  flex: 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: '#ffffff',
+                  marginLeft: 16,
+                  marginRight: 16,
+                  marginBottom: 12,
+                  borderRadius: 6,
+                  border: '1px solid #e5e7eb',
+                  minHeight: 140,
+                  overflow: 'hidden',
+                }}
+              >
                 {isGenerating ? (
-                  <div className="flex flex-col items-center gap-2 py-6 text-gray-500">
-                    <Loader2 size={24} className="animate-spin text-blue-600" />
-                    <span className="text-xs">Generating...</span>
+                  <div
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      gap: 8,
+                      padding: '24px 0',
+                      color: '#6b7280',
+                    }}
+                  >
+                    <Loader2 size={24} className="animate-spin" style={{ color: BRAND_GREEN }} />
+                    <span style={{ fontSize: 12 }}>Generating...</span>
                   </div>
                 ) : image ? (
-                  <img src={image} alt={drawingInfo.label} className="w-full h-full object-contain" />
+                  <img
+                    src={image}
+                    alt={drawingInfo.label}
+                    style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                  />
                 ) : error ? (
-                  <div className="flex flex-col items-center gap-1 py-6 px-3 text-center text-red-600">
+                  <div
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      gap: 4,
+                      padding: '24px 12px',
+                      textAlign: 'center',
+                      color: '#dc2626',
+                    }}
+                  >
                     <AlertTriangle size={20} />
-                    <span className="text-xs">{error}</span>
+                    <span style={{ fontSize: 12 }}>{error}</span>
                   </div>
                 ) : (
-                  <div className="flex flex-col items-center gap-1 py-6 text-gray-300">
-                    <Icon size={32} />
-                    <span className="text-[11px] text-gray-400">Not generated yet</span>
+                  <div
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      gap: 4,
+                      padding: '24px 0',
+                      color: '#d1d5db',
+                    }}
+                  >
+                    {Icon ? <Icon size={32} /> : <span style={{ fontSize: 32 }}>{drawingInfo.icon}</span>}
+                    <span style={{ fontSize: 11, color: '#9ca3af' }}>Not generated yet</span>
                   </div>
                 )}
               </div>
 
               {/* Actions */}
-              <div className="flex items-center gap-2 px-4 pb-4">
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0 16px 16px' }}>
                 {image ? (
                   <>
                     <button
                       type="button"
                       onClick={() => regenerateDrawing(drawingInfo.id, floor)}
                       disabled={isGenerating}
-                      className="flex-1 flex items-center justify-center gap-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md px-3 py-2 hover:bg-gray-50 disabled:opacity-50 transition-colors"
+                      style={{
+                        flex: 1,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 6,
+                        fontSize: 12,
+                        fontWeight: 500,
+                        color: '#374151',
+                        backgroundColor: '#ffffff',
+                        border: '1px solid #d1d5db',
+                        borderRadius: 6,
+                        padding: '8px 12px',
+                        cursor: isGenerating ? 'default' : 'pointer',
+                        opacity: isGenerating ? 0.5 : 1,
+                      }}
                     >
                       <RefreshCw size={13} />
                       Regenerate
@@ -369,7 +654,21 @@ export const OfficeWorkingDrawings: React.FC<Props> = ({ layout, officeReq }) =>
                     <button
                       type="button"
                       onClick={() => downloadDrawing(cacheKey)}
-                      className="flex-1 flex items-center justify-center gap-1.5 text-xs font-medium text-white bg-blue-600 rounded-md px-3 py-2 hover:bg-blue-700 transition-colors"
+                      style={{
+                        flex: 1,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 6,
+                        fontSize: 12,
+                        fontWeight: 500,
+                        color: '#ffffff',
+                        backgroundColor: BRAND_GREEN,
+                        border: 'none',
+                        borderRadius: 6,
+                        padding: '8px 12px',
+                        cursor: 'pointer',
+                      }}
                     >
                       <Download size={13} />
                       Download
@@ -380,7 +679,22 @@ export const OfficeWorkingDrawings: React.FC<Props> = ({ layout, officeReq }) =>
                     type="button"
                     onClick={() => generateDrawing(drawingInfo.id, floor)}
                     disabled={isGenerating}
-                    className="w-full flex items-center justify-center gap-1.5 text-xs font-semibold text-white bg-blue-600 rounded-md px-3 py-2 hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                    style={{
+                      width: '100%',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 6,
+                      fontSize: 12,
+                      fontWeight: 600,
+                      color: '#ffffff',
+                      backgroundColor: is3D ? BRAND_ORANGE : BRAND_GREEN,
+                      border: 'none',
+                      borderRadius: 6,
+                      padding: '8px 12px',
+                      cursor: isGenerating ? 'default' : 'pointer',
+                      opacity: isGenerating ? 0.5 : 1,
+                    }}
                   >
                     {isGenerating ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
                     {isGenerating ? 'Generating...' : 'Generate'}
@@ -393,8 +707,17 @@ export const OfficeWorkingDrawings: React.FC<Props> = ({ layout, officeReq }) =>
       </div>
 
       {/* Disclaimer */}
-      <div className="px-4 py-3 border-t border-gray-200 bg-gray-50">
-        <p className="text-[11px] text-gray-500 font-mono text-center tracking-wide">
+      <div style={{ padding: '12px 16px', borderTop: '1px solid #e5e7eb', backgroundColor: '#f9fafb' }}>
+        <p
+          style={{
+            fontSize: 11,
+            color: '#6b7280',
+            fontFamily: 'monospace',
+            textAlign: 'center',
+            letterSpacing: '0.05em',
+            margin: 0,
+          }}
+        >
           PRELIMINARY DESIGN — VERIFY WITH LICENSED PROFESSIONAL BEFORE EXECUTION
         </p>
       </div>

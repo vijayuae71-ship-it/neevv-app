@@ -13,6 +13,7 @@ interface UseProjectAutoSaveArgs {
   selectedLayout?: Layout;
   boq?: BOQ;
   drawingsGenerated?: number;
+  generatedDrawingTypes?: string[];
 }
 
 interface UseProjectAutoSaveResult {
@@ -69,7 +70,7 @@ function generateProjectName(args: UseProjectAutoSaveArgs): string {
 }
 
 export function useProjectAutoSave(args: UseProjectAutoSaveArgs): UseProjectAutoSaveResult {
-  const { mode, step, requirements, selectedLayout, boq, drawingsGenerated } = args;
+  const { mode, step, requirements, selectedLayout, boq, drawingsGenerated, generatedDrawingTypes } = args;
 
   const [projectId, setProjectId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -98,6 +99,7 @@ export function useProjectAutoSave(args: UseProjectAutoSaveArgs): UseProjectAuto
         selectedLayout: stripLayoutForSave(current.selectedLayout),
         boq: current.boq,
         drawingsGenerated: current.drawingsGenerated ?? 0,
+        generatedDrawingTypes: current.generatedDrawingTypes ?? [],
       };
 
       const res = await authFetch('/api/save-project', {
@@ -136,7 +138,7 @@ export function useProjectAutoSave(args: UseProjectAutoSaveArgs): UseProjectAuto
 
   // Debounced auto-save whenever tracked data changes.
   useEffect(() => {
-    if (!hasMeaningfulData({ mode, step, requirements, selectedLayout, boq, drawingsGenerated })) {
+    if (!hasMeaningfulData({ mode, step, requirements, selectedLayout, boq, drawingsGenerated, generatedDrawingTypes })) {
       return;
     }
 
@@ -162,6 +164,7 @@ export function useProjectAutoSave(args: UseProjectAutoSaveArgs): UseProjectAuto
     selectedLayout,
     boq,
     drawingsGenerated,
+    generatedDrawingTypes,
     hasMeaningfulData,
     performSave,
   ]);

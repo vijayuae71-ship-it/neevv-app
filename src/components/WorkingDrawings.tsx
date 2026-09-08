@@ -15,6 +15,7 @@ import { getCachedDrawing, setCachedDrawing, getAllCachedDrawings, clearCachedDr
 import { buildDrawingPrompt, DrawingType as ApiDrawingType } from '../utils/drawingPrompts';
 
 interface Props {
+  onDrawingGenerated?: (drawingType: string) => void;
   layout: Layout;
   requirements: ProjectRequirements;
   boq?: BOQ | null;
@@ -63,7 +64,7 @@ const aiDrawingMap: Record<DrawingType, string> = {
 /* Drawing types that differ between Ground Floor and First Floor and need separate generation/caching */
 const FLOOR_SPECIFIC: DrawingType[] = ['electrical', 'plumbing', 'tiling', 'brickwork'];
 
-export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq }) => {
+export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq, onDrawingGenerated }) => {
   const [activeDrawing, setActiveDrawing] = useState<DrawingType>('excavation');
   const [zoom, setZoom] = useState(100);
   const [selectedFloor, setSelectedFloor] = useState<'GF' | 'FF'>('GF');
@@ -153,6 +154,7 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq }) 
           return updated;
         });
         saveDrawingToCache(cacheKey, finalImg);
+        onDrawingGenerated?.(drawingType);
       } else {
         throw new Error('No image in response from neevv Generation Pro');
       }
@@ -163,7 +165,7 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq }) 
     } finally {
       setAiLoading(null);
     }
-  }, [layout, requirements, boq, selectedFloor, getCacheKey, saveDrawingToCache]);
+  }, [layout, requirements, boq, selectedFloor, getCacheKey, saveDrawingToCache, onDrawingGenerated]);
 
   /* ---------- Click handler for generate button ---------- */
   const handleGenerate = useCallback((drawingType: DrawingType) => {
@@ -212,6 +214,7 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq }) 
             return updated;
           });
           saveDrawingToCache(cacheKey, finalImg);
+          onDrawingGenerated?.(dt);
         }
       } catch {
         // Continue to next drawing
@@ -220,7 +223,7 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq }) 
 
     setAiLoading(null);
     setGeneratingAll(false);
-  }, [aiImages, layout, requirements, boq, selectedFloor, getCacheKey, saveDrawingToCache]);
+  }, [aiImages, layout, requirements, boq, selectedFloor, getCacheKey, saveDrawingToCache, onDrawingGenerated]);
 
   /* ---------- PDF Export ---------- */
   const handleExportPDF = async () => {
