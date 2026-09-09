@@ -1,5 +1,5 @@
 import { initializeApp, getApps } from 'firebase/app';
-import { getAuth, GoogleAuthProvider } from 'firebase/auth';
+import { getAuth, GoogleAuthProvider, signInAnonymously, onAuthStateChanged, User } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 
 const firebaseConfig = {
@@ -18,5 +18,37 @@ const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 export const googleProvider = new GoogleAuthProvider();
+
+/**
+ * Ensure user is authenticated — sign in anonymously if no user.
+ * Returns the current Firebase User (anonymous or Google-signed-in).
+ * Call this before any Firestore or API operation.
+ */
+let authReady: Promise<User | null> | null = null;
+
+export function ensureAuth(): Promise<User | null> {
+  if (authReady) return authReady;
+  
+  authReady = new Promise((resolve) => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      unsubscribe();
+      if (user) {
+        // Already signed in (Google or anonymous)
+        resolve(user);
+      } else {
+        // No user — sign in anonymously
+        try {
+          const cred = await signInAnonymously(auth);
+          resolve(cred.user);
+        } catch (error) {
+          console.warn('Anonymous sign-in failed:', error);
+          resolve(null);
+        }
+      }
+    });
+  });
+  
+  return authReady;
+}
 
 export default app;

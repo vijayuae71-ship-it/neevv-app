@@ -1,11 +1,13 @@
 'use client';
 
-import { auth } from '@/lib/firebase';
+import { ensureAuth } from '@/lib/firebase';
 
 /**
- * Authenticated fetch wrapper — attaches Firebase ID token if user is signed in.
- * During beta: works without sign-in (sends request without auth header).
- * After beta: can enforce sign-in by uncommenting the throw.
+ * Authenticated fetch wrapper — ensures user is signed in (at minimum anonymously)
+ * and attaches Firebase ID token to every request.
+ * 
+ * With Firebase Anonymous Auth enabled, every user gets a real auth.uid
+ * which makes Firestore security rules work for all users.
  */
 export async function authFetch(
   url: string,
@@ -14,18 +16,14 @@ export async function authFetch(
   const headers = new Headers(options.headers);
 
   try {
-    const user = auth.currentUser;
+    const user = await ensureAuth();
     if (user) {
       const token = await user.getIdToken();
       headers.set('Authorization', `Bearer ${token}`);
     }
-    // Beta: allow unauthenticated requests
-    // Post-beta: uncomment below to enforce sign-in
-    // else {
-    //   throw new Error('Please sign in to continue.');
-    // }
+    // If ensureAuth() returned null (rare edge case), request proceeds
+    // without auth — server middleware will fall back to IP-hash
   } catch (error) {
-    // If token retrieval fails, proceed without auth (beta mode)
     console.warn('Auth token not available, proceeding without auth:', error);
   }
 
