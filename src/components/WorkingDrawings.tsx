@@ -184,9 +184,10 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq, on
     setAiError(null);
     const allTypes = Object.keys(aiDrawingMap) as DrawingType[];
 
-    for (const dt of allTypes) {
-      const cacheKey = getCacheKey(dt, selectedFloor);
-      if (aiImages[cacheKey]) continue; // Skip cached
+    const genOne = async (dt: DrawingType, floor: 'GF' | 'FF') => {
+      setSelectedFloor(floor);
+      const cacheKey = getCacheKey(dt, floor);
+      if (aiImages[cacheKey]) return; // Skip cached
 
       setAiLoading(dt);
       setActiveDrawing(dt);
@@ -195,7 +196,7 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq, on
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            prompt: buildDrawingPrompt(aiDrawingMap[dt] as ApiDrawingType, layout, requirements, FLOOR_SPECIFIC.includes(dt) ? selectedFloor : undefined, layout.designSeed),
+            prompt: buildDrawingPrompt(aiDrawingMap[dt] as ApiDrawingType, layout, requirements, FLOOR_SPECIFIC.includes(dt) ? floor : undefined, layout.designSeed),
             drawingType: aiDrawingMap[dt],
           }),
         });
@@ -204,7 +205,7 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq, on
           let finalImg = data.imageDataUri;
           if ((OVERLAY_DRAWING_TYPES as readonly string[]).includes(dt) && boq) {
             try {
-              finalImg = await applyTextOverlay(finalImg, dt, layout, boq, selectedFloor);
+              finalImg = await applyTextOverlay(finalImg, dt, layout, boq, floor);
             } catch (e) {
               console.warn('Text overlay failed, using raw AI image:', e);
             }
@@ -219,11 +220,21 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq, on
       } catch {
         // Continue to next drawing
       }
+    };
+
+    for (const dt of allTypes) {
+      await genOne(dt, 'GF');
+    }
+    if (isMultiFloor) {
+      for (const dt of FLOOR_SPECIFIC) {
+        await genOne(dt, 'FF');
+      }
     }
 
     setAiLoading(null);
+    setSelectedFloor('GF');
     setGeneratingAll(false);
-  }, [aiImages, layout, requirements, boq, selectedFloor, getCacheKey, saveDrawingToCache, onDrawingGenerated]);
+  }, [aiImages, layout, requirements, boq, isMultiFloor, getCacheKey, saveDrawingToCache, onDrawingGenerated]);
 
   /* ---------- PDF Export ---------- */
   const handleExportPDF = async () => {
