@@ -35,7 +35,20 @@ export default function HomePage() {
   const { user, loading: authLoading, signInWithGoogle, signOut } = useAuth();
   const { saveProject, saving } = useProject();
 
-  const [mode, setMode] = useState<AppMode>('landing');
+  const [mode, setModeRaw] = useState<AppMode>('landing');
+
+  // Wrap setMode to push browser history — back button returns to landing
+  const setMode = useCallback((newMode: AppMode) => {
+    setModeRaw(prevMode => {
+      if (newMode !== 'landing' && prevMode === 'landing') {
+        window.history.pushState({ mode: newMode }, '', window.location.pathname);
+      } else if (newMode === 'landing') {
+        // When going to landing programmatically, replace state
+        window.history.replaceState({ mode: 'landing' }, '', window.location.pathname);
+      }
+      return newMode;
+    });
+  }, []);
   const [step, setStep] = useState<AppStep>('requirements');
   const [requirements, setRequirements] = useState<ProjectRequirements | null>(null);
   const [layouts, setLayouts] = useState<Layout[]>([]);
@@ -113,6 +126,22 @@ export default function HomePage() {
     } catch (e) {
       console.warn('Restore failed:', e);
     }
+  }, []);
+
+  // Handle browser back button — return to landing page instead of leaving
+  useEffect(() => {
+    const handlePopState = (event: PopStateEvent) => {
+      if (event.state?.mode) {
+        setModeRaw(event.state.mode);
+      } else {
+        // No state = initial landing page
+        setModeRaw('landing');
+      }
+    };
+    window.addEventListener('popstate', handlePopState);
+    // Set initial state for landing
+    window.history.replaceState({ mode: 'landing' }, '', window.location.pathname);
+    return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
   const canNavigate = (target: AppStep): boolean => {
