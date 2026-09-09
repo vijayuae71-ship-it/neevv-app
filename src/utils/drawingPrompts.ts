@@ -30,6 +30,9 @@ export interface DrawingTypeInfo {
   category: 'Floor Plans' | 'Elevations & 3D' | 'Structural' | 'MEP';
 }
 
+import type { OpeningsSchedule } from '../types';
+import { describeWallOpenings } from './openingsExtractor';
+
 export interface DesignSeed {
   palette: string;
   facade: string;
@@ -96,6 +99,13 @@ EXCAVATION, STRUCTURAL, ELEVATION, BUILDING, RESIDENTIAL, DISTRIBUTION, DRAINAGE
 TREATMENT, CEILING, EXHAUST, KITCHEN, BATHROOM, BEDROOM, DINING, LIVING, ELECTRICAL,
 PLUMBING, FOUNDATION, COLUMN, FOOTING, TERRACE, PARAPET, VENTILATION, ARCHITECTURE.
 If generating any table or text label, spell-check every word against this list.
+CRITICAL — DIMENSION LABEL RULES:
+• DO NOT draw any dimension numbers, measurement labels, or annotation text on the drawing itself.
+• The programmatic overlay system will add ALL computed dimensions, labels, and data panels.
+• Draw ONLY the visual/graphical elements (walls, rooms, symbols, hatching, structural elements).
+• Dimension chains, tick marks, and grid labels should be drawn but WITHOUT numerical values — leave them blank for overlay.
+• ALL DIMENSIONS IN MILLIMETRES (mm) — NEVER label as metres (m).
+
 `;
 
 export function generateDesignSeed(): DesignSeed {
@@ -275,6 +285,7 @@ function getFloorRooms(layout: any, floorIndex: number): any[] {
 }
 
 export function buildDrawingPrompt(drawingType: DrawingType, layout: any, requirements: any, floor?: 'GF' | 'FF', designSeed?: DesignSeed): string {
+  const openingsSchedule: OpeningsSchedule | undefined = layout?.openingsSchedule;
   const isFirstFloor = floor === 'FF';
   const floorContext = isFirstFloor ? 'FIRST FLOOR' : 'GROUND FLOOR';
 
@@ -484,6 +495,7 @@ ${designDNA}${isCodeStandards}${dimensionalRule}${vastuContext}${nbcContext}${ar
   const prompts: Record<DrawingType, string> = {
     ground_floor: `${BASE_PROMPT}${projectContext}${dimensionVerification}
 CROSS-DRAWING REFERENCE: This is the MASTER drawing — all other drawings derive from this layout.
+${openingsSchedule ? 'OPENINGS: ' + openingsSchedule.scheduleText : ''}.
 2D Ground Floor Plan of a ${plotW}ft × ${plotD}ft (${plotWidthMM}mm × ${plotDepthMM}mm) residential building. Plot boundary: thick outer walls (230mm). Internal partitions: thin lines (115mm). Show: ${formatRoomList(groundFloorRooms)}. Room dimensions in mm: ${groundFloorRoomsMM || 'per layout'}. Doors: solid leaf line + 90° arc swing. Windows: double parallel lines breaking walls on exterior walls. Staircase: parallel tread lines with UP arrow. Labels: room name + dimensions + area centered in each room. Dimensions: chain dimensions on top and left edges with tick marks — overall ${plotWidthMM}mm width and ${plotDepthMM}mm depth. VERIFY: Sum of all room widths along any row + wall thicknesses = ${buildWidthMM}mm (building footprint, NOT plot width). North arrow top-right. Grid circles at column positions matching ${spanW}mm × ${spanD}mm structural grid. NO furniture. NO colored fills - all rooms white. Clean architectural drafting style.`,
 
     first_floor: `${BASE_PROMPT}${projectContext}${dimensionVerification}
@@ -491,7 +503,8 @@ CROSS-DRAWING REFERENCE: Must match Ground Floor external walls exactly. Stairca
 2D First Floor Plan of a ${plotW}ft × ${plotD}ft (${plotWidthMM}mm × ${plotDepthMM}mm) residential building. Plot boundary: thick outer walls (230mm). Internal partitions: thin lines (115mm). Show: ${formatRoomList(firstFloorRooms)}. Room dimensions in mm: ${firstFloorRoomsMM || 'per layout'}. Doors: solid leaf line + 90° arc swing. Windows: double parallel lines breaking walls on exterior walls. Staircase: parallel tread lines with DOWN arrow. Labels: room name + dimensions + area centered in each room. Dimensions: chain dimensions on top and left edges with tick marks — overall ${plotWidthMM}mm width and ${plotDepthMM}mm depth. VERIFY: Sum of all room widths along any row + wall thicknesses = ${buildWidthMM}mm (building footprint, NOT plot width). North arrow top-right. Grid circles at column positions matching ${spanW}mm × ${spanD}mm structural grid. NO furniture. NO colored fills - all rooms white. Clean architectural drafting style.`,
 
     front_elevation: `${BASE_PROMPT}${projectContext}
-CROSS-DRAWING REFERENCE: Windows and doors on front wall MUST match rooms shown touching front wall in floor plan. Building width = plot width ${plotWidthMM}mm.
+CROSS-DRAWING REFERENCE: Windows and doors on front wall MUST match rooms shown touching front wall in floor plan.
+FRONT WALL OPENINGS (from locked layout): ${openingsSchedule ? describeWallOpenings(openingsSchedule, 'front') : 'Use floor plan room positions'}. Building width = plot width ${plotWidthMM}mm.
 Front Elevation of a ${floorLabel} residential building. Building width: ${buildWidthMM}mm (within ${plotWidthMM}mm plot, ${plotW}ft).
 DESIGN DNA APPLICATION: Use FACADE COMPOSITION — ${seed.facade}. Use COLOR PALETTE — ${seed.palette}. Use WINDOW PATTERN — ${seed.windows}. Use ROOF FORM — ${seed.roof}.
 EXPLICIT HEIGHTS: Plinth +450mm above GL, GF floor-to-FF floor 3000mm, FF floor-to-roof slab 3000mm, Parapet 900mm. Total building height: 7350mm above GL.
@@ -500,7 +513,8 @@ Building width: ${buildWidthMM}mm (centered within ${plotWidthMM}mm plot with se
 Show: main entrance door (${facing}-facing), windows with frames matching floor plan positions, balcony at first floor (${balconyPosition}), facade materials per Design DNA palette. Dimension heights on right.`,
 
     side_elevation: `${BASE_PROMPT}${projectContext}
-CROSS-DRAWING REFERENCE: Windows on side wall MUST match rooms touching left wall in floor plan. Building depth = plot depth ${plotDepthMM}mm.
+CROSS-DRAWING REFERENCE: Windows on side wall MUST match rooms touching left wall in floor plan.
+LEFT WALL OPENINGS (from locked layout): ${openingsSchedule ? describeWallOpenings(openingsSchedule, 'left') : 'Use floor plan room positions'}. Building depth = plot depth ${plotDepthMM}mm.
 Side Elevation of a ${floorLabel} residential building. Total width (depth of plot): ${plotDepthMM}mm (${plotD}ft).
 DESIGN DNA APPLICATION: Use FACADE COMPOSITION — ${seed.facade}. Use COLOR PALETTE — ${seed.palette}. Use WINDOW PATTERN — ${seed.windows}. Use ROOF FORM — ${seed.roof}.
 EXPLICIT HEIGHTS: Plinth +450mm above GL, GF floor-to-FF floor 3000mm, FF floor-to-roof slab 3000mm, Parapet 900mm. Total building height: 7350mm above GL.
@@ -509,7 +523,8 @@ Width must match plot depth: ${plotDepthMM}mm total. Show overall width dimensio
 Show: side windows with frames matching floor plan positions, building depth profile, staircase window, facade materials per Design DNA palette. Dimension heights on right. Roof drainage slope visible.`,
 
     section_aa: `${BASE_PROMPT}${projectContext}
-CROSS-DRAWING REFERENCE: Room widths in section MUST match floor plan dimensions. Heights MUST match elevation level marks.
+CROSS-DRAWING REFERENCE: Room widths in section MUST match floor plan dimensions.
+OPENINGS IN SECTION: ${openingsSchedule ? openingsSchedule.scheduleText.split('\n').slice(0, 5).join('; ') : 'Per floor plan'}. Heights MUST match elevation level marks.
 Building Section A-A through a ${floorLabel} residential building. Section width = ${plotWidthMM}mm (cutting across the building width). Room widths visible in section must match floor plan dimensions.
 DESIGN DNA APPLICATION: Use ROOF FORM — ${seed.roof}. Material call-outs per COLOR PALETTE — ${seed.palette}.
 Show: foundation (isolated footing 1200×1200×1500mm deep), plinth beam at +450mm, ground floor rooms with 3000mm clear height, 150mm RCC slab, first floor rooms with 3000mm clear height, roof slab, parapet 900mm. Total height above GL: 7350mm. Concrete hatching on structural elements. Level markers: GL ±0.000, Plinth +0.450, GF Slab +3.150, FF Slab +6.300, Parapet +7.200. Overall width dimension at bottom: ${plotWidthMM}mm. Staircase visible in section. Earth hatching below ground.`,
@@ -595,6 +610,8 @@ ${styleSpec}
 ${regionalContext}
 ${designDNA}
 CROSS-DRAWING REFERENCE: 3D view must match the facade, windows, and proportions shown in Front and Side Elevations.
+FRONT OPENINGS: ${openingsSchedule ? describeWallOpenings(openingsSchedule, 'front') : 'Match elevation'}.
+SIDE OPENINGS: ${openingsSchedule ? describeWallOpenings(openingsSchedule, 'left') : 'Match elevation'}.
 3D Perspective Rendering of a ${floorLabel} residential house.
 DESIGN DNA APPLICATION — USE ALL OF THESE:
 - FACADE COMPOSITION: ${seed.facade}

@@ -5,6 +5,7 @@ import { Layout, ProjectRequirements } from '../types';
 import { CheckCircle, AlertTriangle, ArrowRight, Loader2 } from 'lucide-react';
 import { authFetch } from '@/utils/authFetch';
 import { generateDesignSeed } from '../utils/drawingPrompts';
+import { extractOpeningsSchedule } from '../utils/openingsExtractor';
 
 interface Props {
   layouts: Layout[];
@@ -142,7 +143,7 @@ export const LayoutSelector: React.FC<Props> = ({ layouts, onSelect, vastuEnable
               key={layout.id}
               className="bg-white border-2 rounded-xl overflow-hidden transition-all hover:shadow-lg cursor-pointer group"
               style={{ borderColor: '#e5e5e5' }}
-              onClick={() => !loading[layout.id] && onSelect({ ...layout, designSeed: generateDesignSeed() })}
+              onClick={() => !loading[layout.id] && onSelect({ ...layout, designSeed: generateDesignSeed(), openingsSchedule: extractOpeningsSchedule(layout) })}
               onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = '#4f6f52'; }}
               onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = '#e5e5e5'; }}
             >
@@ -232,7 +233,7 @@ export const LayoutSelector: React.FC<Props> = ({ layouts, onSelect, vastuEnable
                   className="w-full py-2 rounded-lg text-sm font-semibold transition-all text-white disabled:opacity-50"
                   style={{ backgroundColor: '#4f6f52' }}
                   disabled={loading[layout.id]}
-                  onClick={(e) => { e.stopPropagation(); onSelect({ ...layout, designSeed: generateDesignSeed() }); }}
+                  onClick={(e) => { e.stopPropagation(); onSelect({ ...layout, designSeed: generateDesignSeed(), openingsSchedule: extractOpeningsSchedule(layout) }); }}
                 >
                   {loading[layout.id] ? 'Generating...' : '🔒 Lock This Layout →'}
                 </button>

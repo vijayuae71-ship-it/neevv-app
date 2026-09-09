@@ -87,6 +87,27 @@ export interface FloorLayout {
   columns: Column[];
 }
 
+
+export interface LayoutOpening {
+  id: string;
+  type: 'door' | 'window' | 'ventilator';
+  room: string;
+  wall: 'front' | 'rear' | 'left' | 'right' | 'internal';
+  widthMm: number;
+  heightMm: number;
+  sillHeightMm: number;
+  material: string;
+  quantity: number;
+}
+
+export interface OpeningsSchedule {
+  openings: LayoutOpening[];
+  totalDoors: number;
+  totalWindows: number;
+  totalVentilators: number;
+  scheduleText: string;
+}
+
 export interface Layout {
   id: string;
   name: string;
@@ -121,6 +142,7 @@ export interface Layout {
   plotWidthFt?: number;
   plotDepthFt?: number;
   designSeed?: DesignSeed;
+  openingsSchedule?: OpeningsSchedule;
 }
 
 export interface BOQLineItem {
