@@ -13,12 +13,6 @@ import { authFetch } from '@/utils/authFetch';
 
 const BRAND_GREEN = '#4f6f52';
 
-const MODELS = [
-  { id: 'neevv-gen', label: 'neevv Generation Pro' },
-  { id: 'neevv-gen-2', label: 'neevv Generation Pro II' },
-  { id: 'neevv-gen-pro', label: 'neevv Generation Pro Max' },
-];
-
 const RENDER_TYPES: { key: RenderTypeKey; label: string; description: string }[] = [
   { key: 'plan', label: 'Plan View', description: 'Top-down furniture layout drawing' },
   { key: 'elevation', label: 'Elevation', description: 'Wall elevation with finishes & fixtures' },
@@ -153,7 +147,6 @@ const InteriorAIDrawings: React.FC<Props> = ({ layout, interiorSelections, moodB
   /* ---------- state ---------- */
   const [selectedRoomId, setSelectedRoomId] = useState<string>(rooms[0]?.id ?? '');
   const [selectedType, setSelectedType] = useState<RenderTypeKey>('plan');
-  const [selectedModel, setSelectedModel] = useState<string>(MODELS[0].id);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState('');
@@ -167,7 +160,7 @@ const InteriorAIDrawings: React.FC<Props> = ({ layout, interiorSelections, moodB
 
   /* ---------- generate single image via API route ---------- */
   const generateImage = useCallback(
-    async (roomId: string, type: RenderTypeKey, model: string, modificationPrompt?: string): Promise<RenderEntry | null> => {
+    async (roomId: string, type: RenderTypeKey, modificationPrompt?: string): Promise<RenderEntry | null> => {
       const room = rooms.find(r => r.id === roomId);
       if (!room) throw new Error('Room not found');
       const interior = interiorSelections[roomId];
@@ -186,7 +179,6 @@ const InteriorAIDrawings: React.FC<Props> = ({ layout, interiorSelections, moodB
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           prompt: promptText,
-          model,
           projectId: 'interior-project',
           renderType: `interior_${type}`,
         }),
@@ -238,7 +230,7 @@ const InteriorAIDrawings: React.FC<Props> = ({ layout, interiorSelections, moodB
         setProgress(`Generating ${typeLabel} for ${room ? roomLabel(room) : 'room'}…`);
 
         try {
-          const entry = await generateImage(selectedRoomId, t, selectedModel, modificationPrompt);
+          const entry = await generateImage(selectedRoomId, t, modificationPrompt);
           if (entry) {
             const key = cacheKey(selectedRoomId, t);
             updatedCache = {
@@ -257,7 +249,7 @@ const InteriorAIDrawings: React.FC<Props> = ({ layout, interiorSelections, moodB
       setLoading(false);
       setProgress('');
     },
-    [selectedRoomId, selectedType, selectedModel, renderCache, rooms, generateImage],
+    [selectedRoomId, selectedType, renderCache, rooms, generateImage],
   );
 
   /* ---------- handle Edit Re-render ---------- */
@@ -394,17 +386,6 @@ const InteriorAIDrawings: React.FC<Props> = ({ layout, interiorSelections, moodB
           >
             {RENDER_TYPES.map(rt => (
               <option key={rt.key} value={rt.key}>{rt.label}</option>
-            ))}
-          </select>
-
-          {/* Model dropdown */}
-          <select
-            className="text-sm border border-gray-300 rounded-lg px-2 py-1 bg-white text-gray-800"
-            value={selectedModel}
-            onChange={e => setSelectedModel(e.target.value)}
-          >
-            {MODELS.map(m => (
-              <option key={m.id} value={m.id}>{m.label}</option>
             ))}
           </select>
 
