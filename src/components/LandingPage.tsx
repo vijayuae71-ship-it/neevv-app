@@ -109,7 +109,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               My Projects
             </button>
             <button onClick={onGetStarted} className="text-sm font-semibold px-5 py-2 rounded-lg text-white shadow-sm hover:shadow-md transition-all hover:-translate-y-0.5" style={{ backgroundColor: ACCENT }}>
-              Get Started Free
+              Start Designing — Free
             </button>
           </div>
         </div>
@@ -129,13 +129,13 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               </Reveal>
               <Reveal delay={60}>
                 <h1 className="text-3xl md:text-5xl lg:text-6xl font-extrabold text-gray-900 leading-[1.1] tracking-tight">
-                  Complete construction drawings<br className="hidden md:block" />
-                  <span style={{ color: ACCENT }}> in minutes</span>, not months
+                  Your vision. Your home.<br className="hidden md:block" />
+                  <span style={{ color: ACCENT }}> Designed by you</span>
                 </h1>
               </Reveal>
               <Reveal delay={120}>
                 <p className="mt-5 text-base md:text-lg text-gray-500 leading-relaxed max-w-xl mx-auto">
-                  Enter your plot details. Pick a layout. Get 17+ NBC-compliant drawings — floor plans, structure, electrical, plumbing — ready for your contractor.
+                  Enter your plot size. Choose your layout. Get 17+ execution-ready drawings, 3D renders, and cost estimates — all in minutes.
                 </p>
               </Reveal>
             </div>
@@ -244,7 +244,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           <div className="max-w-6xl mx-auto px-5 md:px-10">
             <Reveal>
               <div className="text-center mb-8">
-                <h2 className="text-2xl md:text-4xl font-extrabold text-gray-900 tracking-tight">See what you&apos;ll get</h2>
+                <h2 className="text-2xl md:text-4xl font-extrabold text-gray-900 tracking-tight">See what you can create</h2>
                 <p className="mt-2 text-gray-500 text-sm md:text-base">Sample drawings from an actual 30×40 ft plot</p>
               </div>
             </Reveal>
@@ -281,7 +281,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         {/* HOW IT WORKS */}
         <section id="how-it-works" className="py-14 md:py-18 bg-white">
           <div className="max-w-5xl mx-auto px-5 md:px-10">
-            <Reveal><div className="text-center mb-10"><h2 className="text-2xl md:text-4xl font-extrabold text-gray-900 tracking-tight">How it works</h2><p className="mt-2 text-gray-500 text-sm md:text-base">Four steps. No prior experience needed.</p></div></Reveal>
+            <Reveal><div className="text-center mb-10"><h2 className="text-2xl md:text-4xl font-extrabold text-gray-900 tracking-tight">How it works</h2><p className="mt-2 text-gray-500 text-sm md:text-base">Four simple steps. That&apos;s it.</p></div></Reveal>
             <div className="hidden md:grid grid-cols-4 gap-3">
               {howSteps.map((s, i) => (
                 <Reveal key={s.title} delay={i * 80}>
@@ -320,7 +320,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         {/* DELIVERABLES */}
         <section id="deliverables" className="py-14 md:py-18" style={{ backgroundColor: '#f5f5f5' }}>
           <div className="max-w-4xl mx-auto px-5 md:px-10">
-            <Reveal><div className="text-center mb-8"><h2 className="text-2xl md:text-4xl font-extrabold text-gray-900 tracking-tight">Everything you need</h2><p className="mt-2 text-gray-500 text-sm md:text-base">17+ coordinated drawings from one locked layout</p></div></Reveal>
+            <Reveal><div className="text-center mb-8"><h2 className="text-2xl md:text-4xl font-extrabold text-gray-900 tracking-tight">Everything you need to start building</h2><p className="mt-2 text-gray-500 text-sm md:text-base">17+ coordinated drawings from one locked layout</p></div></Reveal>
             <Reveal delay={60}>
               <div className="flex justify-center gap-2 mb-6 overflow-x-auto">
                 {tabData.map((tab, i) => (
@@ -344,7 +344,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         {/* WHY TRUST */}
         <section className="py-14 md:py-18 bg-white">
           <div className="max-w-4xl mx-auto px-5 md:px-10">
-            <Reveal><div className="text-center mb-10"><h2 className="text-2xl md:text-4xl font-extrabold text-gray-900 tracking-tight">Built for accuracy, not just looks</h2><p className="mt-2 text-gray-500 text-sm md:text-base">Every number is calculated, never guessed</p></div></Reveal>
+            <Reveal><div className="text-center mb-10"><h2 className="text-2xl md:text-4xl font-extrabold text-gray-900 tracking-tight">Your designs, engineered to perfection</h2><p className="mt-2 text-gray-500 text-sm md:text-base">Every number is calculated, never guessed</p></div></Reveal>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
               {[
                 { title: 'Engineered precision', desc: 'Programmatic overlays stamp all computed values — FSI, setbacks, areas. AI draws, code calculates.' },
@@ -371,9 +371,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             <Reveal delay={350}>
               <div className="mt-8 flex flex-col items-center gap-3">
                 <button onClick={onGetStarted} className="inline-flex items-center gap-2 text-sm font-bold px-7 py-3.5 rounded-lg shadow-md hover:shadow-lg transition-all hover:-translate-y-0.5 text-white" style={{ backgroundColor: ACCENT }}>
-                  Start Your Project — Free <ArrowRight className="w-4 h-4" />
+                  Design Your Dream Home — Free <ArrowRight className="w-4 h-4" />
                 </button>
-                <p className="text-xs text-gray-400">0 advance • 0 commitment • Cancel anytime</p>
+                <p className="text-xs text-gray-400">No signup • No commitment • Just start</p>
               </div>
             </Reveal>
           </div>
@@ -396,7 +396,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
       <div className="fixed bottom-0 left-0 right-0 z-50 md:hidden transition-transform duration-300" style={{ transform: heroVisible ? 'translateY(100%)' : 'translateY(0)' }}>
         <div className="backdrop-blur-md bg-white/90 border-t border-gray-200 px-4 py-3 shadow-[0_-4px_16px_rgba(0,0,0,0.06)]">
           <button onClick={onGetStarted} className="w-full flex items-center justify-center gap-2 text-sm font-bold py-3 rounded-lg text-white shadow-sm" style={{ backgroundColor: ACCENT }}>
-            Get Started Free <ArrowRight className="w-4 h-4" />
+            Start Designing — Free <ArrowRight className="w-4 h-4" />
           </button>
         </div>
       </div>

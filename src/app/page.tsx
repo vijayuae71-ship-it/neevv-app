@@ -428,9 +428,9 @@ const BRAND_GREEN = '#4f6f52';
   /* ============ LANDING PAGE ============ */
   if (mode === 'landing') {
     const heroCards = [
-      { icon: <Home className="w-6 h-6" />, title: 'Build a New Home', subtitle: 'For homeowners & builders', desc: '17+ construction drawings — plans, structure, electrical, plumbing. All site-ready.', onClick: () => { analytics.modeSelected('new_build'); setMode('new_build'); } },
-      { icon: <Palette className="w-6 h-6" />, title: 'Interior Design', subtitle: 'For homeowners & designers', desc: 'Room layouts, 3D renders, material schedules. Transform any space.', onClick: () => { analytics.modeSelected('interior_only'); setMode('interior_only'); } },
-      { icon: <Building2 className="w-6 h-6" />, title: 'Design an Office', subtitle: 'For businesses & architects', desc: 'Workspace planning, MEP drawings, fire safety. NBC commercial compliant.', onClick: () => { analytics.modeSelected('office_design'); setMode('office_design'); } },
+      { icon: <Home className="w-6 h-6" />, title: 'Design Your Home', subtitle: 'For homeowners & builders', desc: 'Your plot. Your layout. 17+ execution-ready drawings — plans, structure, electrical, plumbing — ready in minutes.', onClick: () => { analytics.modeSelected('new_build'); setMode('new_build'); } },
+      { icon: <Palette className="w-6 h-6" />, title: 'Design Your Interiors', subtitle: 'For homeowners & designers', desc: 'Pick your style, materials, and finishes. See your room come to life in 3D.', onClick: () => { analytics.modeSelected('interior_only'); setMode('interior_only'); } },
+      { icon: <Building2 className="w-6 h-6" />, title: 'Design Your Workspace', subtitle: 'For businesses & teams', desc: 'Plan your office layout with fire safety, MEP, and NBC compliance built in.', onClick: () => { analytics.modeSelected('office_design'); setMode('office_design'); } },
     ];
 
     const featureItems = [
@@ -457,7 +457,7 @@ const BRAND_GREEN = '#4f6f52';
       { icon: <ClipboardList className="w-5 h-5" />, title: 'Enter your plot details', desc: 'Plot size, facing, floors, rooms' },
       { icon: <Layers className="w-5 h-5" />, title: 'Pick from 3 layouts', desc: 'AI-generated, NBC-compliant, Vastu-optimized' },
       { icon: <Lock className="w-5 h-5" />, title: 'Lock your design', desc: 'This becomes your single source of truth' },
-      { icon: <FileStack className="w-5 h-5" />, title: 'Download everything', desc: '17+ drawings, renders, BOQ — contractor-ready' },
+      { icon: <FileStack className="w-5 h-5" />, title: 'Download everything', desc: '17+ drawings, renders, BOQ — execution-ready' },
     ];
 
     const tabData = [
