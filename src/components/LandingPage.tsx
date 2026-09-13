@@ -117,25 +117,42 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 
       <main className="flex-1">
         {/* HERO */}
-        <section ref={heroRef} className="relative overflow-hidden pt-14 pb-14 md:pt-20 md:pb-16 bg-white">
-          <div className="absolute -top-32 -right-32 w-[500px] h-[500px] rounded-full opacity-[0.04] blur-[100px]" style={{ backgroundColor: BRAND }} />
-          <div className="absolute top-48 -left-40 w-[400px] h-[400px] rounded-full opacity-[0.03] blur-[100px]" style={{ backgroundColor: ACCENT }} />
+        <section ref={heroRef} className="relative overflow-hidden pt-14 pb-14 md:pt-20 md:pb-16">
+          {/* Background time-lapse video */}
+          <video
+            autoPlay
+            muted
+            loop
+            playsInline
+            poster="/hero-poster.jpg"
+            className="absolute inset-0 w-full h-full object-cover"
+            aria-hidden="true"
+          >
+            <source src="/hero-timelapse.mp4" type="video/mp4" />
+          </video>
+          {/* Dark overlay for text readability */}
+          <div className="absolute inset-0 bg-black/60" />
           <div className="relative max-w-6xl mx-auto px-5 md:px-10">
             <div className="text-center max-w-3xl mx-auto mb-10">
               <Reveal>
-                <div className="inline-flex items-center gap-2 text-xs font-semibold px-4 py-1.5 rounded-full mb-5 border" style={{ borderColor: `${BRAND}30`, color: BRAND, backgroundColor: `${BRAND}08` }}>
+                <div className="inline-flex items-center gap-2 text-xs font-semibold px-4 py-1.5 rounded-full mb-5 border" style={{ borderColor: 'rgba(255,255,255,0.3)', color: '#fff', backgroundColor: 'rgba(255,255,255,0.1)' }}>
                   <Sparkles className="w-3.5 h-3.5" /> Architecture • Structure • MEP • Interiors
                 </div>
               </Reveal>
               <Reveal delay={60}>
-                <h1 className="text-3xl md:text-5xl lg:text-6xl font-extrabold text-gray-900 leading-[1.1] tracking-tight">
+                <h1 className="text-3xl md:text-5xl lg:text-6xl font-extrabold text-white leading-[1.1] tracking-tight">
                   Your vision. Your home.<br className="hidden md:block" />
                   <span style={{ color: ACCENT }}> Designed by you</span>
                 </h1>
               </Reveal>
-              <Reveal delay={120}>
-                <p className="mt-5 text-base md:text-lg text-gray-500 leading-relaxed max-w-xl mx-auto">
-                  Enter your plot size. Choose your layout. Get 17+ execution-ready drawings, 3D renders, and cost estimates — all in minutes.
+              <Reveal delay={80}>
+                <p className="mt-3 text-lg md:text-2xl font-semibold text-white/90 tracking-wide">
+                  In minutes, not months.
+                </p>
+              </Reveal>
+              <Reveal delay={140}>
+                <p className="mt-4 text-base md:text-lg text-white/70 leading-relaxed max-w-xl mx-auto">
+                  Enter your plot size. Choose your layout. Get 17+ execution-ready drawings, 3D renders, and cost estimates.
                 </p>
               </Reveal>
             </div>
