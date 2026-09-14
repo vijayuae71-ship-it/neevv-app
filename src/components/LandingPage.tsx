@@ -34,7 +34,7 @@ const Reveal: React.FC<{ children: React.ReactNode; delay?: number; className?: 
 };
 
 /* Click-to-play video component */
-const ClickToPlayVideo: React.FC<{ src: string; poster: string; className?: string }> = ({ src, poster, className = '' }) => {
+const ClickToPlayVideo: React.FC<{ src: string; poster: string; className?: string; label?: string }> = ({ src, poster, className = '', label }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [playing, setPlaying] = useState(false);
 
@@ -59,17 +59,18 @@ const ClickToPlayVideo: React.FC<{ src: string; poster: string; className?: stri
         playsInline
         preload="none"
         poster={poster}
-        className="w-full h-full object-cover rounded-2xl"
+        className="w-full h-full object-cover rounded-xl"
         onEnded={() => setPlaying(false)}
       >
         <source src={src} type="video/mp4" />
       </video>
       {/* Play button overlay */}
       {!playing && (
-        <div className="absolute inset-0 flex items-center justify-center rounded-2xl bg-black/30 group-hover:bg-black/40 transition-colors">
-          <div className="w-16 h-16 md:w-20 md:h-20 rounded-full bg-white/90 flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
-            <Play className="w-7 h-7 md:w-9 md:h-9 text-gray-800 ml-1" fill="currentColor" />
+        <div className="absolute inset-0 flex flex-col items-center justify-center rounded-xl bg-black/30 group-hover:bg-black/40 transition-colors">
+          <div className="w-14 h-14 md:w-16 md:h-16 rounded-full bg-white/90 flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
+            <Play className="w-6 h-6 md:w-7 md:h-7 text-gray-800 ml-1" fill="currentColor" />
           </div>
+          {label && <span className="mt-2 text-xs font-semibold text-white/90 bg-black/40 px-3 py-1 rounded-full backdrop-blur-sm">{label}</span>}
         </div>
       )}
     </div>
@@ -107,6 +108,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({
   const [activeSlide, setActiveSlide] = useState(0);
   const [activeTab, setActiveTab] = useState(0);
 
+  /* Total carousel items = showcase images + 1 interior video */
+  const totalSlides = showcaseItems.length + 1;
+
   useEffect(() => {
     const el = heroRef.current;
     if (!el) return;
@@ -126,8 +130,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({
   const handleScroll = () => {
     const el = scrollerRef.current;
     if (!el) return;
-    const cardWidth = el.scrollWidth / showcaseItems.length;
-    setActiveSlide(Math.max(0, Math.min(showcaseItems.length - 1, Math.round(el.scrollLeft / cardWidth))));
+    const cardWidth = el.scrollWidth / totalSlides;
+    setActiveSlide(Math.max(0, Math.min(totalSlides - 1, Math.round(el.scrollLeft / cardWidth))));
   };
 
   return (
@@ -197,8 +201,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                   src="/hero-timelapse.mp4"
                   poster="/hero-poster.jpg"
                   className="aspect-video shadow-xl border border-gray-200"
+                  label="Watch: Foundation to finished home"
                 />
-                <p className="mt-2 text-center text-xs text-gray-400">Watch: From foundation to finished home</p>
               </Reveal>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -310,45 +314,41 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                 <p className="mt-2 text-gray-500 text-sm md:text-base">Sample drawings from an actual 30×40 ft plot</p>
               </div>
             </Reveal>
-            {/* Showcase content: carousel left, video right on desktop */}
-            <div className="flex flex-col md:flex-row items-start gap-6">
-              <div className="flex-1 min-w-0">
-                <Reveal delay={80}>
-                  <div className="relative">
-                    <div ref={scrollerRef} onScroll={handleScroll} className="flex gap-4 overflow-x-auto pb-4 snap-x snap-mandatory scroll-smooth" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-                      {showcaseItems.map((item) => (
-                        <div key={item.title} className="snap-center flex-shrink-0 w-[280px] md:w-[300px]">
-                          <div className="relative rounded-xl overflow-hidden border border-gray-200 shadow-sm bg-white aspect-[4/3] transition-all duration-300 hover:shadow-lg">
-                            <img src={item.src} alt={item.title} className="w-full h-full object-cover" loading="lazy" />
-                            <span className="absolute top-2 left-2 text-[10px] font-bold px-2 py-0.5 rounded-full bg-white/80 backdrop-blur-sm text-gray-600 border border-gray-200/50">{item.category}</span>
-                          </div>
-                          <p className="mt-2.5 text-center text-sm font-semibold text-gray-800">{item.title}</p>
-                        </div>
-                      ))}
+            <Reveal delay={80}>
+              <div className="relative">
+                <div ref={scrollerRef} onScroll={handleScroll} className="flex gap-4 overflow-x-auto pb-4 snap-x snap-mandatory scroll-smooth" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+                  {showcaseItems.map((item) => (
+                    <div key={item.title} className="snap-center flex-shrink-0 w-[280px] md:w-[300px]">
+                      <div className="relative rounded-xl overflow-hidden border border-gray-200 shadow-sm bg-white aspect-[4/3] transition-all duration-300 hover:shadow-lg">
+                        <img src={item.src} alt={item.title} className="w-full h-full object-cover" loading="lazy" />
+                        <span className="absolute top-2 left-2 text-[10px] font-bold px-2 py-0.5 rounded-full bg-white/80 backdrop-blur-sm text-gray-600 border border-gray-200/50">{item.category}</span>
+                      </div>
+                      <p className="mt-2.5 text-center text-sm font-semibold text-gray-800">{item.title}</p>
                     </div>
-                    <button aria-label="Previous" onClick={() => scrollToIndex(Math.max(0, activeSlide - 1))} className="hidden md:flex absolute -left-4 top-[40%] -translate-y-1/2 w-9 h-9 rounded-full bg-white shadow-md border border-gray-200 items-center justify-center hover:shadow-lg">
-                      <ChevronLeft className="w-4 h-4" style={{ color: BRAND }} />
-                    </button>
-                    <button aria-label="Next" onClick={() => scrollToIndex(Math.min(showcaseItems.length - 1, activeSlide + 1))} className="hidden md:flex absolute -right-4 top-[40%] -translate-y-1/2 w-9 h-9 rounded-full bg-white shadow-md border border-gray-200 items-center justify-center hover:shadow-lg">
-                      <ChevronRight className="w-4 h-4" style={{ color: BRAND }} />
-                    </button>
-                  </div>
-                </Reveal>
-                <div className="mt-3 flex items-center justify-center gap-1.5">
-                  {showcaseItems.map((item, i) => (
-                    <button key={item.title} aria-label={`Go to ${item.title}`} onClick={() => scrollToIndex(i)} className="h-2 rounded-full transition-all" style={{ width: activeSlide === i ? '20px' : '8px', backgroundColor: activeSlide === i ? BRAND : '#d1d5db' }} />
                   ))}
+                  {/* Interior video as last carousel item */}
+                  <div className="snap-center flex-shrink-0 w-[280px] md:w-[300px]">
+                    <ClickToPlayVideo
+                      src="/interior-timelapse.mp4"
+                      poster="/interior-poster.jpg"
+                      className="aspect-[4/3] border border-gray-200 shadow-sm hover:shadow-lg transition-all duration-300"
+                      label="Interior transformation"
+                    />
+                    <p className="mt-2.5 text-center text-sm font-semibold text-gray-800">Interior Transformation</p>
+                  </div>
                 </div>
+                <button aria-label="Previous" onClick={() => scrollToIndex(Math.max(0, activeSlide - 1))} className="hidden md:flex absolute -left-4 top-[40%] -translate-y-1/2 w-9 h-9 rounded-full bg-white shadow-md border border-gray-200 items-center justify-center hover:shadow-lg">
+                  <ChevronLeft className="w-4 h-4" style={{ color: BRAND }} />
+                </button>
+                <button aria-label="Next" onClick={() => scrollToIndex(Math.min(totalSlides - 1, activeSlide + 1))} className="hidden md:flex absolute -right-4 top-[40%] -translate-y-1/2 w-9 h-9 rounded-full bg-white shadow-md border border-gray-200 items-center justify-center hover:shadow-lg">
+                  <ChevronRight className="w-4 h-4" style={{ color: BRAND }} />
+                </button>
               </div>
-              {/* Interior time-lapse video — click to play */}
-              <Reveal delay={160} className="w-full md:w-[320px] flex-shrink-0">
-                <ClickToPlayVideo
-                  src="/interior-timelapse.mp4"
-                  poster="/interior-poster.jpg"
-                  className="aspect-[3/4] shadow-lg border border-gray-200"
-                />
-                <p className="mt-2 text-center text-xs text-gray-400">Watch: Interior transformation</p>
-              </Reveal>
+            </Reveal>
+            <div className="mt-3 flex items-center justify-center gap-1.5">
+              {[...showcaseItems.map(item => item.title), 'Interior Video'].map((label, i) => (
+                <button key={label} aria-label={`Go to ${label}`} onClick={() => scrollToIndex(i)} className="h-2 rounded-full transition-all" style={{ width: activeSlide === i ? '20px' : '8px', backgroundColor: activeSlide === i ? BRAND : '#d1d5db' }} />
+              ))}
             </div>
             <Reveal delay={120}><p className="mt-4 text-center text-[11px] text-gray-400">All drawings above are AI-generated samples • Actual project drawings include programmatic data overlays</p></Reveal>
           </div>
