@@ -3,7 +3,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
   ArrowRight, ShieldCheck, ChevronLeft, ChevronRight,
-  CheckCircle2, HardHat, Upload, Lock, Clock, Sparkles,
+  CheckCircle2, HardHat, Upload, Lock, Clock, Sparkles, Play,
 } from 'lucide-react';
 import { BRAND_LOGO_BASE64 } from '@/utils/brand';
 
@@ -29,6 +29,49 @@ const Reveal: React.FC<{ children: React.ReactNode; delay?: number; className?: 
   return (
     <div ref={ref} className={className} style={{ opacity: visible ? 1 : 0, transform: visible ? 'translateY(0)' : 'translateY(20px)', transition: `opacity 0.5s ease-out ${delay}ms, transform 0.5s ease-out ${delay}ms` }}>
       {children}
+    </div>
+  );
+};
+
+/* Click-to-play video component */
+const ClickToPlayVideo: React.FC<{ src: string; poster: string; className?: string }> = ({ src, poster, className = '' }) => {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [playing, setPlaying] = useState(false);
+
+  const handlePlay = () => {
+    const v = videoRef.current;
+    if (!v) return;
+    if (playing) {
+      v.pause();
+      setPlaying(false);
+    } else {
+      v.play();
+      setPlaying(true);
+    }
+  };
+
+  return (
+    <div className={`relative cursor-pointer group ${className}`} onClick={handlePlay}>
+      <video
+        ref={videoRef}
+        muted
+        loop
+        playsInline
+        preload="none"
+        poster={poster}
+        className="w-full h-full object-cover rounded-2xl"
+        onEnded={() => setPlaying(false)}
+      >
+        <source src={src} type="video/mp4" />
+      </video>
+      {/* Play button overlay */}
+      {!playing && (
+        <div className="absolute inset-0 flex items-center justify-center rounded-2xl bg-black/30 group-hover:bg-black/40 transition-colors">
+          <div className="w-16 h-16 md:w-20 md:h-20 rounded-full bg-white/90 flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
+            <Play className="w-7 h-7 md:w-9 md:h-9 text-gray-800 ml-1" fill="currentColor" />
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -118,44 +161,44 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 
       <main className="flex-1">
         {/* HERO */}
-        <section ref={heroRef} className="relative overflow-hidden pt-14 pb-14 md:pt-20 md:pb-16">
-          {/* Background time-lapse video */}
-          <video
-            autoPlay
-            muted
-            loop
-            playsInline
-            preload="none"
-            poster="/hero-poster.jpg"
-            className="absolute inset-0 w-full h-full object-cover"
-            aria-hidden="true"
-          >
-            <source src="/hero-timelapse.mp4" type="video/mp4" />
-          </video>
-          {/* Dark overlay for text readability */}
-          <div className="absolute inset-0 bg-black/60" />
+        <section ref={heroRef} className="relative overflow-hidden pt-14 pb-14 md:pt-20 md:pb-16" style={{ backgroundColor: '#f9faf9' }}>
+          {/* Subtle background blobs */}
+          <div className="absolute -top-32 -right-32 w-[500px] h-[500px] rounded-full opacity-[0.04] blur-[100px]" style={{ backgroundColor: BRAND }} />
+          <div className="absolute top-48 -left-40 w-[400px] h-[400px] rounded-full opacity-[0.03] blur-[100px]" style={{ backgroundColor: ACCENT }} />
           <div className="relative max-w-6xl mx-auto px-5 md:px-10">
-            <div className="text-center max-w-3xl mx-auto mb-10">
-              <Reveal>
-                <div className="inline-flex items-center gap-2 text-xs font-semibold px-4 py-1.5 rounded-full mb-5 border" style={{ borderColor: 'rgba(255,255,255,0.3)', color: '#fff', backgroundColor: 'rgba(255,255,255,0.1)' }}>
-                  <Sparkles className="w-3.5 h-3.5" /> Architecture • Structure • MEP • Interiors
-                </div>
-              </Reveal>
-              <Reveal delay={60}>
-                <h1 className="text-3xl md:text-5xl lg:text-6xl font-extrabold text-white leading-[1.1] tracking-tight">
-                  Your vision. Your home.<br className="hidden md:block" />
-                  <span style={{ color: ACCENT }}> Designed by you</span>
-                </h1>
-              </Reveal>
-              <Reveal delay={80}>
-                <p className="mt-3 text-lg md:text-2xl font-semibold text-white/90 tracking-wide">
-                  In minutes, not months.
-                </p>
-              </Reveal>
-              <Reveal delay={140}>
-                <p className="mt-4 text-base md:text-lg text-white/70 leading-relaxed max-w-xl mx-auto">
-                  Enter your plot size. Choose your layout. Get 17+ execution-ready drawings, 3D renders, and cost estimates.
-                </p>
+            {/* Hero content: text left, video right on desktop */}
+            <div className="flex flex-col md:flex-row items-center gap-8 md:gap-12 mb-10">
+              <div className="flex-1 text-center md:text-left">
+                <Reveal>
+                  <div className="inline-flex items-center gap-2 text-xs font-semibold px-4 py-1.5 rounded-full mb-5 border" style={{ borderColor: `${BRAND}30`, color: BRAND, backgroundColor: `${BRAND}06` }}>
+                    <Sparkles className="w-3.5 h-3.5" /> Architecture • Structure • MEP • Interiors
+                  </div>
+                </Reveal>
+                <Reveal delay={60}>
+                  <h1 className="text-3xl md:text-5xl lg:text-6xl font-extrabold text-gray-900 leading-[1.1] tracking-tight">
+                    Your vision. Your home.<br className="hidden md:block" />
+                    <span style={{ color: ACCENT }}> Designed by you</span>
+                  </h1>
+                </Reveal>
+                <Reveal delay={80}>
+                  <p className="mt-3 text-lg md:text-2xl font-semibold tracking-wide" style={{ color: BRAND }}>
+                    In minutes, not months.
+                  </p>
+                </Reveal>
+                <Reveal delay={140}>
+                  <p className="mt-4 text-base md:text-lg text-gray-600 leading-relaxed max-w-xl">
+                    Enter your plot size. Choose your layout. Get 17+ execution-ready drawings, 3D renders, and cost estimates.
+                  </p>
+                </Reveal>
+              </div>
+              {/* Construction time-lapse video — click to play */}
+              <Reveal delay={200} className="flex-shrink-0 w-full md:w-[480px]">
+                <ClickToPlayVideo
+                  src="/hero-timelapse.mp4"
+                  poster="/hero-poster.jpg"
+                  className="aspect-video shadow-xl border border-gray-200"
+                />
+                <p className="mt-2 text-center text-xs text-gray-400">Watch: From foundation to finished home</p>
               </Reveal>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -259,66 +302,66 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         </section>
 
         {/* SHOWCASE */}
-        <section id="showcase" className="relative py-14 md:py-18 overflow-hidden">
-          {/* Interior time-lapse video background */}
-          <video
-            autoPlay
-            muted
-            loop
-            playsInline
-            preload="none"
-            poster="/interior-poster.jpg"
-            className="absolute inset-0 w-full h-full object-cover"
-            aria-hidden="true"
-          >
-            <source src="/interior-timelapse.mp4" type="video/mp4" />
-          </video>
-          <div className="absolute inset-0 bg-white/85" />
-          <div className="relative max-w-6xl mx-auto px-5 md:px-10">
+        <section id="showcase" className="py-14 md:py-18 bg-white">
+          <div className="max-w-6xl mx-auto px-5 md:px-10">
             <Reveal>
               <div className="text-center mb-8">
                 <h2 className="text-2xl md:text-4xl font-extrabold text-gray-900 tracking-tight">See what you can create</h2>
                 <p className="mt-2 text-gray-500 text-sm md:text-base">Sample drawings from an actual 30×40 ft plot</p>
               </div>
             </Reveal>
-            <Reveal delay={80}>
-              <div className="relative">
-                <div ref={scrollerRef} onScroll={handleScroll} className="flex gap-4 overflow-x-auto pb-4 snap-x snap-mandatory scroll-smooth" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-                  {showcaseItems.map((item) => (
-                    <div key={item.title} className="snap-center flex-shrink-0 w-[280px] md:w-[340px]">
-                      <div className="relative rounded-xl overflow-hidden border border-gray-200 shadow-sm bg-white aspect-[4/3] transition-all duration-300 hover:shadow-lg">
-                        <img src={item.src} alt={item.title} className="w-full h-full object-cover" loading="lazy" />
-                        <span className="absolute top-2 left-2 text-[10px] font-bold px-2 py-0.5 rounded-full bg-white/80 backdrop-blur-sm text-gray-600 border border-gray-200/50">{item.category}</span>
-                      </div>
-                      <p className="mt-2.5 text-center text-sm font-semibold text-gray-800">{item.title}</p>
+            {/* Showcase content: carousel left, video right on desktop */}
+            <div className="flex flex-col md:flex-row items-start gap-6">
+              <div className="flex-1 min-w-0">
+                <Reveal delay={80}>
+                  <div className="relative">
+                    <div ref={scrollerRef} onScroll={handleScroll} className="flex gap-4 overflow-x-auto pb-4 snap-x snap-mandatory scroll-smooth" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+                      {showcaseItems.map((item) => (
+                        <div key={item.title} className="snap-center flex-shrink-0 w-[280px] md:w-[300px]">
+                          <div className="relative rounded-xl overflow-hidden border border-gray-200 shadow-sm bg-white aspect-[4/3] transition-all duration-300 hover:shadow-lg">
+                            <img src={item.src} alt={item.title} className="w-full h-full object-cover" loading="lazy" />
+                            <span className="absolute top-2 left-2 text-[10px] font-bold px-2 py-0.5 rounded-full bg-white/80 backdrop-blur-sm text-gray-600 border border-gray-200/50">{item.category}</span>
+                          </div>
+                          <p className="mt-2.5 text-center text-sm font-semibold text-gray-800">{item.title}</p>
+                        </div>
+                      ))}
                     </div>
+                    <button aria-label="Previous" onClick={() => scrollToIndex(Math.max(0, activeSlide - 1))} className="hidden md:flex absolute -left-4 top-[40%] -translate-y-1/2 w-9 h-9 rounded-full bg-white shadow-md border border-gray-200 items-center justify-center hover:shadow-lg">
+                      <ChevronLeft className="w-4 h-4" style={{ color: BRAND }} />
+                    </button>
+                    <button aria-label="Next" onClick={() => scrollToIndex(Math.min(showcaseItems.length - 1, activeSlide + 1))} className="hidden md:flex absolute -right-4 top-[40%] -translate-y-1/2 w-9 h-9 rounded-full bg-white shadow-md border border-gray-200 items-center justify-center hover:shadow-lg">
+                      <ChevronRight className="w-4 h-4" style={{ color: BRAND }} />
+                    </button>
+                  </div>
+                </Reveal>
+                <div className="mt-3 flex items-center justify-center gap-1.5">
+                  {showcaseItems.map((item, i) => (
+                    <button key={item.title} aria-label={`Go to ${item.title}`} onClick={() => scrollToIndex(i)} className="h-2 rounded-full transition-all" style={{ width: activeSlide === i ? '20px' : '8px', backgroundColor: activeSlide === i ? BRAND : '#d1d5db' }} />
                   ))}
                 </div>
-                <button aria-label="Previous" onClick={() => scrollToIndex(Math.max(0, activeSlide - 1))} className="hidden md:flex absolute -left-4 top-[40%] -translate-y-1/2 w-9 h-9 rounded-full bg-white shadow-md border border-gray-200 items-center justify-center hover:shadow-lg">
-                  <ChevronLeft className="w-4 h-4" style={{ color: BRAND }} />
-                </button>
-                <button aria-label="Next" onClick={() => scrollToIndex(Math.min(showcaseItems.length - 1, activeSlide + 1))} className="hidden md:flex absolute -right-4 top-[40%] -translate-y-1/2 w-9 h-9 rounded-full bg-white shadow-md border border-gray-200 items-center justify-center hover:shadow-lg">
-                  <ChevronRight className="w-4 h-4" style={{ color: BRAND }} />
-                </button>
               </div>
-            </Reveal>
-            <div className="mt-3 flex items-center justify-center gap-1.5">
-              {showcaseItems.map((item, i) => (
-                <button key={item.title} aria-label={`Go to ${item.title}`} onClick={() => scrollToIndex(i)} className="h-2 rounded-full transition-all" style={{ width: activeSlide === i ? '20px' : '8px', backgroundColor: activeSlide === i ? BRAND : '#d1d5db' }} />
-              ))}
+              {/* Interior time-lapse video — click to play */}
+              <Reveal delay={160} className="w-full md:w-[320px] flex-shrink-0">
+                <ClickToPlayVideo
+                  src="/interior-timelapse.mp4"
+                  poster="/interior-poster.jpg"
+                  className="aspect-[3/4] shadow-lg border border-gray-200"
+                />
+                <p className="mt-2 text-center text-xs text-gray-400">Watch: Interior transformation</p>
+              </Reveal>
             </div>
             <Reveal delay={120}><p className="mt-4 text-center text-[11px] text-gray-400">All drawings above are AI-generated samples • Actual project drawings include programmatic data overlays</p></Reveal>
           </div>
         </section>
 
         {/* HOW IT WORKS */}
-        <section id="how-it-works" className="py-14 md:py-18 bg-white">
+        <section id="how-it-works" className="py-14 md:py-18" style={{ backgroundColor: '#f9faf9' }}>
           <div className="max-w-5xl mx-auto px-5 md:px-10">
             <Reveal><div className="text-center mb-10"><h2 className="text-2xl md:text-4xl font-extrabold text-gray-900 tracking-tight">How it works</h2><p className="mt-2 text-gray-500 text-sm md:text-base">Four simple steps. That&apos;s it.</p></div></Reveal>
             <div className="hidden md:grid grid-cols-4 gap-3">
               {howSteps.map((s, i) => (
                 <Reveal key={s.title} delay={i * 80}>
-                  <div className="relative bg-[#f9faf9] rounded-2xl p-5 border border-gray-100 text-center h-full">
+                  <div className="relative bg-white rounded-2xl p-5 border border-gray-100 text-center h-full shadow-sm">
                     <div className="absolute -top-3 left-1/2 -translate-x-1/2 w-7 h-7 rounded-full flex items-center justify-center text-white font-bold text-xs shadow" style={{ backgroundColor: ACCENT }}>{i + 1}</div>
                     <div className="w-11 h-11 rounded-full flex items-center justify-center mx-auto mt-2 mb-3" style={{ backgroundColor: `${BRAND}12`, color: BRAND }}>{s.icon}</div>
                     <h3 className="text-sm font-bold text-gray-900 mb-1">{s.title}</h3>
@@ -330,7 +373,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             <div className="flex md:hidden flex-col gap-3">
               {howSteps.map((s, i) => (
                 <Reveal key={s.title} delay={i * 60}>
-                  <div className="flex items-start gap-4 bg-[#f9faf9] rounded-xl p-4 border border-gray-100">
+                  <div className="flex items-start gap-4 bg-white rounded-xl p-4 border border-gray-100 shadow-sm">
                     <div className="relative flex-shrink-0">
                       <div className="w-11 h-11 rounded-full flex items-center justify-center" style={{ backgroundColor: `${BRAND}12`, color: BRAND }}>{s.icon}</div>
                       <div className="absolute -top-1.5 -left-1.5 w-5 h-5 rounded-full flex items-center justify-center text-white font-bold text-[10px] shadow" style={{ backgroundColor: ACCENT }}>{i + 1}</div>
@@ -351,13 +394,13 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         </section>
 
         {/* DELIVERABLES */}
-        <section id="deliverables" className="py-14 md:py-18" style={{ backgroundColor: '#f5f5f5' }}>
+        <section id="deliverables" className="py-14 md:py-18 bg-white">
           <div className="max-w-4xl mx-auto px-5 md:px-10">
             <Reveal><div className="text-center mb-8"><h2 className="text-2xl md:text-4xl font-extrabold text-gray-900 tracking-tight">Everything you need to start building</h2><p className="mt-2 text-gray-500 text-sm md:text-base">17+ coordinated drawings from one locked layout</p></div></Reveal>
             <Reveal delay={60}>
               <div className="flex justify-center gap-2 mb-6 overflow-x-auto">
                 {tabData.map((tab, i) => (
-                  <button key={tab.label} onClick={() => setActiveTab(i)} className="text-sm font-semibold px-4 py-2 rounded-full whitespace-nowrap transition-all" style={activeTab === i ? { backgroundColor: BRAND, color: '#fff' } : { backgroundColor: '#fff', color: BRAND, border: '1px solid #e5e7eb' }}>
+                  <button key={tab.label} onClick={() => setActiveTab(i)} className="text-sm font-semibold px-4 py-2 rounded-full whitespace-nowrap transition-all" style={activeTab === i ? { backgroundColor: BRAND, color: '#fff' } : { backgroundColor: '#f9faf9', color: BRAND, border: '1px solid #e5e7eb' }}>
                     {tab.label}
                   </button>
                 ))}
@@ -365,7 +408,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             </Reveal>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
               {tabData[activeTab].items.map((item) => (
-                <div key={item} className="flex items-center gap-3 rounded-xl p-3.5 border border-gray-200 bg-white">
+                <div key={item} className="flex items-center gap-3 rounded-xl p-3.5 border border-gray-200 bg-[#f9faf9]">
                   <CheckCircle2 className="w-4 h-4 flex-shrink-0" style={{ color: BRAND }} />
                   <span className="text-sm font-medium text-gray-800">{item}</span>
                 </div>
@@ -375,7 +418,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         </section>
 
         {/* WHY TRUST */}
-        <section className="py-14 md:py-18 bg-white">
+        <section className="py-14 md:py-18" style={{ backgroundColor: '#f9faf9' }}>
           <div className="max-w-4xl mx-auto px-5 md:px-10">
             <Reveal><div className="text-center mb-10"><h2 className="text-2xl md:text-4xl font-extrabold text-gray-900 tracking-tight">Your designs, engineered to perfection</h2><p className="mt-2 text-gray-500 text-sm md:text-base">Every number is calculated, never guessed</p></div></Reveal>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
@@ -385,7 +428,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                 { title: 'Locked layout consistency', desc: 'Pick one plan — all 17+ drawings, elevations, and BOQ follow it exactly. No drift.' },
               ].map((item, i) => (
                 <Reveal key={item.title} delay={i * 80}>
-                  <div className="rounded-xl p-5 border border-gray-200 bg-[#f9faf9] h-full">
+                  <div className="rounded-xl p-5 border border-gray-200 bg-white h-full shadow-sm">
                     <ShieldCheck className="w-5 h-5 mb-3" style={{ color: BRAND }} />
                     <h3 className="text-sm font-bold text-gray-900 mb-1.5">{item.title}</h3>
                     <p className="text-xs text-gray-500 leading-relaxed">{item.desc}</p>
@@ -414,7 +457,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
       </main>
 
       {/* FOOTER */}
-      <footer className="py-8 border-t border-gray-200 bg-[#f9faf9]">
+      <footer className="py-8 border-t border-gray-200 bg-white">
         <div className="max-w-6xl mx-auto px-5 md:px-10 flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <img src={BRAND_LOGO_BASE64} alt="neevv" className="h-8" />
