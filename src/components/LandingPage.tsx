@@ -104,6 +104,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               <a href="#showcase" className="hover:text-gray-900 transition-colors">Showcase</a>
               <a href="#how-it-works" className="hover:text-gray-900 transition-colors">How it works</a>
               <a href="#deliverables" className="hover:text-gray-900 transition-colors">Deliverables</a>
+              <a href="/blog" className="hover:text-gray-900 transition-colors">Blog</a>
             </nav>
             <button onClick={onDashboardClick} className="text-sm font-semibold px-4 py-2 rounded-lg border transition-all hover:-translate-y-0.5" style={{ borderColor: BRAND, color: BRAND, background: 'transparent' }}>
               My Projects
@@ -124,6 +125,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             muted
             loop
             playsInline
+            preload="none"
             poster="/hero-poster.jpg"
             className="absolute inset-0 w-full h-full object-cover"
             aria-hidden="true"
@@ -257,8 +259,22 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         </section>
 
         {/* SHOWCASE */}
-        <section id="showcase" className="py-14 md:py-18" style={{ backgroundColor: '#f5f5f5' }}>
-          <div className="max-w-6xl mx-auto px-5 md:px-10">
+        <section id="showcase" className="relative py-14 md:py-18 overflow-hidden">
+          {/* Interior time-lapse video background */}
+          <video
+            autoPlay
+            muted
+            loop
+            playsInline
+            preload="none"
+            poster="/interior-poster.jpg"
+            className="absolute inset-0 w-full h-full object-cover"
+            aria-hidden="true"
+          >
+            <source src="/interior-timelapse.mp4" type="video/mp4" />
+          </video>
+          <div className="absolute inset-0 bg-white/85" />
+          <div className="relative max-w-6xl mx-auto px-5 md:px-10">
             <Reveal>
               <div className="text-center mb-8">
                 <h2 className="text-2xl md:text-4xl font-extrabold text-gray-900 tracking-tight">See what you can create</h2>
