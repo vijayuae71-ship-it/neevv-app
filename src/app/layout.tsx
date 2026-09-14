@@ -3,6 +3,7 @@ import Script from "next/script";
 import "../styles/daisyui.css";
 import "../styles/globals.css";
 import ClientProviders from '../components/ClientProviders';
+import FeedbackButton from '../components/FeedbackButton';
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://neevv.in'),
@@ -102,6 +103,7 @@ export default function RootLayout({
           {`document.documentElement.setAttribute('data-theme', 'alfred-light');`}
         </Script>
         <ClientProviders>{children}</ClientProviders>
+        <FeedbackButton />
       </body>
     </html>
   );
