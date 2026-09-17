@@ -3,7 +3,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
   ArrowRight, ShieldCheck, ChevronLeft, ChevronRight,
-  CheckCircle2, HardHat, Upload, Lock, Clock, Sparkles, Play,
+  CheckCircle2, HardHat, Upload, Clock, Play,
 } from 'lucide-react';
 import { BRAND_LOGO_BASE64 } from '@/utils/brand';
 
@@ -150,14 +150,15 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             <nav className="hidden md:flex items-center gap-7 text-sm font-medium text-gray-500">
               <a href="#showcase" className="hover:text-gray-900 transition-colors">Showcase</a>
               <a href="#how-it-works" className="hover:text-gray-900 transition-colors">How it works</a>
-              <a href="#deliverables" className="hover:text-gray-900 transition-colors">Deliverables</a>
+              <a href="#deliverables" className="hover:text-gray-900 transition-colors">What you get</a>
+              <a href="#deliverables" className="hover:text-gray-900 transition-colors">Pricing</a>
               <a href="/blog" className="hover:text-gray-900 transition-colors">Blog</a>
             </nav>
             <button onClick={onDashboardClick} className="text-sm font-semibold px-4 py-2 rounded-lg border transition-all hover:-translate-y-0.5" style={{ borderColor: BRAND, color: BRAND, background: 'transparent' }}>
               My Projects
             </button>
             <button onClick={onGetStarted} className="text-sm font-semibold px-5 py-2 rounded-lg text-white shadow-sm hover:shadow-md transition-all hover:-translate-y-0.5" style={{ backgroundColor: ACCENT }}>
-              Start Designing — Free
+              Design my home — free
             </button>
           </div>
         </div>
@@ -165,106 +166,91 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 
       <main className="flex-1">
         {/* HERO */}
-        <section ref={heroRef} className="relative overflow-hidden pt-14 pb-14 md:pt-20 md:pb-16" style={{ backgroundColor: '#f9faf9' }}>
-          {/* Subtle background blobs */}
-          <div className="absolute -top-32 -right-32 w-[500px] h-[500px] rounded-full opacity-[0.04] blur-[100px]" style={{ backgroundColor: BRAND }} />
-          <div className="absolute top-48 -left-40 w-[400px] h-[400px] rounded-full opacity-[0.03] blur-[100px]" style={{ backgroundColor: ACCENT }} />
-          <div className="relative max-w-6xl mx-auto px-5 md:px-10">
-            {/* Hero content: text left, video right on desktop */}
-            <div className="flex flex-col md:flex-row items-center gap-8 md:gap-12 mb-10">
-              <div className="flex-1 text-center md:text-left">
-                <Reveal>
-                  <div className="inline-flex items-center gap-2 text-xs font-semibold px-4 py-1.5 rounded-full mb-5 border" style={{ borderColor: `${BRAND}30`, color: BRAND, backgroundColor: `${BRAND}06` }}>
-                    <Sparkles className="w-3.5 h-3.5" /> Architecture • Structure • MEP • Interiors
-                  </div>
-                </Reveal>
-                <Reveal delay={60}>
-                  <h1 className="text-3xl md:text-5xl lg:text-6xl font-extrabold text-gray-900 leading-[1.1] tracking-tight">
-                    Your vision. Your home.<br className="hidden md:block" />
-                    <span style={{ color: ACCENT }}> Designed by you</span>
-                  </h1>
-                </Reveal>
-                <Reveal delay={80}>
-                  <p className="mt-3 text-lg md:text-2xl font-semibold tracking-wide" style={{ color: BRAND }}>
-                    In minutes, not months.
-                  </p>
-                </Reveal>
-                <Reveal delay={140}>
-                  <p className="mt-4 text-base md:text-lg text-gray-600 leading-relaxed max-w-xl">
-                    Enter your plot size. Choose your layout. Get 17+ execution-ready drawings, 3D renders, and cost estimates.
-                  </p>
-                </Reveal>
-              </div>
-              {/* Construction time-lapse video — click to play */}
-              <Reveal delay={200} className="flex-shrink-0 w-full md:w-[480px]">
-                <ClickToPlayVideo
-                  src="/hero-timelapse.mp4"
-                  poster="/hero-poster.jpg"
-                  className="aspect-video shadow-xl border border-gray-200"
-                  label="Watch: Foundation to finished home"
-                />
+        <section ref={heroRef} className="relative overflow-hidden min-h-[620px] md:min-h-[680px] flex items-center" style={{ backgroundColor: '#fff' }}>
+          <div className="absolute inset-0 bg-cover bg-center md:bg-right" style={{ backgroundImage: "linear-gradient(90deg, #fff 0%, #fff 35%, rgba(255,255,255,0.88) 57%, rgba(255,255,255,0.12) 100%), url('/hero-poster.jpg')" }} aria-hidden="true" />
+          <div className="absolute inset-0 md:hidden bg-gradient-to-b from-white/95 via-white/80 to-white/30" aria-hidden="true" />
+          <div className="relative w-full max-w-7xl mx-auto px-5 md:px-10 py-16 md:py-24">
+            <div className="max-w-2xl">
+              <Reveal>
+                <p className="inline-block mb-5 text-xs md:text-sm font-bold tracking-[0.18em] uppercase" style={{ color: ACCENT }}>FREE WHILE WE ARE IN BETA</p>
+              </Reveal>
+              <Reveal delay={60}>
+                <h1 className="text-4xl md:text-6xl lg:text-7xl font-black text-gray-950 leading-[1.02] tracking-[-0.04em]">
+                  See the home your family will live in. Today.
+                </h1>
+              </Reveal>
+              <Reveal delay={110}>
+                <p className="mt-6 max-w-xl text-base md:text-lg text-gray-700 leading-relaxed">
+                  Tell us your plot size and what you need. Today you will have it in 3D, every drawing your builder works from, and the material list to check his quote against.
+                </p>
+              </Reveal>
+              <Reveal delay={160}>
+                <div className="mt-8 flex flex-col sm:flex-row items-start sm:items-center gap-3">
+                  <button onClick={onGetStarted} className="inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-lg text-sm font-bold text-white shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all" style={{ backgroundColor: ACCENT }}>
+                    Design my home — free <ArrowRight className="w-4 h-4" />
+                  </button>
+                  <a href="#showcase" className="inline-flex items-center justify-center px-6 py-3.5 rounded-lg text-sm font-bold text-gray-800 border border-gray-800 hover:bg-gray-900 hover:text-white transition-colors">
+                    See real drawings first
+                  </a>
+                </div>
+                <p className="mt-4 text-xs md:text-sm text-gray-500">About 15 minutes. No card. Works from anywhere for any plot in India.</p>
               </Reveal>
             </div>
+            <Reveal delay={260} className="absolute right-5 bottom-10 md:right-12 md:bottom-14">
+              <div className="rotate-[-3deg] rounded-xl bg-white px-5 py-4 shadow-2xl border border-gray-100 max-w-[220px]">
+                <div className="text-3xl font-black text-gray-950">Today</div>
+                <p className="mt-1 text-xs leading-relaxed text-gray-500">Not four months, and not ₹2-5L of fees</p>
+              </div>
+            </Reveal>
+          </div>
+        </section>
+
+        {/* STATS STRIP */}
+        <section className="py-8 md:py-10 bg-[#1a1a1a]">
+          <div className="max-w-7xl mx-auto px-5 md:px-10 grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-7 md:gap-8">
+            {[
+              { value: '21+ drawings', label: 'Plans, structure, electrical, plumbing' },
+              { value: '3D before you build', label: 'Walk it before a brick is laid' },
+              { value: 'Costed to the rupee', label: 'Know what materials should cost' },
+              { value: 'NBC 2016 & Vastu', label: 'Built to pass, placed the way you expect' },
+            ].map((item, i) => (
+              <Reveal key={item.value} delay={i * 50}>
+                <div className="text-left md:text-center">
+                  <div className="text-base md:text-lg font-extrabold text-white">{item.value}</div>
+                  <div className="mt-1 text-xs leading-relaxed text-gray-400">{item.label}</div>
+                </div>
+              </Reveal>
+            ))}
+          </div>
+        </section>
+
+        {/* HERO CARDS */}
+        <section className="py-10 md:py-14 bg-white">
+          <div className="max-w-6xl mx-auto px-5 md:px-10">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {heroCards.map((c, i) => (
-                <Reveal key={c.title} delay={200 + i * 80} className="h-full">
+                <Reveal key={c.title} delay={i * 80} className="h-full">
                   <button onClick={c.onClick} className="group w-full text-left rounded-2xl p-6 flex flex-col h-full bg-white border border-gray-200 shadow-sm transition-all duration-300 hover:-translate-y-1.5 hover:shadow-xl hover:border-gray-300">
                     <div className="flex items-center gap-3 mb-3">
                       <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: `${BRAND}12`, color: BRAND }}>{c.icon}</div>
-                      <div>
-                        <h3 className="text-base font-bold text-gray-900">{c.title}</h3>
-                        <p className="text-xs text-gray-400">{c.subtitle}</p>
-                      </div>
+                      <div><h3 className="text-base font-bold text-gray-900">{c.title}</h3><p className="text-xs text-gray-400">{c.subtitle}</p></div>
                     </div>
                     <p className="text-sm text-gray-600 leading-relaxed flex-1">{c.desc}</p>
                     <div className="mt-5 flex items-center justify-between">
-                      <span className="inline-flex items-center gap-2 text-sm font-semibold group-hover:gap-3 transition-all" style={{ color: ACCENT }}>
-                        Start Designing <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
-                      </span>
+                      <span className="inline-flex items-center gap-2 text-sm font-semibold group-hover:gap-3 transition-all" style={{ color: ACCENT }}>Design my home — free <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" /></span>
                       <span className="text-[10px] font-bold px-2.5 py-1 rounded-full" style={{ backgroundColor: `${BRAND}10`, color: BRAND }}>Free in beta</span>
                     </div>
                   </button>
                 </Reveal>
               ))}
             </div>
-            <Reveal delay={480}>
+            <Reveal delay={300}>
               <div className="mt-7 flex flex-col sm:flex-row items-center justify-center gap-4">
-                <button onClick={onUploadClick} className="inline-flex items-center gap-2 text-sm font-medium text-gray-400 hover:text-gray-600 transition-colors">
-                  <Upload className="w-4 h-4" /> Already have a drawing? Upload it here <ArrowRight className="w-3.5 h-3.5" />
-                </button>
+                <button onClick={onUploadClick} className="inline-flex items-center gap-2 text-sm font-medium text-gray-400 hover:text-gray-600 transition-colors"><Upload className="w-4 h-4" /> Already have a drawing? Upload it here <ArrowRight className="w-3.5 h-3.5" /></button>
                 <span className="hidden sm:inline text-gray-300">|</span>
-                <button onClick={onRoomDesignClick} className="inline-flex items-center gap-2 text-sm font-medium text-gray-400 hover:text-gray-600 transition-colors">
-                  🎨 Design a single room <ArrowRight className="w-3.5 h-3.5" />
-                </button>
+                <button onClick={onRoomDesignClick} className="inline-flex items-center gap-2 text-sm font-medium text-gray-400 hover:text-gray-600 transition-colors">🎨 Design a single room <ArrowRight className="w-3.5 h-3.5" /></button>
               </div>
             </Reveal>
-          </div>
-        </section>
-
-        {/* FEATURES STRIP */}
-        <section className="py-8 md:py-10 border-y border-gray-100 bg-white">
-          <div className="max-w-6xl mx-auto px-5 md:px-10">
-            <Reveal><h3 className="text-center text-sm font-bold uppercase tracking-widest mb-6" style={{ color: BRAND }}>Features</h3></Reveal>
-            <div className="hidden md:flex justify-center gap-8">
-              {featureItems.map((f, i) => (
-                <Reveal key={f.label} delay={i * 50}>
-                  <div className="flex flex-col items-center text-center gap-2">
-                    <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: `${BRAND}10`, color: BRAND }}>{f.icon}</div>
-                    <div><div className="text-lg font-extrabold text-gray-900">{f.value}</div><div className="text-xs text-gray-500 mt-0.5">{f.label}</div></div>
-                  </div>
-                </Reveal>
-              ))}
-            </div>
-            <div className="grid md:hidden grid-cols-2 gap-4">
-              {featureItems.map((f, i) => (
-                <Reveal key={f.label} delay={i * 50} className={i === featureItems.length - 1 ? 'col-span-2 flex justify-center' : ''}>
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: `${BRAND}10`, color: BRAND }}>{f.icon}</div>
-                    <div><span className="text-base font-extrabold text-gray-900">{f.value}</span><span className="ml-1.5 text-[11px] text-gray-500">{f.label}</span></div>
-                  </div>
-                </Reveal>
-              ))}
-            </div>
           </div>
         </section>
 
@@ -386,7 +372,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             <Reveal delay={350}>
               <div className="mt-8 flex justify-center">
                 <button onClick={onGetStarted} className="inline-flex items-center gap-2 text-sm font-semibold px-6 py-3 rounded-lg text-white shadow-sm hover:shadow-md transition-all hover:-translate-y-0.5" style={{ backgroundColor: BRAND }}>
-                  Try It Now — Free <ArrowRight className="w-4 h-4" />
+                  Design my home — free <ArrowRight className="w-4 h-4" />
                 </button>
               </div>
             </Reveal>
@@ -396,7 +382,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         {/* DELIVERABLES */}
         <section id="deliverables" className="py-14 md:py-18 bg-white">
           <div className="max-w-4xl mx-auto px-5 md:px-10">
-            <Reveal><div className="text-center mb-8"><h2 className="text-2xl md:text-4xl font-extrabold text-gray-900 tracking-tight">Everything you need to start building</h2><p className="mt-2 text-gray-500 text-sm md:text-base">17+ coordinated drawings from one locked layout</p></div></Reveal>
+            <Reveal><div className="text-center mb-8"><h2 className="text-2xl md:text-4xl font-extrabold text-gray-900 tracking-tight">Everything you need to start building</h2><p className="mt-2 text-gray-500 text-sm md:text-base">21+ coordinated drawings from one locked layout</p></div></Reveal>
             <Reveal delay={60}>
               <div className="flex justify-center gap-2 mb-6 overflow-x-auto">
                 {tabData.map((tab, i) => (
@@ -425,7 +411,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               {[
                 { title: 'Engineered precision', desc: 'Programmatic overlays stamp all computed values — FSI, setbacks, areas. AI draws, code calculates.' },
                 { title: 'NBC 2016 & IS standards', desc: 'Setbacks, coverage ratios, line weights, hatching — all built into every drawing automatically.' },
-                { title: 'Locked layout consistency', desc: 'Pick one plan — all 17+ drawings, elevations, and BOQ follow it exactly. No drift.' },
+                { title: 'Locked layout consistency', desc: 'Pick one plan — all 21+ drawings, elevations, and BOQ follow it exactly. No drift.' },
               ].map((item, i) => (
                 <Reveal key={item.title} delay={i * 80}>
                   <div className="rounded-xl p-5 border border-gray-200 bg-white h-full shadow-sm">
@@ -472,7 +458,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
       <div className="fixed bottom-0 left-0 right-0 z-50 md:hidden transition-transform duration-300" style={{ transform: heroVisible ? 'translateY(100%)' : 'translateY(0)' }}>
         <div className="backdrop-blur-md bg-white/90 border-t border-gray-200 px-4 py-3 shadow-[0_-4px_16px_rgba(0,0,0,0.06)]">
           <button onClick={onGetStarted} className="w-full flex items-center justify-center gap-2 text-sm font-bold py-3 rounded-lg text-white shadow-sm" style={{ backgroundColor: ACCENT }}>
-            Start Designing — Free <ArrowRight className="w-4 h-4" />
+            Design my home — free <ArrowRight className="w-4 h-4" />
           </button>
         </div>
       </div>
