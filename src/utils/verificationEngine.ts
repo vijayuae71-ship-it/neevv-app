@@ -510,16 +510,16 @@ function validateLockedDesign(ctx: Ctx, idGen: () => string): CategoryResult {
     const hasDining = floor.rooms.some(r => r.type === 'dining');
     const hasPuja = floor.rooms.some(r => r.type === 'puja');
 
-    // 8. Bedroom count
+    // 8. Bedroom count (CRITICAL — blocks export)
     if (bedroomCount === program.bedrooms) {
       b.pass();
     } else {
       b.fail(
-        'ERROR', `Bedroom count mismatch on ${floor.floorLabel}`,
-        'Generated bedroom count on this floor does not match the requested floor program.',
+        'BLOCKED', `CRITICAL: Bedroom count mismatch on ${floor.floorLabel}`,
+        `User selected ${program.bedrooms} bedroom(s) for ${floor.floorLabel}, but the locked design contains ${bedroomCount}. Every floor plan, furniture layout, area statement, room schedule, BOQ, and all related drawings will reflect this incorrect count. This is a critical discrepancy that blocks final export.`,
         `Floor Plan (${floor.floorLabel})`, 'Bedroom Count',
         `${program.bedrooms}`, `${bedroomCount}`,
-        'Regenerate this floor layout with the correct number of bedrooms.',
+        `Regenerate this floor layout to contain exactly ${program.bedrooms} bedroom(s) as selected by the user.`,
       );
     }
 
@@ -649,18 +649,18 @@ function validateArchitectural(ctx: Ctx, idGen: () => string): CategoryResult {
     );
   }
 
-  // 2. Bedroom count matches requirements (CRITICAL)
+  // 2. Bedroom count matches requirements (CRITICAL — blocks export)
   const totalRequestedBedrooms = requirements.floors.reduce((s, f) => s + f.bedrooms, 0);
   const totalActualBedrooms = allRooms.filter(r => r.type === 'bedroom' || r.type === 'master_bedroom').length;
   if (totalRequestedBedrooms === totalActualBedrooms) {
     b.pass();
   } else {
     b.fail(
-      'ERROR', 'Total bedroom count mismatch',
-      'The total number of bedrooms across all floors does not match the requested total. This is a critical architectural discrepancy.',
-      'Floor Plan (All Floors)', 'Bedroom Count',
+      'BLOCKED', 'CRITICAL: Total bedroom count mismatch across project',
+      `User selected ${totalRequestedBedrooms} total bedroom(s) across all floors, but the locked design contains ${totalActualBedrooms}. This means every floor plan, furniture layout, area statement, elevation, section, room schedule, BOQ (including door/window/electrical/AC schedules), and final deliverable will show the wrong bedroom count. This is the most critical validation failure and blocks all export until corrected.`,
+      'All Drawings & Documents', 'Total Bedroom Count',
       `${totalRequestedBedrooms}`, `${totalActualBedrooms}`,
-      'Regenerate the layout so bedroom counts match the requirements exactly.',
+      `Regenerate the entire layout to contain exactly ${totalRequestedBedrooms} bedroom(s) as selected by the user. All downstream drawings and BOQ must be regenerated after correction.`,
     );
   }
 
@@ -1475,6 +1475,58 @@ function validateBOQ(ctx: Ctx, idGen: () => string): CategoryResult {
     );
   }
 
+  // 3b. CRITICAL: Bedroom count in BOQ must match user selection
+  const totalRequestedBedroomsBOQ = requirements.floors.reduce((s, f) => s + f.bedrooms, 0);
+  const bedroomDoorsInSchedule = boq.doorSchedule.filter(d =>
+    d.location.toLowerCase().includes('bedroom') || d.location.toLowerCase().includes('master')
+  ).length;
+  const bedroomWindowsInSchedule = boq.windowSchedule.filter(w =>
+    w.location.toLowerCase().includes('bedroom') || w.location.toLowerCase().includes('master')
+  ).length;
+  const actualBedroomsInLayout = allRooms.filter(r => r.type === 'bedroom' || r.type === 'master_bedroom').length;
+
+  // Check bedroom doors in BOQ match bedroom count
+  if (bedroomDoorsInSchedule === actualBedroomsInLayout) {
+    b.pass();
+  } else {
+    b.fail(
+      'BLOCKED', 'CRITICAL: Bedroom door count mismatch in BOQ',
+      `User selected ${totalRequestedBedroomsBOQ} bedroom(s). The locked design has ${actualBedroomsInLayout} bedroom(s), but the BOQ door schedule contains ${bedroomDoorsInSchedule} bedroom door(s). Every door in the schedule must correspond to a bedroom in the locked design.`,
+      'BOQ / Door Schedule', 'Bedroom Doors',
+      `${actualBedroomsInLayout} (matching layout)`, `${bedroomDoorsInSchedule}`,
+      'Regenerate the BOQ from the current locked layout so bedroom door count matches exactly.',
+    );
+  }
+
+  // Check bedroom windows in BOQ match bedroom count
+  if (bedroomWindowsInSchedule === actualBedroomsInLayout) {
+    b.pass();
+  } else {
+    b.fail(
+      'BLOCKED', 'CRITICAL: Bedroom window count mismatch in BOQ',
+      `User selected ${totalRequestedBedroomsBOQ} bedroom(s). The locked design has ${actualBedroomsInLayout} bedroom(s), but the BOQ window schedule contains ${bedroomWindowsInSchedule} bedroom window(s). Every bedroom must have a corresponding window entry.`,
+      'BOQ / Window Schedule', 'Bedroom Windows',
+      `${actualBedroomsInLayout} (matching layout)`, `${bedroomWindowsInSchedule}`,
+      'Regenerate the BOQ from the current locked layout so bedroom window count matches exactly.',
+    );
+  }
+
+  // Check BOQ electrical points include bedroom allocation
+  const expectedBedroomElectricalPts = allRooms.filter(r => r.type === 'master_bedroom').length * 10 +
+    allRooms.filter(r => r.type === 'bedroom').length * 8; // master=10, regular=8 per room (from boqCalculator)
+  // This is a soft check — verify total electrical includes bedroom portion
+  if (boq.electricalPoints >= expectedBedroomElectricalPts) {
+    b.pass();
+  } else {
+    b.fail(
+      'ERROR', 'Bedroom electrical points underallocated in BOQ',
+      `The BOQ shows ${boq.electricalPoints} total electrical points, but the ${actualBedroomsInLayout} bedroom(s) alone require at least ${expectedBedroomElectricalPts} points (master=10, regular=8). Electrical schedule may not cover all bedrooms.`,
+      'BOQ / Electrical Schedule', 'Bedroom Electrical Points',
+      `>= ${expectedBedroomElectricalPts} for bedrooms`, `${boq.electricalPoints} total`,
+      'Regenerate the BOQ electrical allocation to ensure all bedrooms are covered.',
+    );
+  }
+
   // 4. Door count vs expected from room types
   const expectedDoors = expectedDoorCount(allRooms);
   if (boq.doorSchedule.length === expectedDoors) {
@@ -1655,7 +1707,86 @@ function validateCrossDiscipline(ctx: Ctx, idGen: () => string): CategoryResult 
     'Validates that architectural, structural, electrical, plumbing, and elevation data all derive consistently from the same locked layout.',
     idGen,
   );
-  const { layout, boq, allRooms, generatedDrawingTypes } = ctx;
+  const { layout, boq, requirements, allRooms, generatedDrawingTypes } = ctx;
+
+  // 0. CRITICAL: Bedroom count consistency across ALL disciplines
+  const totalRequestedBedroomsXD = requirements.floors.reduce((s, f) => s + f.bedrooms, 0);
+  const totalLayoutBedrooms = allRooms.filter(r => r.type === 'bedroom' || r.type === 'master_bedroom').length;
+
+  // Check bedroom count: requirements vs layout (source of truth for all drawings)
+  if (totalRequestedBedroomsXD === totalLayoutBedrooms) {
+    b.pass();
+  } else {
+    b.fail(
+      'BLOCKED', 'CRITICAL: Bedroom count inconsistent between requirements and locked design',
+      `User selected ${totalRequestedBedroomsXD} bedroom(s) in requirements, but the locked design contains ${totalLayoutBedrooms}. Since ALL drawings (floor plans, electrical, plumbing, elevations, sections, BOQ, furniture layouts, area statements, room schedules) are generated from the locked design, every single document in this project will show the wrong bedroom count. This blocks final export of the entire drawing set.`,
+      'All Drawings & Documents', 'Bedroom Count Consistency',
+      `${totalRequestedBedroomsXD} (user selection)`, `${totalLayoutBedrooms} (locked design)`,
+      `Regenerate the locked design to contain exactly ${totalRequestedBedroomsXD} bedroom(s), then regenerate all drawings and BOQ.`,
+    );
+  }
+
+  // Check bedroom count propagation into BOQ if available
+  if (boq) {
+    const boqBedroomDoors = boq.doorSchedule.filter(d =>
+      d.location.toLowerCase().includes('bedroom') || d.location.toLowerCase().includes('master')
+    ).length;
+    if (boqBedroomDoors === totalLayoutBedrooms) {
+      b.pass();
+    } else {
+      b.fail(
+        'BLOCKED', 'CRITICAL: Bedroom count in BOQ door schedule does not match locked design',
+        `Locked design has ${totalLayoutBedrooms} bedroom(s), but BOQ door schedule lists ${boqBedroomDoors} bedroom door(s). The BOQ must reflect the exact bedroom count from the locked design.`,
+        'BOQ vs Floor Plan', 'Bedroom-to-Door Coordination',
+        `${totalLayoutBedrooms} bedroom doors`, `${boqBedroomDoors} bedroom doors in BOQ`,
+        'Regenerate the BOQ from the current locked design.',
+      );
+    }
+
+    // Check bedroom fan/AC points
+    const bedroomFanACRooms = allRooms.filter(r => r.type === 'bedroom' || r.type === 'master_bedroom').length;
+    // BOQ should include fan + AC for every bedroom
+    const fanItems = boq.lineItems.filter(li => li.description.toLowerCase().includes('fan'));
+    const acItems = boq.lineItems.filter(li => li.description.toLowerCase().includes('ac'));
+    const fanQty = fanItems.reduce((s, li) => s + li.quantity, 0);
+    const acQty = acItems.reduce((s, li) => s + li.quantity, 0);
+    if (fanQty >= bedroomFanACRooms && acQty >= bedroomFanACRooms) {
+      b.pass();
+    } else {
+      b.fail(
+        'WARNING', 'Bedroom fan/AC allocation may be incomplete',
+        `${bedroomFanACRooms} bedroom(s) exist in the locked design. BOQ shows ${fanQty} fan point(s) and ${acQty} AC point(s) — verify every bedroom has both a fan and AC provision.`,
+        'BOQ vs Floor Plan', 'Bedroom MEP Coordination',
+        `>= ${bedroomFanACRooms} fans & AC points`, `${fanQty} fans, ${acQty} AC points`,
+        'Review BOQ MEP allocations to ensure every bedroom is covered.',
+      );
+    }
+  }
+
+  // Check bedroom representation in electrical drawings
+  const electricalGenerated = generatedDrawingTypes.some(t => t.startsWith('electrical'));
+  if (electricalGenerated && totalLayoutBedrooms > 0) {
+    // Electrical drawings should exist for every floor that has bedrooms
+    const floorsWithBedrooms = layout.floors.filter(f =>
+      f.rooms.some(r => r.type === 'bedroom' || r.type === 'master_bedroom')
+    );
+    const allFloorsHaveElectrical = floorsWithBedrooms.every(f => {
+      const floorKey = f.floor === 0 ? 'GF' : 'FF';
+      return generatedDrawingTypes.includes(`electrical-${floorKey}`) || generatedDrawingTypes.includes('electrical');
+    });
+    if (allFloorsHaveElectrical) {
+      b.pass();
+    } else {
+      b.fail(
+        'ERROR', 'Electrical drawing missing for floor with bedrooms',
+        `Bedrooms exist on floors that do not have corresponding electrical drawings generated. Every bedroom needs electrical coverage (lights, fans, sockets, AC).`,
+        'Electrical Drawing', 'Bedroom Electrical Coverage',
+        'electrical drawing for every floor with bedrooms',
+        'some floors with bedrooms lack electrical drawings',
+        'Generate electrical drawings for all floors that contain bedrooms.',
+      );
+    }
+  }
 
   // 1. Architectural room data and structural column data both present per floor
   const floorsWithBothArrays = layout.floors.every(f => Array.isArray(f.rooms) && Array.isArray(f.columns));
