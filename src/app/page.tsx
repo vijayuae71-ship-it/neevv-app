@@ -29,6 +29,9 @@ import { useProjectAutoSave } from '@/hooks/useProjectAutoSave';
 import { Home, Palette, Upload, ArrowRight, CheckCircle, Zap, Users, Clock, Building, Hammer, Compass, Star, FileText, Eye, Building2, ShieldCheck, ClipboardList, Layers, FileStack, Lock, Sparkles, ChevronLeft, ChevronRight, Boxes, Wrench, HardHat, CheckCircle2, Award, Briefcase, Ruler, LayoutDashboard } from 'lucide-react';
 import { SHOWCASE_FLOORPLAN, SHOWCASE_ELEVATION, SHOWCASE_3DRENDER, SHOWCASE_ELECTRICAL, SHOWCASE_PLUMBING, SHOWCASE_STRUCTURAL, SHOWCASE_INTERIOR_PLAN, SHOWCASE_INTERIOR_ELEVATION, SHOWCASE_INTERIOR_3D } from '@/utils/showcaseImages';
 import { analytics } from '@/utils/analytics';
+import { designStructure, type StructuralDesignResult } from '@/utils/structuralEngine';
+import { generateBBS, type BBSResult } from '@/utils/bbsGenerator';
+import { getDefaultCityData } from '@/utils/indianCityData';
 
 type AppMode = 'landing' | 'new_build' | 'interior_only' | 'upload_drawing' | 'office_design' | 'room_design' | 'dashboard';
 
@@ -65,6 +68,8 @@ export default function HomePage() {
   const [roomDesignStyle, setRoomDesignStyle] = useState<string>('modern_minimalist');
   const [drawingsGenerated, setDrawingsGenerated] = useState<number>(0);
   const [generatedDrawingTypes, setGeneratedDrawingTypes] = useState<string[]>([]);
+  const [structuralResult, setStructuralResult] = useState<StructuralDesignResult | null>(null);
+  const [bbsResult, setBBSResult] = useState<BBSResult | null>(null);
 
   const { projectId: autoSaveProjectId, saving: autoSaving, lastSaved } = useProjectAutoSave({
     mode,
@@ -174,12 +179,50 @@ export default function HomePage() {
       floors: req.floors.length,
     });
     setMotherLayoutLocked(false);
+    setStructuralResult(null);
+    setBBSResult(null);
     setStep('layouts');
   };
+
+  const runStructuralDesign = useCallback((layout: Layout, req: ProjectRequirements) => {
+    try {
+      const cityData = getDefaultCityData(req.city, req.state);
+      const numFloors = req.floors.length;
+      
+      const result = designStructure({
+        layout: layout as any,
+        cityData,
+        numFloors,
+        floorHeightM: 3.0,
+        concreteGrade: 'M25',
+        steelGrade: 'Fe500D',
+        roofAccessible: true,
+      });
+      
+      setStructuralResult(result);
+      
+      const bbs = generateBBS(result, numFloors);
+      setBBSResult(bbs);
+      
+      return { structuralResult: result, bbsResult: bbs };
+    } catch (e) {
+      console.error('Structural engine error:', e);
+      setStructuralResult(null);
+      setBBSResult(null);
+      return null;
+    }
+  }, []);
 
   const handleLayoutSelect = (layout: Layout) => {
     setSelectedLayout(layout);
     setMotherLayoutLocked(true); // Lock immediately — AI already generated NBC-compliant plan
+    
+    // Run structural engine on lock
+    let engineResult = null;
+    if (requirements) {
+      engineResult = runStructuralDesign(layout, requirements);
+    }
+    
     if (requirements) {
       const b = calculateBOQ(layout, requirements.floors.length, customRates);
       setBOQ(b);
@@ -216,6 +259,8 @@ export default function HomePage() {
     setOfficeStep('requirements');
     setOfficeRequirements(null);
     setRoomDesignType('');
+    setStructuralResult(null);
+    setBBSResult(null);
   };
 
 
@@ -226,6 +271,7 @@ export default function HomePage() {
     setLayouts([layout]);
     const b = calculateBOQ(layout, req.floors.length, customRates);
     setBOQ(b);
+    runStructuralDesign(layout, req);
     setMotherLayoutLocked(true);
     setMode('new_build');
     setStep('isometric');
@@ -498,6 +544,9 @@ const BRAND_GREEN = '#4f6f52';
               if (project.selectedLayout) {
                 setSelectedLayout(project.selectedLayout);
                 setMotherLayoutLocked(true);
+                if (project.requirements && project.selectedLayout) {
+                  runStructuralDesign(project.selectedLayout, project.requirements);
+                }
                 if (project.requirements) {
                   const b = calculateBOQ(project.selectedLayout, project.requirements.floors?.length || 1, customRates);
                   setBOQ(b);
@@ -772,7 +821,7 @@ const BRAND_GREEN = '#4f6f52';
               <IsometricView layout={selectedLayout} requirements={requirements} />
             )}
             {step === 'working' && selectedLayout && requirements && (
-              <WorkingDrawings layout={selectedLayout} requirements={requirements} boq={boq} onDrawingGenerated={handleDrawingGenerated} />
+              <WorkingDrawings layout={selectedLayout} requirements={requirements} boq={boq} onDrawingGenerated={handleDrawingGenerated} structuralResult={structuralResult} />
             )}
             {step === 'rates' && selectedLayout && requirements && (
               <RateSheet
@@ -794,10 +843,10 @@ const BRAND_GREEN = '#4f6f52';
               />
             )}
             {step === 'boq' && boq && selectedLayout && (
-              <BOQReport boq={boq} layout={selectedLayout} />
+              <BOQReport boq={boq} layout={selectedLayout} structuralResult={structuralResult} bbsResult={bbsResult} />
             )}
             {step === 'verification' && selectedLayout && requirements && (
-              <VerificationReport layout={selectedLayout} requirements={requirements} boq={boq} generatedDrawingTypes={generatedDrawingTypes} />
+              <VerificationReport layout={selectedLayout} requirements={requirements} boq={boq} generatedDrawingTypes={generatedDrawingTypes} structuralResult={structuralResult} bbsResult={bbsResult} />
             )}
             {step === 'interior' && selectedLayout && requirements && (
               <InteriorDesign layout={selectedLayout} requirements={requirements} />

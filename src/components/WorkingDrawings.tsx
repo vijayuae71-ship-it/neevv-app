@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Layout, ProjectRequirements, BOQ } from '../types';
 import {
   Layers, Grid3x3, ArrowUpDown, Building, Shovel, Columns3,
@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { exportAIPDF, ExportProgress } from '../utils/pdfExport';
 import { applyTextOverlay, OVERLAY_DRAWING_TYPES } from '../utils/textOverlay';
+import { toOverlayData, type StructuralOverlayData } from '../utils/textOverlay';
 import { authFetch } from '@/utils/authFetch';
 import { getCachedDrawing, setCachedDrawing, getAllCachedDrawings, clearCachedDrawings, migrateFromLocalStorage } from '../utils/drawingCache';
 import { buildDrawingPrompt, DrawingType as ApiDrawingType } from '../utils/drawingPrompts';
@@ -19,6 +20,7 @@ interface Props {
   layout: Layout;
   requirements: ProjectRequirements;
   boq?: BOQ | null;
+  structuralResult?: any;
 }
 
 type DrawingType =
@@ -64,7 +66,16 @@ const aiDrawingMap: Record<DrawingType, string> = {
 /* Drawing types that differ between Ground Floor and First Floor and need separate generation/caching */
 const FLOOR_SPECIFIC: DrawingType[] = ['electrical', 'plumbing', 'tiling', 'brickwork'];
 
-export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq, onDrawingGenerated }) => {
+export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq, onDrawingGenerated, structuralResult }) => {
+  const structuralOverlay = useMemo(() => {
+    if (!structuralResult) return undefined;
+    try {
+      return toOverlayData(structuralResult);
+    } catch {
+      return undefined;
+    }
+  }, [structuralResult]);
+
   const [activeDrawing, setActiveDrawing] = useState<DrawingType>('excavation');
   const [zoom, setZoom] = useState(100);
   const [selectedFloor, setSelectedFloor] = useState<'GF' | 'FF'>('GF');
@@ -144,7 +155,7 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq, on
         let finalImg = img;
         if ((OVERLAY_DRAWING_TYPES as readonly string[]).includes(drawingType) && boq) {
           try {
-            finalImg = await applyTextOverlay(img, drawingType, layout, boq, selectedFloor);
+            finalImg = await applyTextOverlay(img, drawingType, layout, boq, selectedFloor, structuralOverlay);
           } catch (e) {
             console.warn('Text overlay failed, using raw AI image:', e);
           }
@@ -165,7 +176,7 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq, on
     } finally {
       setAiLoading(null);
     }
-  }, [layout, requirements, boq, selectedFloor, getCacheKey, saveDrawingToCache, onDrawingGenerated]);
+  }, [layout, requirements, boq, selectedFloor, structuralOverlay, getCacheKey, saveDrawingToCache, onDrawingGenerated]);
 
   /* ---------- Click handler for generate button ---------- */
   const handleGenerate = useCallback((drawingType: DrawingType) => {
@@ -205,7 +216,7 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq, on
           let finalImg = data.imageDataUri;
           if ((OVERLAY_DRAWING_TYPES as readonly string[]).includes(dt) && boq) {
             try {
-              finalImg = await applyTextOverlay(finalImg, dt, layout, boq, floor);
+              finalImg = await applyTextOverlay(finalImg, dt, layout, boq, floor, structuralOverlay);
             } catch (e) {
               console.warn('Text overlay failed, using raw AI image:', e);
             }
@@ -234,7 +245,7 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq, on
     setAiLoading(null);
     setSelectedFloor('GF');
     setGeneratingAll(false);
-  }, [aiImages, layout, requirements, boq, isMultiFloor, getCacheKey, saveDrawingToCache, onDrawingGenerated]);
+  }, [aiImages, layout, requirements, boq, structuralOverlay, isMultiFloor, getCacheKey, saveDrawingToCache, onDrawingGenerated]);
 
   /* ---------- PDF Export ---------- */
   const handleExportPDF = async () => {
