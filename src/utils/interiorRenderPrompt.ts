@@ -17,6 +17,261 @@ import { buildInteriorScene } from './buildInteriorScene';
 export type InteriorRenderType = 'plan' | 'elevation' | 'render3d';
 
 /* ----------------------------------------------------------------
+   Spatial coordination — one canonical XY layout for every view
+   ----------------------------------------------------------------
+   The scene data names the wall an item belongs to, but does not carry
+   plan coordinates. These helpers deterministically derive approximate
+   centre points from that shared scene so plan, elevation and 3D prompts
+   all receive the same coordinate reference without a schema change.
+   Origin is the internal south-west corner of the room.
+   ---------------------------------------------------------------- */
+
+interface PositionedItem {
+  name: string;
+  xMM: number; // distance from the west wall (centre point)
+  yMM: number; // distance from the south wall (centre point)
+  widthMM: number;
+  depthMM: number;
+  heightMM: number;
+  mountHeightMM: number;
+  wall: string;
+  material: string;
+  description: string;
+}
+
+interface PositionedOpening {
+  opening: SceneOpening;
+  centerMM: number; // X on north/south walls, Y on east/west walls
+}
+
+const roundMM = (value: number): number => Math.round(value);
+const clamp = (value: number, minimum: number, maximum: number): number =>
+  Math.min(Math.max(value, minimum), maximum);
+
+function wallLength(scene: InteriorScene, wall: string): number {
+  return wall === 'east' || wall === 'west' ? scene.depthMM : scene.widthMM;
+}
+
+/** Deterministically place openings along their host wall. The same opening
+ * positions are also reserved when distributing items on that wall. */
+function computeOpeningPositions(scene: InteriorScene): PositionedOpening[] {
+  const byWall = new Map<string, SceneOpening[]>();
+  for (const opening of scene.openings) {
+    const group = byWall.get(opening.wall) || [];
+    group.push(opening);
+    byWall.set(opening.wall, group);
+  }
+
+  return scene.openings.map(opening => {
+    const group = byWall.get(opening.wall) || [opening];
+    const index = group.indexOf(opening);
+    const length = wallLength(scene, opening.wall);
+    // One opening is intentionally offset from the corner rather than placed
+    // at mid-wall; several openings are evenly divided along the wall.
+    const preferred = group.length === 1 ? length * 0.7 : (length * (index + 1)) / (group.length + 1);
+    const halfWidth = Math.min(opening.widthMM / 2, length / 2);
+    return {
+      opening,
+      centerMM: roundMM(clamp(preferred, halfWidth, Math.max(halfWidth, length - halfWidth))),
+    };
+  });
+}
+
+/** Return evenly ordered longitudinal coordinates and move any coordinate out
+ * of an opening clearance zone. This is deliberately a best-effort layout:
+ * overlapping stacked kitchen components can retain a common logical centre. */
+function distributeAlongWall(
+  scene: InteriorScene,
+  wall: string,
+  items: PositionedItem[],
+  openingPositions: PositionedOpening[],
+): number[] {
+  const length = wallLength(scene, wall);
+  const blocked = openingPositions
+    .filter(position => position.opening.wall === wall)
+    .map(position => ({
+      start: Math.max(0, position.centerMM - position.opening.widthMM / 2 - 100),
+      end: Math.min(length, position.centerMM + position.opening.widthMM / 2 + 100),
+    }));
+
+  return items.map((item, index) => {
+    const span = Math.min(item.widthMM, length);
+    const minimum = span / 2;
+    const maximum = Math.max(minimum, length - span / 2);
+    let coordinate = clamp((length * (index + 1)) / (items.length + 1), minimum, maximum);
+
+    // Shift a coordinate to the closest side of an opening, retaining a small
+    // gap. Repeat because a wall can have more than one opening.
+    for (const interval of blocked) {
+      if (coordinate >= interval.start && coordinate <= interval.end) {
+        const before = clamp(interval.start - 75, minimum, maximum);
+        const after = clamp(interval.end + 75, minimum, maximum);
+        coordinate = Math.abs(coordinate - before) <= Math.abs(after - coordinate) ? before : after;
+      }
+    }
+    return roundMM(coordinate);
+  });
+}
+
+/**
+ * Produce stable approximate plan centre points for the combined furniture and
+ * fixture list. South/north use X as the distributed coordinate; west/east
+ * use Y. The perpendicular offset follows the wall-placement convention
+ * (south/west = item depth; north/east = room dimension minus item depth).
+ */
+function computeItemPositions(scene: InteriorScene): PositionedItem[] {
+  const items: PositionedItem[] = [
+    ...scene.furniture.map(item => ({
+      name: item.name,
+      xMM: 0,
+      yMM: 0,
+      widthMM: item.widthMM,
+      depthMM: item.depthMM,
+      heightMM: item.heightMM,
+      mountHeightMM: 0,
+      wall: item.wall,
+      material: item.material,
+      description: item.description,
+    })),
+    ...scene.fixtures.map(item => ({
+      name: item.name,
+      xMM: 0,
+      yMM: 0,
+      widthMM: item.widthMM,
+      depthMM: item.depthMM,
+      heightMM: item.heightMM,
+      mountHeightMM: item.mountHeightMM,
+      wall: item.wall,
+      material: item.material,
+      description: item.description,
+    })),
+  ];
+  const openingPositions = computeOpeningPositions(scene);
+
+  for (const wall of ['south', 'north', 'west', 'east'] as const) {
+    const wallItems = items.filter(item => item.wall === wall);
+    const longitudinal = distributeAlongWall(scene, wall, wallItems, openingPositions);
+
+    wallItems.forEach((item, index) => {
+      const cornerItem = /corner/i.test(item.name);
+      if (wall === 'south') {
+        item.xMM = cornerItem ? roundMM(clamp(item.widthMM, item.widthMM / 2, scene.widthMM - item.widthMM / 2)) : longitudinal[index];
+        item.yMM = roundMM(clamp(item.depthMM, item.depthMM / 2, scene.depthMM - item.depthMM / 2));
+      } else if (wall === 'north') {
+        item.xMM = longitudinal[index];
+        item.yMM = roundMM(clamp(scene.depthMM - item.depthMM, item.depthMM / 2, scene.depthMM - item.depthMM / 2));
+      } else if (wall === 'west') {
+        item.xMM = roundMM(clamp(item.depthMM, item.depthMM / 2, scene.widthMM - item.depthMM / 2));
+        item.yMM = cornerItem ? roundMM(clamp(item.widthMM, item.widthMM / 2, scene.depthMM - item.widthMM / 2)) : longitudinal[index];
+      } else {
+        item.xMM = roundMM(clamp(scene.widthMM - item.depthMM, item.depthMM / 2, scene.widthMM - item.depthMM / 2));
+        item.yMM = longitudinal[index];
+      }
+    });
+  }
+
+  for (const item of items) {
+    if (item.wall === 'floor') {
+      // A floor trap belongs in the wet-side lower third; other floor fixtures
+      // sit centrally unless their resolver gave them a cardinal wall.
+      const isFloorTrap = /floor trap/i.test(item.name);
+      item.xMM = roundMM(isFloorTrap ? scene.widthMM * 0.42 : scene.widthMM / 2);
+      item.yMM = roundMM(isFloorTrap ? scene.depthMM * 0.35 : scene.depthMM / 2);
+    } else if (item.wall === 'center') {
+      item.xMM = roundMM(scene.widthMM / 2);
+      item.yMM = roundMM(scene.depthMM / 2);
+    }
+  }
+
+  return items;
+}
+
+function openingPositionDescription(scene: InteriorScene, position: PositionedOpening): string {
+  const { opening, centerMM } = position;
+  const axis = opening.wall === 'north' || opening.wall === 'south' ? 'x' : 'y';
+  if (opening.type === 'door') {
+    return `- Door: ${opening.wall} wall, centered at ${axis}=${centerMM}mm, ${opening.widthMM}mm wide × ${opening.heightMM}mm high, opens ${opening.openDirection || 'inward'}`;
+  }
+  return `- Window: ${opening.wall} wall, centered at ${axis}=${centerMM}mm, ${opening.widthMM}mm wide × ${opening.heightMM}mm high, sill at ${opening.sillHeightMM}mm`;
+}
+
+function zoneBoundaryDescription(scene: InteriorScene, zone: SceneZone): string {
+  const name = zone.name.toUpperCase();
+  const w = scene.widthMM;
+  const d = scene.depthMM;
+  if (name.includes('WET')) return `- ${zone.name}: x=0 to ${roundMM(w * 0.55)}mm, y=0 to ${roundMM(d * 0.65)}mm (south-west shower area; ${zone.description})`;
+  if (name.includes('DRY')) return `- ${zone.name}: x=${roundMM(w * 0.55)} to ${w}mm, y=0 to ${d}mm (east-side vanity/WC area; ${zone.description})`;
+  if (name.includes('COOKING')) return `- ${zone.name}: x=${roundMM(w * 0.2)} to ${roundMM(w * 0.65)}mm, y=0 to ${roundMM(d * 0.42)}mm (south counter band; ${zone.description})`;
+  if (name.includes('WASH')) return `- ${zone.name}: x=0 to ${roundMM(w * 0.3)}mm, y=0 to ${roundMM(d * 0.42)}mm (${zone.description})`;
+  if (name.includes('PREP')) return `- ${zone.name}: x=${roundMM(w * 0.3)} to ${roundMM(w * 0.7)}mm, y=0 to ${roundMM(d * 0.42)}mm (${zone.description})`;
+  if (name.includes('STORAGE')) return `- ${zone.name}: x=${roundMM(w * 0.7)} to ${w}mm, y=0 to ${d}mm (${zone.description})`;
+  if (name.includes('SLEEP')) return `- ${zone.name}: x=0 to ${w}mm, y=${roundMM(d * 0.45)} to ${d}mm (north bed zone; ${zone.description})`;
+  if (name.includes('SEATING')) return `- ${zone.name}: x=0 to ${w}mm, y=0 to ${roundMM(d * 0.55)}mm (south seating zone; ${zone.description})`;
+  if (name.includes('ENTERTAINMENT')) return `- ${zone.name}: x=0 to ${w}mm, y=${roundMM(d * 0.7)} to ${d}mm (north TV-wall zone; ${zone.description})`;
+  if (name.includes('CIRCULATION')) return `- ${zone.name}: central clear route, approximately x=${roundMM(w * 0.35)} to ${roundMM(w * 0.65)}mm and y=${roundMM(d * 0.35)} to ${roundMM(d * 0.65)}mm (${zone.description})`;
+  return `- ${zone.name}: x=0 to ${w}mm, y=0 to ${d}mm (${zone.description})`;
+}
+
+/** Shared textual source of truth injected unchanged into every render prompt. */
+function buildSpatialLayoutReference(scene: InteriorScene): string {
+  const positions = computeItemPositions(scene);
+  const openingPositions = computeOpeningPositions(scene);
+  const itemLines = positions.map((item, index) => {
+    const mounting = item.mountHeightMM > 0 ? ` at ${item.mountHeightMM}mm height` : ' on floor';
+    return `${index + 1}. ${item.name} — center at (${item.xMM}, ${item.yMM})mm, ${item.widthMM}×${item.depthMM}mm, on ${item.wall} wall${mounting}; ${item.material}`;
+  });
+  const partition = scene.roomType === 'toilet'
+    ? `\n- Glass partition: vertical line at approximately x=${roundMM(scene.widthMM * 0.55)}mm, south wall to mid-room, separating wet and dry zones`
+    : '';
+
+  return `CANONICAL FIXTURE LAYOUT (all three views MUST match this layout exactly):
+Room origin: south-west corner (0,0). X = west→east. Y = south→north.
+Room: ${scene.widthMM}mm (W) × ${scene.depthMM}mm (D).
+
+FIXTURE POSITIONS (centre-point coordinates from origin):
+${itemLines.join('\n') || '- No furniture or fixtures configured.'}
+
+OPENINGS (canonical positions):
+${openingPositions.map(position => openingPositionDescription(scene, position)).join('\n') || '- No openings configured.'}
+
+ZONE BOUNDARIES:
+${scene.zones.map(zone => zoneBoundaryDescription(scene, zone)).join('\n')}${partition}`;
+}
+
+function elevationWallForRoomType(roomType: string): 'south' | 'north' {
+  return roomType === 'hall' ? 'north' : 'south';
+}
+
+/** Translate canonical plan coordinates into the viewer-left datum for the
+ * selected elevation. This tells the renderer how the XY source of truth is
+ * visible in an orthographic wall view. */
+function buildElevationSpatialCoordination(scene: InteriorScene): string {
+  const wall = elevationWallForRoomType(scene.roomType);
+  const positions = computeItemPositions(scene).filter(item => item.wall === wall);
+  const visiblePosition = (item: PositionedItem): number =>
+    wall === 'south' ? scene.widthMM - item.xMM : item.xMM;
+  const lines = positions.map(item =>
+    `- ${item.name}: plan centre (${item.xMM}, ${item.yMM})mm; draw centre ${visiblePosition(item)}mm from the viewer's LEFT edge of the ${wall} wall.`,
+  );
+
+  return `ELEVATION HORIZONTAL COORDINATION:
+This elevation must show fixtures at the EXACT horizontal positions given in the spatial layout. Viewing the ${wall} wall from inside the room, ${wall === 'south' ? 'viewer-left to right maps X=room width to X=0' : 'viewer-left to right maps X=0 to X=room width'}.
+${lines.join('\n') || '- No item is mounted on this wall; retain the canonical opening and adjacent-wall positions.'}
+Items on adjacent walls retain their plan coordinates in the canonical layout; do not move them to make the elevation look balanced.`;
+}
+
+function buildCrossViewCoordinationMandate(scene: InteriorScene): string {
+  return `COORDINATION MANDATE:
+This view MUST show the IDENTICAL room layout as the architectural plan view.
+- Same fixtures in same positions
+- Same openings on same walls
+- Same zone boundaries
+- Same room proportions (${scene.widthFt}'×${scene.depthFt}')
+Do NOT add, remove, relocate, or resize any fixture.`;
+}
+
+
+/* ----------------------------------------------------------------
    Serialization helpers — shared by all three prompt builders
    ---------------------------------------------------------------- */
 
@@ -168,6 +423,10 @@ ROOM SPECIFICATIONS:
 FURNITURE & FIXTURES (exact list — draw each item, in this exact position/size, nothing more, nothing less):
 ${serializeFurnitureForPlan(scene)}
 
+${buildSpatialLayoutReference(scene)}
+
+Place every item AT the coordinates given in the spatial layout — this is the canonical layout.
+
 OPENINGS:
 ${serializeOpenings(scene.openings)}
 
@@ -242,6 +501,12 @@ FALSE CEILING DROP: ${scene.falseCeilingHeightMM}mm
 ELEVATION ELEMENTS (exact vertical stack — draw each item at its stated height range, nothing more, nothing less):
 ${serializeFurnitureForElevation(scene)}
 
+${buildSpatialLayoutReference(scene)}
+
+${buildElevationSpatialCoordination(scene)}
+
+${buildCrossViewCoordinationMandate(scene)}
+
 OPENINGS VISIBLE ON THIS WALL OR ADJACENT (for reference):
 ${serializeOpenings(scene.openings)}
 
@@ -314,8 +579,22 @@ EXACT DIMENSIONS (render must be proportionally accurate):
 - Floor-to-ceiling: ${Math.round(scene.clearHeightMM / 305) / 10}'-0" (${scene.clearHeightMM}mm)
 - False ceiling: ${Math.round(scene.falseCeilingHeightMM / 305) / 10}'-0" (${scene.falseCeilingHeightMM}mm)
 
+CRITICAL SIZE CONSTRAINT:
+This room is ONLY ${scene.widthFt}'×${scene.depthFt}' (${scene.widthMM}×${scene.depthMM}mm).
+This is a COMPACT space — ${scene.areaSqft} square feet total.
+DO NOT render a spacious room. The walls should feel CLOSE together.
+A person standing in this room can touch both side walls by stretching arms.
+${scene.roomType === 'toilet' ? 'The shower area takes up approximately 1/4 of the floor space.' : 'Allocate floor area only to the configured fixtures and zones; do not invent empty spacious circulation.'}
+There is barely 2 feet of clear walking space between fixtures.
+
 FURNITURE & FIXTURES (exact list — render each item, in this exact position/size/material, nothing more, nothing less):
 ${serializeFurnitureFor3D(scene)}
+
+${buildSpatialLayoutReference(scene)}
+
+This 3D render must show the EXACT same room layout. Every fixture must be in the EXACT position shown in the spatial layout. The room is ONLY ${scene.widthFt}×${scene.depthFt} feet — do NOT make it look larger.
+
+${buildCrossViewCoordinationMandate(scene)}
 
 OPENINGS:
 ${serializeOpenings(scene.openings)}
@@ -393,3 +672,4 @@ export function buildInteriorRoomPrompt(
   const scene = buildInteriorScene(room, interior, moodBoard);
   return buildPromptFromScene(type, scene);
 }
+
