@@ -1,43 +1,128 @@
-import { BOQ, BOQLineItem, DoorScheduleItem, WindowScheduleItem, Layout, CustomRateSheet } from '../types';
+import type { BOQ, BOQLineItem, DoorScheduleItem, WindowScheduleItem, Layout, MaterialRate, CustomRateSheet } from '../types';
 
 const SQM_TO_SQFT = 10.764;
 
+type QuantityBasis = 'estimated' | 'engineered';
+
+type ConcreteBreakdown = BOQ['concreteBreakdown'];
+
+/** Minimal structural-engine contract consumed by the BOQ module. */
+export interface StructuralResultLike {
+  parameters?: {
+    concreteGrade?: string;
+    steelGrade?: string;
+  };
+  summary: {
+    totalConcreteM3: number;
+    totalSteelKg?: number;
+    concreteBreakdown: ConcreteBreakdown;
+  };
+  columns: Array<{ widthMm: number; depthMm: number }>;
+  beams: Array<{ widthMm: number; depthMm: number }>;
+  slabs: Array<{ thicknessMm: number }>;
+}
+
+/** Minimal BBS contract. A generated BBS takes precedence for steel quantity. */
+export interface BBSResultLike {
+  totalSteelKg: number;
+  totalSteelMT?: number;
+}
+
 /**
- * Resolve a rate: use custom rate if provided, else default.
- * Matches by material/labour name (case-insensitive substring match).
+ * Extended BOQ result.  The existing BOQ fields are retained unchanged; the added
+ * metadata lets the UI distinguish preliminary allowances from engine/BBS quantities.
  */
-function resolveRate(defaultRate: number, itemKey: string, customRates?: CustomRateSheet | null): number {
-  if (!customRates) return defaultRate;
+export interface BOQResult extends BOQ {
+  quantityBasis: QuantityBasis;
+  structuralDetails: {
+    source: QuantityBasis;
+    actualColumnCount?: number;
+    beamSizesMm?: Array<{ widthMm: number; depthMm: number; count: number }>;
+    slabThicknessesMm?: number[];
+    concreteGrade: 'M25';
+    steelGrade: 'Fe500D';
+    steelSource: 'area-estimate' | 'structural-summary' | 'bbs';
+  };
+}
 
-  // Check material rates
-  for (const mat of customRates.materials) {
-    if (mat.customRate !== undefined && mat.customRate !== null) {
-      if (itemKey.toLowerCase().includes(mat.name.toLowerCase()) ||
-          mat.name.toLowerCase().includes(itemKey.toLowerCase())) {
-        return mat.customRate;
-      }
+type RateSource = MaterialRate[] | CustomRateSheet | null | undefined;
+
+/**
+ * Resolve a rate from the new material-rate array or the legacy custom-rate sheet.
+ * Both forms intentionally retain the historic bidirectional substring matching.
+ */
+function resolveRate(defaultRate: number, itemKey: string, rateSource?: RateSource): number {
+  if (!rateSource) return defaultRate;
+  const materials = Array.isArray(rateSource) ? rateSource : rateSource.materials;
+  const key = itemKey.toLowerCase();
+
+  for (const material of materials) {
+    if (material.customRate !== undefined && material.customRate !== null) {
+      const name = material.name.toLowerCase();
+      if (key.includes(name) || name.includes(key)) return material.customRate;
     }
   }
 
-  // Check labour rates
-  for (const lab of customRates.labour) {
-    if (lab.customRate !== undefined && lab.customRate !== null) {
-      if (itemKey.toLowerCase().includes(lab.trade.toLowerCase()) ||
-          lab.trade.toLowerCase().includes(itemKey.toLowerCase())) {
-        return lab.customRate;
+  // MaterialRate[] is deliberately material-only. Legacy sheets retain labour overrides.
+  if (!Array.isArray(rateSource)) {
+    for (const labour of rateSource.labour) {
+      if (labour.customRate !== undefined && labour.customRate !== null) {
+        const trade = labour.trade.toLowerCase();
+        if (key.includes(trade) || trade.includes(key)) return labour.customRate;
       }
     }
   }
-
   return defaultRate;
+}
+
+function finiteNonNegative(value: unknown, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : fallback;
+}
+
+function uniqueMemberSizes(members: Array<{ widthMm: number; depthMm: number }>): Array<{ widthMm: number; depthMm: number; count: number }> {
+  const sizes = new Map<string, { widthMm: number; depthMm: number; count: number }>();
+  for (const member of members) {
+    if (!Number.isFinite(member.widthMm) || !Number.isFinite(member.depthMm)) continue;
+    const key = `${member.widthMm}×${member.depthMm}`;
+    const item = sizes.get(key);
+    if (item) item.count += 1;
+    else sizes.set(key, { widthMm: member.widthMm, depthMm: member.depthMm, count: 1 });
+  }
+  return [...sizes.values()];
 }
 
 /**
  * Full Bill of Quantities with 50+ itemized line items, door/window schedules,
- * and concrete breakdown. Rates based on 2024-25 Indian market averages.
- * Pass customRates to override default rates; null/undefined uses defaults.
+ * and concrete breakdown. Rates are 2024-25 Indian market averages unless overridden.
+ *
+ * New signature: calculateBOQ(layout, materialRates, numFloors, structuralResult?, bbsResult?).
+ * The legacy calculateBOQ(layout, numFloors, customRates?) signature remains supported.
  */
-export function calculateBOQ(layout: Layout, numFloors: number, customRates?: CustomRateSheet | null): BOQ {
+export function calculateBOQ(
+  layout: Layout,
+  materialRates: MaterialRate[],
+  numFloors: number,
+  structuralResult?: StructuralResultLike,
+  bbsResult?: BBSResultLike,
+): BOQResult;
+export function calculateBOQ(layout: Layout, numFloors: number, customRates?: CustomRateSheet | null): BOQResult;
+export function calculateBOQ(
+  layout: Layout,
+  materialRatesOrNumFloors: MaterialRate[] | number,
+  numFloorsOrCustomRates?: number | CustomRateSheet | null,
+  structuralResult?: StructuralResultLike,
+  bbsResult?: BBSResultLike,
+): BOQResult {
+  const usingNewSignature = Array.isArray(materialRatesOrNumFloors);
+  const materialRates = usingNewSignature ? materialRatesOrNumFloors : undefined;
+  const numFloors = usingNewSignature
+    ? (typeof numFloorsOrCustomRates === 'number' ? numFloorsOrCustomRates : 1)
+    : materialRatesOrNumFloors;
+  const customRates = usingNewSignature
+    ? undefined
+    : (typeof numFloorsOrCustomRates === 'object' ? numFloorsOrCustomRates : undefined);
+  const rateSource: RateSource = materialRates ?? customRates;
+
   // FIX: layout.builtUpAreaSqM is already total across all floors
   const totalBuiltUpSqM = layout.builtUpAreaSqM;
   const builtUpPerFloor = totalBuiltUpSqM / numFloors;
@@ -46,21 +131,43 @@ export function calculateBOQ(layout: Layout, numFloors: number, customRates?: Cu
   const wallHeight = 3.0;
   const allRooms = layout.floors.flatMap(f => f.rooms);
 
-  // ────── CONCRETE BREAKDOWN ──────
-  const foundationConcrete = +(builtUpPerFloor * SQM_TO_SQFT * 0.04).toFixed(2);
-  const numColumnsPerFloor = Math.ceil(builtUpPerFloor / 12);
-  const columnConcrete = +(numColumnsPerFloor * numFloors * 0.23 * 0.30 * 3.0).toFixed(2);
-  const beamRun = perimeter * 1.5;
-  const beamConcrete = +(beamRun * 0.23 * 0.40 * numFloors).toFixed(2);
-  const slabConcrete = +(builtUpPerFloor * 0.125 * numFloors).toFixed(2);
+  // ────── CONCRETE & STEEL ──────
+  // Preserve the original allowances exactly when no structural result is supplied.
+  const estimatedFoundationConcrete = +(builtUpPerFloor * SQM_TO_SQFT * 0.04).toFixed(2);
+  const estimatedColumnsPerFloor = Math.ceil(builtUpPerFloor / 12);
+  const estimatedColumnConcrete = +(estimatedColumnsPerFloor * numFloors * 0.23 * 0.30 * 3.0).toFixed(2);
+  const estimatedBeamRun = perimeter * 1.5;
+  const estimatedBeamConcrete = +(estimatedBeamRun * 0.23 * 0.40 * numFloors).toFixed(2);
+  const estimatedSlabConcrete = +(builtUpPerFloor * 0.125 * numFloors).toFixed(2);
   const stairFloors = numFloors - 1 > 0 ? numFloors - 1 : 0.5;
-  const stairConcrete = +(0.15 * 16 * stairFloors).toFixed(2);
-  const lintelConcrete = +(slabConcrete * 0.05).toFixed(2);
-  const totalConcrete = +(foundationConcrete + columnConcrete + beamConcrete + slabConcrete + stairConcrete + lintelConcrete).toFixed(2);
+  const estimatedStairConcrete = +(0.15 * 16 * stairFloors).toFixed(2);
+  const estimatedLintelConcrete = +(estimatedSlabConcrete * 0.05).toFixed(2);
+  const estimatedTotalConcrete = +(estimatedFoundationConcrete + estimatedColumnConcrete + estimatedBeamConcrete + estimatedSlabConcrete + estimatedStairConcrete + estimatedLintelConcrete).toFixed(2);
+  const quantityBasis: QuantityBasis = structuralResult ? 'engineered' : 'estimated';
+  const engineeredBreakdown = structuralResult?.summary.concreteBreakdown;
 
-  // ────── STEEL ──────
-  const steelKg = totalBuiltUpSqFt * 4.5;
+  const foundationConcrete = structuralResult ? finiteNonNegative(engineeredBreakdown?.foundation, estimatedFoundationConcrete) : estimatedFoundationConcrete;
+  const columnConcrete = structuralResult ? finiteNonNegative(engineeredBreakdown?.columns, estimatedColumnConcrete) : estimatedColumnConcrete;
+  const beamConcrete = structuralResult ? finiteNonNegative(engineeredBreakdown?.beams, estimatedBeamConcrete) : estimatedBeamConcrete;
+  const slabConcrete = structuralResult ? finiteNonNegative(engineeredBreakdown?.slabs, estimatedSlabConcrete) : estimatedSlabConcrete;
+  const stairConcrete = structuralResult ? finiteNonNegative(engineeredBreakdown?.staircase, estimatedStairConcrete) : estimatedStairConcrete;
+  const lintelConcrete = structuralResult ? finiteNonNegative(engineeredBreakdown?.lintels, estimatedLintelConcrete) : estimatedLintelConcrete;
+  const totalConcrete = structuralResult
+    ? finiteNonNegative(structuralResult.summary.totalConcreteM3, foundationConcrete + columnConcrete + beamConcrete + slabConcrete + stairConcrete + lintelConcrete)
+    : estimatedTotalConcrete;
+
+  // The BBS includes detailed bar lengths and its waste allowance, so it is the preferred steel source.
+  const structuralSteelKg = structuralResult ? finiteNonNegative(structuralResult.summary.totalSteelKg, totalBuiltUpSqFt * 4.5) : totalBuiltUpSqFt * 4.5;
+  const steelKg = structuralResult && bbsResult
+    ? finiteNonNegative(bbsResult.totalSteelKg, structuralSteelKg)
+    : structuralSteelKg;
   const steelMT = +(steelKg / 1000).toFixed(2);
+  const actualColumnCount = structuralResult?.columns.length;
+  const beamSizes = structuralResult ? uniqueMemberSizes(structuralResult.beams) : undefined;
+  const slabThicknesses = structuralResult
+    ? [...new Set(structuralResult.slabs.map((slab) => slab.thicknessMm).filter((thickness) => Number.isFinite(thickness)))].sort((a, b) => a - b)
+    : undefined;
+  const primarySlabThickness = slabThicknesses?.[0] ?? 125;
 
   // ────── MASONRY ──────
   const externalWallArea = perimeter * wallHeight * numFloors;
@@ -149,7 +256,7 @@ export function calculateBOQ(layout: Layout, numFloors: number, customRates?: Cu
 
   const add = (desc: string, qty: number, unit: string, rate: number, cat: BOQLineItem['category'], remark?: string) => {
     // Resolve rate: check custom rates first, fall back to default
-    const resolvedRate = resolveRate(rate, desc, customRates);
+    const resolvedRate = resolveRate(rate, desc, rateSource);
     sno++;
     lineItems.push({ sno, description: desc, quantity: +qty.toFixed(2), unit, rate: resolvedRate, amount: +(qty * resolvedRate).toFixed(0), category: cat, remark });
   };
@@ -165,16 +272,16 @@ export function calculateBOQ(layout: Layout, numFloors: number, customRates?: Cu
 
   // ═══════════ B. CONCRETE & RCC WORK ═══════════
   add('PCC (1:4:8) – Foundation Bed (75mm)', +(builtUpPerFloor * 0.075).toFixed(2), 'm³', 5500, 'structural', '75mm thick');
-  add('RCC Foundation / Footings (M25)', foundationConcrete, 'm³', 7500, 'structural', 'Isolated footings, IS 456');
+  add('RCC Foundation / Footings (M25)', foundationConcrete, 'm³', 7500, 'structural', quantityBasis === 'engineered' ? `Engineered: ${actualColumnCount ?? 0} designed footing(s), IS 456` : 'Isolated footings, IS 456');
   add('RCC Plinth Beam (M25)', +(perimeter * 0.23 * 0.30).toFixed(2), 'm³', 8000, 'structural', '230×300mm');
   add('DPC (Damp Proof Course)', +(perimeter * 0.23 * 0.05).toFixed(2), 'm³', 6000, 'structural', 'CM 1:2 + waterproofing compound');
-  add('RCC Columns (M25)', columnConcrete, 'm³', 8000, 'structural', '230×300mm, IS 456');
-  add('RCC Beams (M25)', beamConcrete, 'm³', 8000, 'structural', '230×400mm, IS 456');
-  add('RCC Roof Slab (M25, 125mm)', slabConcrete, 'm³', 7500, 'structural', '125mm thick');
+  add('RCC Columns (M25)', columnConcrete, 'm³', 8000, 'structural', quantityBasis === 'engineered' ? `Engineered: ${actualColumnCount ?? 0} actual column member(s), IS 456` : '230×300mm, IS 456');
+  add('RCC Beams (M25)', beamConcrete, 'm³', 8000, 'structural', quantityBasis === 'engineered' ? `Engineered beam sizes: ${beamSizes?.map((size) => `${size.widthMm}×${size.depthMm}mm × ${size.count}`).join(', ') || 'refer structural schedule'}, IS 456` : '230×400mm, IS 456');
+  add(`RCC Roof Slab (M25, ${primarySlabThickness}mm)`, slabConcrete, 'm³', 7500, 'structural', quantityBasis === 'engineered' ? `Engineered slab thickness(es): ${slabThicknesses?.join(', ') || primarySlabThickness}mm, IS 456` : '125mm thick');
   add('RCC Staircase (M25)', stairConcrete, 'm³', 9000, 'structural', 'Waist slab type, IS 456');
-  add('RCC Lintels (M20)', +(lintelConcrete * 0.7).toFixed(2), 'm³', 8000, 'structural', 'Above openings');
+  add('RCC Lintels (M25)', +(lintelConcrete * 0.7).toFixed(2), 'm³', 8000, 'structural', 'Above openings');
   add('RCC Chajjas / Sunshade', +(lintelConcrete * 0.3).toFixed(2), 'm³', 8500, 'structural', '450mm projection');
-  add('Reinforcement Steel (Fe500D)', steelMT, 'MT', 72000, 'structural', 'Incl. binding wire, IS 1786');
+  add('Reinforcement Steel (Fe500D)', steelMT, 'MT', 72000, 'structural', structuralResult ? (bbsResult ? 'BBS total incl. schedule waste; IS 1786' : 'Structural-engine total; BBS not supplied, IS 1786') : 'Incl. binding wire, IS 1786');
   add('Curing (7-day min.)', totalConcrete, 'm³', 30, 'structural', 'Ponding / gunny bag method');
 
   // ═══════════ C. MASONRY WORK ═══════════
@@ -310,5 +417,16 @@ export function calculateBOQ(layout: Layout, numFloors: number, customRates?: Cu
     },
     waterproofingAreaSqM: waterproofingArea,
     plasteringAreaSqM: plasteringArea,
+    quantityBasis,
+    structuralDetails: {
+      source: quantityBasis,
+      actualColumnCount,
+      beamSizesMm: beamSizes,
+      slabThicknessesMm: slabThicknesses,
+      // The BOQ standardises its published specification, regardless of a malformed upstream label.
+      concreteGrade: 'M25',
+      steelGrade: 'Fe500D',
+      steelSource: !structuralResult ? 'area-estimate' : bbsResult ? 'bbs' : 'structural-summary',
+    },
   };
 }
