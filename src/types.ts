@@ -207,7 +207,7 @@ export interface BOQ {
   plasteringAreaSqM: number;
 }
 
-export type AppStep = 'requirements' | 'layouts' | 'isometric' | 'working' | 'rates' | 'boq' | 'interior';
+export type AppStep = 'requirements' | 'layouts' | 'isometric' | 'working' | 'rates' | 'boq' | 'verification' | 'interior';
 
 export interface MaterialRate {
   id: string;

@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef } from 'react';
 import { AppStep } from '../types';
-import { ClipboardList, LayoutGrid, Box, Ruler, Package, Palette, IndianRupee } from 'lucide-react';
+import { ClipboardList, LayoutGrid, Box, Ruler, Package, Palette, IndianRupee, ShieldCheck } from 'lucide-react';
 
 interface Props {
   current: AppStep;
@@ -17,6 +17,7 @@ const STEPS: { id: AppStep; label: string; icon: React.ReactNode }[] = [
   { id: 'working', label: 'Working Dwg', icon: <Ruler size={14} /> },
   { id: 'rates', label: 'Rates', icon: <IndianRupee size={14} /> },
   { id: 'boq', label: 'BOQ & Cost', icon: <Package size={14} /> },
+  { id: 'verification', label: 'Validation', icon: <ShieldCheck size={14} /> },
   { id: 'interior', label: 'Interior', icon: <Palette size={14} /> },
 ];
 

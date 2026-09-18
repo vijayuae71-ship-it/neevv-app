@@ -10,6 +10,7 @@ import { IsometricView } from '@/components/IsometricView';
 import { WorkingDrawings } from '@/components/WorkingDrawings';
 import { BOQReport } from '@/components/BOQReport';
 import { InteriorDesign } from '@/components/InteriorDesign';
+import { VerificationReport } from '@/components/VerificationReport';
 import ApartmentForm from '@/components/ApartmentForm';
 import { generateLayouts } from '@/utils/layoutGenerator';
 import { calculateBOQ } from '@/utils/boqCalculator';
@@ -155,6 +156,7 @@ export default function HomePage() {
       case 'working': return motherLayoutLocked && selectedLayout !== null;
       case 'rates': return motherLayoutLocked && selectedLayout !== null;
       case 'boq': return motherLayoutLocked && boq !== null;
+      case 'verification': return motherLayoutLocked && selectedLayout !== null && boq !== null;
       case 'interior': return motherLayoutLocked && selectedLayout !== null;
       default: return false;
     }
@@ -793,6 +795,9 @@ const BRAND_GREEN = '#4f6f52';
             )}
             {step === 'boq' && boq && selectedLayout && (
               <BOQReport boq={boq} layout={selectedLayout} />
+            )}
+            {step === 'verification' && selectedLayout && requirements && (
+              <VerificationReport layout={selectedLayout} requirements={requirements} boq={boq} generatedDrawingTypes={generatedDrawingTypes} />
             )}
             {step === 'interior' && selectedLayout && requirements && (
               <InteriorDesign layout={selectedLayout} requirements={requirements} />
