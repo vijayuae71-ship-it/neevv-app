@@ -166,10 +166,17 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 
       <main className="flex-1">
         {/* HERO */}
-        <section ref={heroRef} className="relative overflow-hidden min-h-[620px] md:min-h-[680px] flex items-center" style={{ backgroundColor: '#fff' }}>
-          <div className="absolute inset-0 bg-cover bg-center md:bg-right" style={{ backgroundImage: "linear-gradient(90deg, #fff 0%, #fff 35%, rgba(255,255,255,0.88) 57%, rgba(255,255,255,0.12) 100%), url('/hero-poster.jpg')" }} aria-hidden="true" />
-          <div className="absolute inset-0 md:hidden bg-gradient-to-b from-white/95 via-white/80 to-white/30" aria-hidden="true" />
-          <div className="relative w-full max-w-7xl mx-auto px-5 md:px-10 py-16 md:py-24">
+        <section ref={heroRef} className="relative overflow-hidden min-h-[620px] md:min-h-[680px] flex items-center bg-white">
+          {/* House image — right side only on desktop, behind text on mobile */}
+          <div className="absolute inset-0" aria-hidden="true">
+            <img src="/hero-poster.jpg" alt="" className="absolute right-0 top-0 h-full w-[65%] object-cover object-center hidden md:block" />
+            <img src="/hero-poster.jpg" alt="" className="absolute inset-0 w-full h-full object-cover md:hidden" />
+            {/* Desktop: white fade from left over image */}
+            <div className="hidden md:block absolute inset-0" style={{ background: 'linear-gradient(90deg, #ffffff 38%, rgba(255,255,255,0.95) 45%, rgba(255,255,255,0.7) 55%, rgba(255,255,255,0.15) 70%, transparent 85%)' }} />
+            {/* Mobile: strong white overlay so text is readable */}
+            <div className="md:hidden absolute inset-0 bg-white/85" />
+          </div>
+          <div className="relative z-10 w-full max-w-7xl mx-auto px-5 md:px-10 py-16 md:py-24">
             <div className="max-w-2xl">
               <Reveal>
                 <p className="inline-block mb-5 text-xs md:text-sm font-bold tracking-[0.18em] uppercase" style={{ color: ACCENT }}>FREE WHILE WE ARE IN BETA</p>
