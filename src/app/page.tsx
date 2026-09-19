@@ -843,10 +843,10 @@ const BRAND_GREEN = '#4f6f52';
               />
             )}
             {step === 'boq' && boq && selectedLayout && (
-              <BOQReport boq={boq} layout={selectedLayout} structuralResult={structuralResult} bbsResult={bbsResult} />
+              <BOQReport boq={boq} layout={selectedLayout} />
             )}
             {step === 'verification' && selectedLayout && requirements && (
-              <VerificationReport layout={selectedLayout} requirements={requirements} boq={boq} generatedDrawingTypes={generatedDrawingTypes} structuralResult={structuralResult} bbsResult={bbsResult} />
+              <VerificationReport layout={selectedLayout} requirements={requirements} boq={boq} generatedDrawingTypes={generatedDrawingTypes} />
             )}
             {step === 'interior' && selectedLayout && requirements && (
               <InteriorDesign layout={selectedLayout} requirements={requirements} />

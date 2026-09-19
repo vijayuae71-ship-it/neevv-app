@@ -4,6 +4,7 @@ import { Layout, BOQ } from '../types';
  *  Extended to ALL 17 drawings — every drawing gets a computed data panel
  *  so no AI-hallucinated numbers reach the customer. */
 export const OVERLAY_DRAWING_TYPES = [
+  'column_detail', 'rcc', 'bbs', 'foundation_detail', 'footing_detail', 'staircase_detail',
   'structural', 'rccDetail', 'barBending', 'foundation',
   'excavation', 'footingDetail', 'reinforcement', 'section',
   'elevation', 'brickwork', 'electrical', 'plumbing',
@@ -48,7 +49,7 @@ export interface StructuralOverlayData {
 
 type OverlaySection = {
   heading: string;
-  rows: Array<[string, string]>;
+  rows: Array<[string, string]> | Array<string[]>;
 };
 
 /** Return a finite numeric value, including when API data arrives as a numeric string. */
