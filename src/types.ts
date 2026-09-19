@@ -238,7 +238,7 @@ export interface CustomRateSheet {
 }
 
 export type InteriorStyle = 'modern_minimalist' | 'contemporary_indian' | 'traditional' | 'industrial' | 'scandinavian';
-export type RoomFinishType = 'bedroom' | 'master_bedroom' | 'living' | 'kitchen' | 'dining' | 'bathroom' | 'puja' | 'balcony' | 'entrance';
+export type RoomFinishType = 'bedroom' | 'master_bedroom' | 'living' | 'kitchen' | 'dining' | 'bathroom' | 'puja' | 'balcony' | 'entrance' | 'study';
 
 export interface ColorPalette {
   primary: string;

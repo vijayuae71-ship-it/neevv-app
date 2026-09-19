@@ -582,6 +582,8 @@ export function mapRoomTypeToFinish(roomType: RoomType): RoomFinishType {
       return 'kitchen';
     case 'staircase':
       return 'entrance';
+    case 'study':
+      return 'study';
     case 'parking':
       return 'entrance';
     default:

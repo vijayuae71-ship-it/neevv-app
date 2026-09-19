@@ -272,21 +272,21 @@ export function generateExecutionPlan(
     let baseDays: number;
     let perRoomExtra: number;
     switch (tmpl.id) {
-      case 'P1': baseDays = 1; perRoomExtra = 0.3; break; // Site prep: 1-3 days
-      case 'P2': baseDays = 2; perRoomExtra = 0.4; break; // Civil mods: 2-5 days
-      case 'P3': baseDays = 2; perRoomExtra = 0.7; break; // Electrical 1st: 2-7 days
-      case 'P4': baseDays = hasBathroom || hasKitchen ? 2 : 1; perRoomExtra = 0.4; break; // Plumbing 1st: 1-5 days
-      case 'P5': baseDays = 1; perRoomExtra = 0.5; break; // False ceiling frame: 1-5 days
-      case 'P6': baseDays = 1; perRoomExtra = 0.4; break; // False ceiling finish: 1-4 days
-      case 'P7': baseDays = 2; perRoomExtra = 0.4; break; // Putty & primer: 2-5 days
-      case 'P8': baseDays = hasBathroom ? 3 : 2; perRoomExtra = 0.8; break; // Flooring: 2-8 days
-      case 'P9': baseDays = hasKitchen ? 4 : 2; perRoomExtra = 1.2; break; // Woodwork: 2-12 days
-      case 'P10': baseDays = hasKitchen ? 2 : 1; perRoomExtra = 0.2; break; // Countertop: 1-3 days
-      case 'P11': baseDays = 2; perRoomExtra = 0.5; break; // Painting: 2-6 days
-      case 'P12': baseDays = 1; perRoomExtra = 0.4; break; // Electrical 2nd: 1-4 days
-      case 'P13': baseDays = hasBathroom || hasKitchen ? 2 : 1; perRoomExtra = 0.2; break; // Plumbing 2nd: 1-3 days
-      case 'P14': baseDays = 1; perRoomExtra = 0.3; break; // Hardware: 1-3 days
-      case 'P15': baseDays = 1; perRoomExtra = 0.1; break; // Cleaning: 1-2 days
+      case 'P1': baseDays = 1; perRoomExtra = 0.15; break; // Site prep: 1-2 days
+      case 'P2': baseDays = 2; perRoomExtra = 0.2; break; // Civil mods: 2-4 days
+      case 'P3': baseDays = 2; perRoomExtra = 0.4; break; // Electrical 1st: 2-5 days
+      case 'P4': baseDays = hasBathroom || hasKitchen ? 2 : 1; perRoomExtra = 0.25; break; // Plumbing 1st: 1-3 days
+      case 'P5': baseDays = 1; perRoomExtra = 0.3; break; // False ceiling frame: 1-3 days
+      case 'P6': baseDays = 1; perRoomExtra = 0.2; break; // False ceiling finish: 1-3 days
+      case 'P7': baseDays = 2; perRoomExtra = 0.25; break; // Putty & primer: 2-4 days
+      case 'P8': baseDays = hasBathroom ? 3 : 2; perRoomExtra = 0.5; break; // Flooring: 2-6 days
+      case 'P9': baseDays = hasKitchen ? 4 : 2; perRoomExtra = 0.7; break; // Woodwork: 2-7 days
+      case 'P10': baseDays = hasKitchen ? 2 : 1; perRoomExtra = 0.1; break; // Countertop: 1-2 days
+      case 'P11': baseDays = 2; perRoomExtra = 0.3; break; // Painting: 2-4 days
+      case 'P12': baseDays = 1; perRoomExtra = 0.2; break; // Electrical 2nd: 1-3 days
+      case 'P13': baseDays = hasBathroom || hasKitchen ? 2 : 1; perRoomExtra = 0.1; break; // Plumbing 2nd: 1-2 days
+      case 'P14': baseDays = 1; perRoomExtra = 0.15; break; // Hardware: 1-2 days
+      case 'P15': baseDays = 1; perRoomExtra = 0.05; break; // Cleaning: 1-1 days
       default: baseDays = tmpl.durationDays; perRoomExtra = 0; break;
     }
     const scaledDuration = Math.max(1, Math.round(baseDays + perRoomExtra * (roomCount - 1)));
@@ -437,6 +437,8 @@ export function generateInteriorBOQ(
     // For bathrooms, wall tile area uses dado height (2100mm), not full ceiling
     const wallAreaForFinish = room.roomType === 'bathroom'
       ? getWallAreaSqFt(room.roomId, layout, 2100) // dado height for tiles
+      : room.roomType === 'kitchen'
+      ? getWallAreaSqFt(room.roomId, layout, 900) // kitchen splash/dado behind counter
       : wallArea;
     addItem(
       'painting',
@@ -475,9 +477,7 @@ export function generateInteriorBOQ(
 
     /* ---------- 8. HARDWARE ---------- */
     const hardwareCost =
-      room.roomType === 'kitchen' ? 15000 :
       room.roomType === 'bathroom' ? 3500 :
-      room.furniture.length > 0 ? 12000 :
       5000;
     addItem('hardware', 'Handles, hinges, soft-close channels, locks', roomLabel, 1, 'lot', hardwareCost);
 

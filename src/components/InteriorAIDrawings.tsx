@@ -28,6 +28,7 @@ const ROOM_TYPE_LABELS: Record<string, string> = {
   dining: 'Dining',
   puja: 'Puja Room',
   balcony: 'Balcony',
+  study: 'Study Room',
 };
 
 const ALLOWED_TYPES = Object.keys(ROOM_TYPE_LABELS);

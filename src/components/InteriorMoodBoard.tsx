@@ -34,9 +34,9 @@ function getElectricalDefaults(roomType: RoomFinishType) {
     case 'living':
       return { switches: 4, sockets: 6, dataPoints: 2, lightPoints: 5, fanPoints: 2, acPoints: 1 };
     case 'kitchen':
-      return { switches: 3, sockets: 5, dataPoints: 0, lightPoints: 3, fanPoints: 1, acPoints: 0 };
+      return { switches: 3, sockets: 5, dataPoints: 0, lightPoints: 3, fanPoints: 0, acPoints: 0 };
     case 'bathroom':
-      return { switches: 2, sockets: 1, dataPoints: 0, lightPoints: 2, fanPoints: 1, acPoints: 0 };
+      return { switches: 2, sockets: 1, dataPoints: 0, lightPoints: 2, fanPoints: 0, acPoints: 0 };
     default:
       return { switches: 2, sockets: 3, dataPoints: 1, lightPoints: 2, fanPoints: 1, acPoints: 0 };
   }
