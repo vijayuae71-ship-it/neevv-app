@@ -42,6 +42,23 @@ export interface DesignSeed {
   seedId: string;
 }
 
+export interface StructuralPromptData {
+  columnWidthMm: number;
+  columnDepthMm: number;
+  beamWidthMm: number;
+  beamDepthMm: number;
+  slabThicknessMm: number;
+  concreteGrade: string;
+  steelGrade: string;
+  footingSizeMm: number;
+  footingDepthMm: number;
+  sbc: number;
+  seismicZone: string;
+  soilType: string;
+  waistSlabThicknessMm: number;
+  totalSteelMT: number;
+}
+
 export const DRAWING_TYPES: DrawingTypeInfo[] = [
   // Floor Plans
   { id: 'ground_floor', label: 'Ground Floor Plan', icon: 'Layers', description: '2D plan with room layouts, doors, windows, and dimensions', category: 'Floor Plans' },
@@ -284,7 +301,23 @@ function getFloorRooms(layout: any, floorIndex: number): any[] {
   return [];
 }
 
-export function buildDrawingPrompt(drawingType: DrawingType, layout: any, requirements: any, floor?: 'GF' | 'FF', designSeed?: DesignSeed): string {
+export function buildDrawingPrompt(drawingType: DrawingType, layout: any, requirements: any, floor?: 'GF' | 'FF', designSeed?: DesignSeed, structuralData?: StructuralPromptData): string {
+  const s = {
+    colW: structuralData?.columnWidthMm ?? 230,
+    colD: structuralData?.columnDepthMm ?? 300,
+    beamW: structuralData?.beamWidthMm ?? 230,
+    beamD: structuralData?.beamDepthMm ?? 400,
+    slabT: structuralData?.slabThicknessMm ?? 125,
+    grade: structuralData?.concreteGrade ?? 'M25',
+    steel: structuralData?.steelGrade ?? 'Fe500D',
+    ftgSize: structuralData?.footingSizeMm ?? 1200,
+    ftgDepth: structuralData?.footingDepthMm ?? 1500,
+    sbc: structuralData?.sbc ?? 150,
+    zone: structuralData?.seismicZone ?? 'III',
+    soil: structuralData?.soilType ?? 'Medium',
+    waist: structuralData?.waistSlabThicknessMm ?? 150,
+    steelMT: structuralData?.totalSteelMT ?? 2.8,
+  };
   const openingsSchedule: OpeningsSchedule | undefined = layout?.openingsSchedule;
   const isFirstFloor = floor === 'FF';
   const floorContext = isFirstFloor ? 'FIRST FLOOR' : 'GROUND FLOOR';
@@ -293,7 +326,7 @@ export function buildDrawingPrompt(drawingType: DrawingType, layout: any, requir
   const groundFloorRooms = getFloorRooms(layout, 0);
   const firstFloorRooms = getFloorRooms(layout, 1);
   const columnPositions = getColumnPositions(layout);
-  const totalSteel = layout?.steel?.total || requirements?.steelEstimate || '2.8';
+  const totalSteel = structuralData?.totalSteelMT ?? (layout?.steel?.total || requirements?.steelEstimate || '2.8');
   const electricalLoad = layout?.electrical?.totalLoad || requirements?.electricalLoad || '5.5';
   const balconyPosition = layout?.balcony?.position || 'west side';
 
@@ -382,9 +415,9 @@ ${constraintBrief ? `** HARD CONSTRAINT: ${constraintBrief} **` : ''}
 - Structural grid along width: ${numGridW} spans × ${spanW}mm = ${numGridW * spanW}mm (fits within ${buildWidthMM}mm building).
 - Structural grid along depth: ${numGridD} spans × ${spanD}mm = ${numGridD * spanD}mm (fits within ${buildDepthMM}mm building).
 - ALL room dimensions MUST ADD UP to BUILDING footprint (${buildWidthMM}mm × ${buildDepthMM}mm), NOT plot size.
-- Column SIZE is 230mm × 300mm (physical cross-section of one column).
+- Column SIZE is ${s.colW}mm × ${s.colD}mm (physical cross-section of one column).
 - Column CENTER-TO-CENTER SPACING is ${spanW}mm horizontally and ${spanD}mm vertically.
-- NEVER use 300mm as column spacing — 300mm is column SIZE. Spacing is ${spanW}mm and ${spanD}mm.
+- NEVER use ${s.colD}mm as column spacing — ${s.colD}mm is column SIZE. Spacing is ${spanW}mm and ${spanD}mm.
 - Ground floor rooms (mm): ${groundFloorRoomsMM || 'per layout'}.
 - First floor rooms (mm): ${firstFloorRoomsMM || 'per layout'}.
 - VERIFY: Sum of all room widths along any row + wall thicknesses (230mm external, 115mm internal) = ${buildWidthMM}mm.
@@ -402,7 +435,7 @@ DIMENSION VERIFICATION (the AI MUST follow these exact numbers):
 • Grid: ${numGridD} spans @ ${spanD}mm = ${numGridD * spanD}mm depth (within building footprint) ✓
 • External wall: 230mm thick (shown as double line)
 • Internal partition: 115mm thick (shown as single thick line)
-• Column: 230mm × 300mm (NEVER confuse with spacing)
+• Column: ${s.colW}mm × ${s.colD}mm (NEVER confuse with spacing)
 • Room dimensions: ${groundFloorRoomsMM || 'per layout'}
 • VERIFY: All horizontal room widths + wall thicknesses = ${buildWidthMM}mm (NOT ${plotWidthMM}mm)
 • VERIFY: All vertical room depths + wall thicknesses = ${buildDepthMM}mm (NOT ${plotDepthMM}mm)
@@ -415,7 +448,7 @@ DIMENSION VERIFICATION (the AI MUST follow these exact numbers):
 PROFESSIONAL DRAFTING STANDARDS (IS 962:1989, SP 46:2003):
 - Line weights: External walls 0.7mm, internal partitions 0.4mm, dimensions 0.18mm, hatching 0.13mm
 - External walls: 230mm double-line, internal partitions: 150mm
-- Columns: Crosshatched with ID label (C1, C2...) and size (230×300mm)
+- Columns: Crosshatched with ID label (C1, C2...) and size (${s.colW}×${s.colD}mm)
 - Door swings: 90° arc, hinge anchored on wall
 - All dimensions in mm (e.g., 3000mm × 3800mm)
 - North arrow with compass orientation on every plan
@@ -527,34 +560,34 @@ CROSS-DRAWING REFERENCE: Room widths in section MUST match floor plan dimensions
 OPENINGS IN SECTION: ${openingsSchedule ? openingsSchedule.scheduleText.split('\n').slice(0, 5).join('; ') : 'Per floor plan'}. Heights MUST match elevation level marks.
 Building Section A-A through a ${floorLabel} residential building. Section width = ${plotWidthMM}mm (cutting across the building width). Room widths visible in section must match floor plan dimensions.
 DESIGN DNA APPLICATION: Use ROOF FORM — ${seed.roof}. Material call-outs per COLOR PALETTE — ${seed.palette}.
-Show: foundation (isolated footing 1200×1200×1500mm deep), plinth beam at +450mm, ground floor rooms with 3000mm clear height, 150mm RCC slab, first floor rooms with 3000mm clear height, roof slab, parapet 900mm. Total height above GL: 7350mm. Concrete hatching on structural elements. Level markers: GL ±0.000, Plinth +0.450, GF Slab +3.150, FF Slab +6.300, Parapet +7.200. Overall width dimension at bottom: ${plotWidthMM}mm. Staircase visible in section. Earth hatching below ground.`,
+Show: foundation (isolated footing ${s.ftgSize}×${s.ftgSize}×${s.ftgDepth}mm deep), plinth beam at +450mm, ground floor rooms with 3000mm clear height, ${s.slabT}mm RCC slab, first floor rooms with 3000mm clear height, roof slab, parapet 900mm. Total height above GL: 7350mm. Concrete hatching on structural elements. Level markers: GL ±0.000, Plinth +0.450, GF Slab +3.150, FF Slab +6.300, Parapet +7.200. Overall width dimension at bottom: ${plotWidthMM}mm. Staircase visible in section. Earth hatching below ground.`,
 
     excavation: `${BASE_PROMPT}${projectContext}${dimensionVerification}
 CROSS-DRAWING REFERENCE: Pit positions MUST match column layout grid exactly.
-Excavation Plan for ${plotW}ft × ${plotD}ft (${plotWidthMM}mm × ${plotDepthMM}mm) plot. Show plot boundary, column positions marked with crosses at: ${columnPositions}. Excavation pits at ${spanW}mm c/c horizontally and ${spanD}mm c/c vertically, matching the structural grid. Each excavation pit: 1200mm × 1200mm × 1500mm deep. Overall dimensions: ${plotWidthMM}mm total width, ${plotDepthMM}mm total depth. Individual pit spacing dimensions: ${spanW}mm between vertical grid lines, ${spanD}mm between horizontal grid lines. Earth hatching around pits. Table showing: Pit ID, Size, Depth, Volume.`,
+Excavation Plan for ${plotW}ft × ${plotD}ft (${plotWidthMM}mm × ${plotDepthMM}mm) plot. Show plot boundary, column positions marked with crosses at: ${columnPositions}. Excavation pits at ${spanW}mm c/c horizontally and ${spanD}mm c/c vertically, matching the structural grid. Each excavation pit: ${s.ftgSize}mm × ${s.ftgSize}mm × ${s.ftgDepth}mm deep. Overall dimensions: ${plotWidthMM}mm total width, ${plotDepthMM}mm total depth. Individual pit spacing dimensions: ${spanW}mm between vertical grid lines, ${spanD}mm between horizontal grid lines. Earth hatching around pits. Table showing: Pit ID, Size, Depth, Volume.`,
 
     column_layout: `${BASE_PROMPT}${projectContext}${dimensionVerification}
 CROSS-DRAWING REFERENCE: Column grid MUST align with wall junctions shown in floor plan. Every T-junction and corner has a column.
 Column Layout Plan for ${plotW}ft x ${plotD}ft (${plotWidthMM}mm × ${plotDepthMM}mm) residential building.
 GRID LINES: ${numGridW + 1} vertical grid lines labeled 1, 2, 3, 4, 5 spaced at ${spanW}mm center-to-center. ${numGridD + 1} horizontal grid lines labeled A, B, C, D spaced at ${spanD}mm center-to-center.
 DIMENSION CHECK: ${numGridW} spans × ${spanW}mm = ${numGridW * spanW}mm total width ✓. ${numGridD} spans × ${spanD}mm = ${numGridD * spanD}mm total depth ✓.
-Column positions at: ${columnPositions}. Each column: 230mm × 300mm shown as filled/crosshatched rectangles.
-CRITICAL: Column SIZE is 230×300mm. Column CENTER-TO-CENTER SPACING is ${spanW}mm horizontally and ${spanD}mm vertically. These are completely different numbers.
+Column positions at: ${columnPositions}. Each column: ${s.colW}mm × ${s.colD}mm shown as filled/crosshatched rectangles.
+CRITICAL: Column SIZE is ${s.colW}×${s.colD}mm. Column CENTER-TO-CENTER SPACING is ${spanW}mm horizontally and ${spanD}mm vertically. These are completely different numbers.
 Grid circles at edges with labels. Overall dimensions on outside edges: ${plotWidthMM}mm total width, ${plotDepthMM}mm total depth. Individual span dimensions between each pair of grid lines.
-Column schedule table: Column ID, Size (230×300mm), Grid Position.`,
+Column schedule table: Column ID, Size (${s.colW}×${s.colD}mm), Grid Position.`,
 
     column_detail: `${BASE_PROMPT}${projectContext}
-Reinforcement Detail of a 230mm x 300mm RCC Column. Show: Cross-section with 4 nos 12mm dia main bars at corners + 2 nos 12mm dia extra on long face = 6 nos total. 8mm stirrups at 150mm c/c (closer at 100mm near joints). Side view showing lap length = 40d = 480mm. Clear cover: 40mm. Concrete grade: M20, Steel: Fe500D. Dimensions annotated. Bar bending detail for one stirrup.`,
+Reinforcement Detail of a ${s.colW}mm x ${s.colD}mm RCC Column. Show: Cross-section with 4 nos 12mm dia main bars at corners + 2 nos 12mm dia extra on long face = 6 nos total. 8mm stirrups at 150mm c/c (closer at 100mm near joints). Side view showing lap length = 40d = 480mm. Clear cover: 40mm. Concrete grade: ${s.grade}, Steel: ${s.steel}. Dimensions annotated. Bar bending detail for one stirrup.`,
 
     footing_detail: `${BASE_PROMPT}${projectContext}
-Isolated Footing Detail Drawing. Plan view: 1200mm x 1200mm footing with 230mm x 300mm column at center. Section view: 1500mm deep, 300mm footing thickness, pedestal 300mm. Reinforcement: 10mm bars at 150mm c/c both ways in footing. Concrete hatching. PCC bed 150mm thick below footing. Dimensions fully annotated. M20 concrete, Fe500D steel.`,
+Isolated Footing Detail Drawing. Plan view: ${s.ftgSize}mm x ${s.ftgSize}mm footing with ${s.colW}mm x ${s.colD}mm column at center. Section view: ${s.ftgDepth}mm deep, 300mm footing thickness, pedestal 300mm. Reinforcement: 10mm bars at 150mm c/c both ways in footing. Concrete hatching. PCC bed 150mm thick below footing. Dimensions fully annotated. ${s.grade} concrete, ${s.steel} steel.`,
 
     beam_slab: `${BASE_PROMPT}${projectContext}
 CROSS-DRAWING REFERENCE: Beam grid MUST match column layout. Span dimensions identical.
-RCC Beam and Slab Detail. Beam spans matching structural grid: ${spanW}mm and ${spanD}mm spans. Typical beam section: 230mm wide × 400mm deep. Top steel: 2-12mm, Bottom steel: 3-16mm, Stirrups: 8mm@150mm c/c. Slab: 150mm thick, 8mm bars @150mm c/c both ways. Slab panel sizes: ${spanW}mm × ${spanD}mm between beam center-lines. Show beam-slab junction detail. Development length at supports. Slab reinforcement plan showing main and distribution bars.`,
+RCC Beam and Slab Detail. Beam spans matching structural grid: ${spanW}mm and ${spanD}mm spans. Typical beam section: ${s.beamW}mm wide × ${s.beamD}mm deep. Top steel: 2-12mm, Bottom steel: 3-16mm, Stirrups: 8mm@150mm c/c. Slab: ${s.slabT}mm thick, 8mm bars @150mm c/c both ways. Slab panel sizes: ${spanW}mm × ${spanD}mm between beam center-lines. Show beam-slab junction detail. Development length at supports. Slab reinforcement plan showing main and distribution bars.`,
 
     bar_bending: `${BASE_PROMPT}${projectContext}
-Bar Bending Schedule table for ${floorLabel} residential building. Column spacing: ${spanW}mm × ${spanD}mm grid. Beam lengths: ${spanW}mm and ${spanD}mm clear span + bearing. Columns: Member, Bar Mark, Dia(mm), Shape Code, No of Bars, Cutting Length(m), Total Length(m), Unit Weight(kg/m), Total Weight(kg). Include: Footings (F1-F16), Columns (C1-C16), Plinth Beams, Ground Floor Beams, GF Slab, FF Beams, FF Slab, Staircase. Shape code diagrams: 00=straight, 21=cranked, 38=rectangular stirrup, 51=L-bend. Summary: Total Steel = ${totalSteel} Tons Fe500D. With 3% Buffer = ${(Number(totalSteel) * 1.03).toFixed(2)} Tons.`,
+Bar Bending Schedule table for ${floorLabel} residential building. Column spacing: ${spanW}mm × ${spanD}mm grid. Beam lengths: ${spanW}mm and ${spanD}mm clear span + bearing. Columns: Member, Bar Mark, Dia(mm), Shape Code, No of Bars, Cutting Length(m), Total Length(m), Unit Weight(kg/m), Total Weight(kg). Include: Footings (F1-F16), Columns (C1-C16), Plinth Beams, Ground Floor Beams, GF Slab, FF Beams, FF Slab, Staircase. Shape code diagrams: 00=straight, 21=cranked, 38=rectangular stirrup, 51=L-bend. Summary: Total Steel = ${totalSteel} Tons ${s.steel}. With 3% Buffer = ${(Number(totalSteel) * 1.03).toFixed(2)} Tons.`,
 
     electrical: `${electricalFloorNote}${BASE_PROMPT}${projectContext}${dimensionVerification}
 CROSS-DRAWING REFERENCE: Room layout MUST match ${floorContext.toLowerCase()} plan exactly — same room sizes, positions, names.
@@ -622,7 +655,7 @@ DESIGN DNA APPLICATION — USE ALL OF THESE:
 Main entrance on ${facing} side with canopy. First floor balcony on ${balconyPosition}. Facade materials and colors per Design DNA palette. Landscaping per Design DNA landscape style. Roof form per Design DNA roof variation. Photorealistic render, golden hour lighting, slight upward camera angle.`,
 
     staircase_detail: `${BASE_PROMPT}${projectContext}
-Staircase Detail Drawing for a ${floorLabel} residential building. Staircase well size from floor plan: reference ARCHITECTURAL CONSISTENCY BRIEF for exact position. PLAN VIEW: Dog-leg staircase in a ${plotW > 25 ? '3.0m x 5.5m' : '2.5m x 4.5m'} stairwell. Show: two flights with mid-landing, 10 risers per flight (150mm each), tread width 250mm, landing 1200mm wide, handrail on both sides. SECTION VIEW: Show waist slab 150mm thick, reinforcement 12mm bars at 150mm c/c main + 8mm at 200mm c/c distribution. Headroom clearance 2100mm minimum marked. Level markings: Ground +0.000, Mid-landing +1.500, First Floor +3.000. Nosing detail 25mm. Anti-skid groove on treads. M20 concrete, Fe500D steel. All dimensions annotated.`,
+Staircase Detail Drawing for a ${floorLabel} residential building. Staircase well size from floor plan: reference ARCHITECTURAL CONSISTENCY BRIEF for exact position. PLAN VIEW: Dog-leg staircase in a ${plotW > 25 ? '3.0m x 5.5m' : '2.5m x 4.5m'} stairwell. Show: two flights with mid-landing, 10 risers per flight (150mm each), tread width 250mm, landing 1200mm wide, handrail on both sides. SECTION VIEW: Show waist slab ${s.waist}mm thick, reinforcement 12mm bars at 150mm c/c main + 8mm at 200mm c/c distribution. Headroom clearance 2100mm minimum marked. Level markings: Ground +0.000, Mid-landing +1.500, First Floor +3.000. Nosing detail 25mm. Anti-skid groove on treads. ${s.grade} concrete, ${s.steel} steel. All dimensions annotated.`,
 
     water_tank: `${BASE_PROMPT}${projectContext}
 Water Tank Detail Drawing. OVERHEAD TANK (OHT): Plan and section of rectangular RCC tank ${plotW > 25 ? '2.0m x 2.0m x 1.2m' : '1.5m x 1.5m x 1.0m'} capacity ${plotW > 25 ? '4800L' : '2250L'}. Wall thickness 200mm, base slab 200mm, top slab 120mm. Reinforcement: 10mm bars at 150mm c/c both ways in walls and base. Haunches at wall-base junction. Inlet pipe, outlet pipe, overflow pipe, drain valve, manhole 600x600mm. Waterproofing membrane layer shown. UNDERGROUND SUMP: Plan and section 2.0m x 2.0m x 1.5m deep. 300mm thick walls, 300mm base with PCC bed. Level indicators. M25 concrete for water-retaining structures. All dimensions and bar details annotated.`,

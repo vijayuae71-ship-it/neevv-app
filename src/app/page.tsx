@@ -224,7 +224,10 @@ export default function HomePage() {
     }
     
     if (requirements) {
-      const b = calculateBOQ(layout, requirements.floors.length, customRates);
+      const materialRates = customRates?.materials ?? [];
+      const sr = engineResult?.structuralResult ?? null;
+      const br = engineResult?.bbsResult ?? undefined;
+      const b = sr ? calculateBOQ(layout, materialRates, requirements.floors.length, sr, br) : calculateBOQ(layout, requirements.floors.length, customRates);
       setBOQ(b);
     }
     analytics.layoutSelected(layout.id);
@@ -269,9 +272,12 @@ export default function HomePage() {
     setRequirements(req);
     setSelectedLayout(layout);
     setLayouts([layout]);
-    const b = calculateBOQ(layout, req.floors.length, customRates);
+    const engineResult = runStructuralDesign(layout, req);
+    const materialRates = customRates?.materials ?? [];
+    const sr = engineResult?.structuralResult ?? null;
+    const br = engineResult?.bbsResult ?? undefined;
+    const b = sr ? calculateBOQ(layout, materialRates, req.floors.length, sr, br) : calculateBOQ(layout, req.floors.length, customRates);
     setBOQ(b);
-    runStructuralDesign(layout, req);
     setMotherLayoutLocked(true);
     setMode('new_build');
     setStep('isometric');

@@ -546,7 +546,8 @@ export function allocateFloor(
 export function computeProportionalLayout(
   plot: PlotInput,
   floorRequests: FloorRequest[],
-  config: LayoutBudgetConfig = DEFAULT_CONFIG
+  config: LayoutBudgetConfig = DEFAULT_CONFIG,
+  fsi?: number
 ): LayoutBudgetResult {
   const plotAreaSqm = resolvePlotArea(plot);
   const coverageTier = getCoverageTier(plotAreaSqm, config);
@@ -554,7 +555,7 @@ export function computeProportionalLayout(
 
   // FSI enforcement: FSI=1 means total built-up ≤ plot area
   // Per-floor footprint capped to plotArea * FSI / numFloors
-  const FSI = 1.0;
+  const FSI = fsi ?? 1.0;
   const numFloors = floorRequests.length || 1;
   const fsiMaxPerFloor = plotAreaSqm * FSI / numFloors;
 
@@ -602,7 +603,8 @@ export function computeProportionalLayout(
 export function checkPlotFeasibility(
   plot: PlotInput,
   floorRequests: FloorRequest[],
-  config: LayoutBudgetConfig = DEFAULT_CONFIG
+  config: LayoutBudgetConfig = DEFAULT_CONFIG,
+  fsi?: number
 ): FeasibilityCheckResult {
   const plotAreaSqm = resolvePlotArea(plot);
   const coverageTier = getCoverageTier(plotAreaSqm, config);
@@ -610,7 +612,7 @@ export function checkPlotFeasibility(
 
   // FSI enforcement: FSI=1 means total built-up ≤ plot area
   // Per-floor footprint capped to plotArea * FSI / numFloors
-  const FSI = 1.0;
+  const FSI = fsi ?? 1.0;
   const numFloors = floorRequests.length || 1;
   const fsiMaxPerFloor = plotAreaSqm * FSI / numFloors;
 

@@ -52,6 +52,7 @@ export const RequirementForm: React.FC<Props> = ({ onSubmit, initialValues }) =>
   const [vastu, setVastu] = useState(initialValues?.vastuCompliance ?? true);
   const [budget, setBudget] = useState<BudgetRange>(initialValues?.budget ?? 'standard');
   const [style, setStyle] = useState<ArchitecturalStyle>(initialValues?.architecturalStyle ?? 'contemporary_indian');
+  const [fsi, setFsi] = useState(initialValues?.fsi ?? 1.0);
   const [parking, setParking] = useState<ParkingType>(initialValues?.parkingType ?? 'Open');
   const [floors, setFloors] = useState<FloorProgram[]>(
     initialValues?.floors?.length ? initialValues.floors : [
@@ -86,6 +87,7 @@ export const RequirementForm: React.FC<Props> = ({ onSubmit, initialValues }) =>
       parkingType: parking,
       budget,
       architecturalStyle: style,
+      fsi,
       floors,
     });
   };
@@ -159,6 +161,19 @@ export const RequirementForm: React.FC<Props> = ({ onSubmit, initialValues }) =>
           </div>
           <div className="text-xs text-gray-500">
             Plot Area: <span className="font-medium text-gray-700">{plotAreaSqFt} sq.ft</span> ({plotAreaSqM.toFixed(1)} m²)
+          </div>
+          <div>
+            <label className="text-xs text-gray-600 mb-1 block">FSI (Floor Space Index)</label>
+            <input
+              type="number"
+              className="input input-bordered input-sm w-full"
+              value={fsi || ""}
+              onChange={(e) => setFsi(e.target.value === '' ? 0 : Number(e.target.value))}
+              min={0.5}
+              max={5}
+              step={0.1}
+            />
+            <div className="text-[10px] text-gray-400 mt-0.5">Default 1.0 for residential. Total buildable = plot area × FSI</div>
           </div>
           <div>
             <label className="text-xs text-gray-600 mb-1 block">Plot Facing</label>

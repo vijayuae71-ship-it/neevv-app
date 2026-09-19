@@ -13,7 +13,7 @@ import { applyTextOverlay, OVERLAY_DRAWING_TYPES } from '../utils/textOverlay';
 import { toOverlayData, type StructuralOverlayData } from '../utils/textOverlay';
 import { authFetch } from '@/utils/authFetch';
 import { getCachedDrawing, setCachedDrawing, getAllCachedDrawings, clearCachedDrawings, migrateFromLocalStorage } from '../utils/drawingCache';
-import { buildDrawingPrompt, DrawingType as ApiDrawingType } from '../utils/drawingPrompts';
+import { buildDrawingPrompt, DrawingType as ApiDrawingType, StructuralPromptData } from '../utils/drawingPrompts';
 
 interface Props {
   onDrawingGenerated?: (drawingType: string) => void;
@@ -74,6 +74,32 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq, on
     } catch {
       return undefined;
     }
+  }, [structuralResult]);
+
+  const structuralPromptData = useMemo<StructuralPromptData | undefined>(() => {
+    if (!structuralResult) return undefined;
+    try {
+      const col = structuralResult.columns?.[0];
+      const beam = structuralResult.beams?.[0];
+      const slab = structuralResult.slabs?.[0];
+      const ftg = structuralResult.foundations?.[0];
+      return {
+        columnWidthMm: col?.widthMm ?? 230,
+        columnDepthMm: col?.depthMm ?? 300,
+        beamWidthMm: beam?.widthMm ?? 230,
+        beamDepthMm: beam?.depthMm ?? 400,
+        slabThicknessMm: slab?.thicknessMm ?? 125,
+        concreteGrade: structuralResult.parameters?.concreteGrade ?? 'M25',
+        steelGrade: structuralResult.parameters?.steelGrade ?? 'Fe500D',
+        footingSizeMm: ftg?.widthMm ?? 1200,
+        footingDepthMm: ftg?.depthMm ?? 1500,
+        sbc: structuralResult.cityData?.defaultSBC_kNm2 ?? 150,
+        seismicZone: structuralResult.cityData?.seismicZone ?? 'III',
+        soilType: structuralResult.cityData?.soilType ?? 'Medium',
+        waistSlabThicknessMm: structuralResult.staircase?.waistSlabThicknessMm ?? 150,
+        totalSteelMT: (structuralResult.summary?.totalSteelKg ?? 2800) / 1000,
+      };
+    } catch { return undefined; }
   }, [structuralResult]);
 
   const [activeDrawing, setActiveDrawing] = useState<DrawingType>('excavation');
@@ -141,7 +167,7 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq, on
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          prompt: buildDrawingPrompt(aiType as ApiDrawingType, layout, requirements, FLOOR_SPECIFIC.includes(drawingType) ? selectedFloor : undefined, layout.designSeed),
+          prompt: buildDrawingPrompt(aiType as ApiDrawingType, layout, requirements, FLOOR_SPECIFIC.includes(drawingType) ? selectedFloor : undefined, layout.designSeed, structuralPromptData),
           drawingType: aiType,
         }),
       });
@@ -176,7 +202,7 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq, on
     } finally {
       setAiLoading(null);
     }
-  }, [layout, requirements, boq, selectedFloor, structuralOverlay, getCacheKey, saveDrawingToCache, onDrawingGenerated]);
+  }, [layout, requirements, boq, selectedFloor, structuralOverlay, structuralPromptData, getCacheKey, saveDrawingToCache, onDrawingGenerated]);
 
   /* ---------- Click handler for generate button ---------- */
   const handleGenerate = useCallback((drawingType: DrawingType) => {
@@ -207,7 +233,7 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq, on
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            prompt: buildDrawingPrompt(aiDrawingMap[dt] as ApiDrawingType, layout, requirements, FLOOR_SPECIFIC.includes(dt) ? floor : undefined, layout.designSeed),
+            prompt: buildDrawingPrompt(aiDrawingMap[dt] as ApiDrawingType, layout, requirements, FLOOR_SPECIFIC.includes(dt) ? floor : undefined, layout.designSeed, structuralPromptData),
             drawingType: aiDrawingMap[dt],
           }),
         });
@@ -245,7 +271,7 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq, on
     setAiLoading(null);
     setSelectedFloor('GF');
     setGeneratingAll(false);
-  }, [aiImages, layout, requirements, boq, structuralOverlay, isMultiFloor, getCacheKey, saveDrawingToCache, onDrawingGenerated]);
+  }, [aiImages, layout, requirements, boq, structuralOverlay, structuralPromptData, isMultiFloor, getCacheKey, saveDrawingToCache, onDrawingGenerated]);
 
   /* ---------- PDF Export ---------- */
   const handleExportPDF = async () => {
@@ -305,13 +331,13 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq, on
 
   const descriptions: Record<DrawingType, string> = {
     excavation: 'Trench excavation layout with depths, bench mark, center line pegs, and earth removal volume. Trench width: 1800mm (1200mm footing + 300mm working space each side).',
-    foundation: 'Foundation layout with isolated footings (1200\u00d71200\u00d7300mm), column pedestals, plinth beam grid (230\u00d7300). SBC assumed 150 kN/m\u00b2.',
+    foundation: 'Foundation layout with isolated footings, column pedestals, and plinth beam grid. Designed per IS 456 with city-specific SBC.',
     footingDetail: 'Detailed footing cross-section and plan with reinforcement, PCC bed, pedestal starter bars, and soil bearing details per IS 456.',
     rccDetail: 'RCC slab & beam layout showing slab panels (one-way/two-way), beam grid, reinforcement directions, staircase opening, and cantilever balcony slabs.',
-    structural: 'Column-beam grid with centerline references. Column: 230\u00d7300mm. Beam: 230\u00d7400mm. Max clear span \u2264 4500mm.',
+    structural: 'Column-beam grid with centerline references. Member sizes from structural engine. Max clear span \u2264 4500mm.',
     reinforcement: 'Detailed reinforcement sections for footing, column, beam, slab, and lintel with bar sizes, spacing, cover, and stirrup details.',
     barBending: 'Bar Bending Schedule per IS 2502. All members quantified with bar mark, diameter, shape code, cutting length, and total weight.',
-    section: `Cross-section showing foundation system, RCC frame, infill masonry, and lintels. Floor-to-floor: 3000mm. Slab: 150mm.`,
+    section: `Cross-section showing foundation system, RCC frame, infill masonry, and lintels. Floor-to-floor: 3000mm.`,
     elevation: `Front elevation (${requirements.facing} facing). Plinth, DPC, windows, main door, balcony, slab bands, parapet with coping.`,
     brickwork: 'Masonry layout: 230mm external walls (stretcher bond), 115mm partitions, door/window openings, lintel positions, waterproof plaster in wet areas.',
     electrical: 'Electrical layout: room-wise light/fan/socket/AC points, DB & MSB positions, circuit runs (power/lighting/earth), load schedule.',

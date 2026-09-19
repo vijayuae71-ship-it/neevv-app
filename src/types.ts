@@ -40,6 +40,7 @@ export interface ProjectRequirements {
   parkingType: ParkingType;
   budget: BudgetRange;
   architecturalStyle: ArchitecturalStyle;
+  fsi?: number;
   floors: FloorProgram[];
 }
 
