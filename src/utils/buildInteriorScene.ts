@@ -588,6 +588,1071 @@ function resolveLiving(interior: RoomInterior | undefined, moodBoardStyle: Inter
   };
 }
 
+/* ----------------------------------------------------------------
+   NEW RESOLVERS — residential extras (dining, pooja, study, balcony)
+   ---------------------------------------------------------------- */
+
+function resolveDining(
+  areaSqft: number,
+  interior: RoomInterior | undefined,
+  moodBoardStyle: InteriorStyle,
+): ResolvedRoomContent {
+  const compact = areaSqft < 80;
+  const seats = compact ? 4 : 6;
+  const tableWidthMM = compact ? 1200 : 1800;
+  const tableDepthMM = compact ? 750 : 900;
+
+  const furniture: SceneFurnitureItem[] = [
+    {
+      name: `Dining Table (${seats}-Seater)`,
+      category: 'dining_table',
+      widthMM: tableWidthMM,
+      depthMM: tableDepthMM,
+      heightMM: 750,
+      material: 'Engineered Wood Top + Metal/Wood Legs',
+      color: '#6B4A2F',
+      wall: 'center',
+      description: `${seats}-seater dining table centered in the room, long axis parallel to the entry wall`,
+    },
+    {
+      name: `Dining Chairs (Set of ${seats})`,
+      category: 'dining_chair',
+      widthMM: 450,
+      depthMM: 500,
+      heightMM: 900,
+      material: 'Upholstered Seat, Wood/Metal Frame',
+      color: '#3D3D3D',
+      wall: 'center',
+      description: `${seats} chairs arranged around the dining table, evenly spaced`,
+    },
+    {
+      name: 'Sideboard / Crockery Unit',
+      category: 'crockery',
+      widthMM: compact ? 1200 : 1500,
+      depthMM: 450,
+      heightMM: 850,
+      material: 'Marine Ply + Laminate Shutters, Glass-Front Upper Section',
+      color: '#4A2C2A',
+      wall: 'east',
+      description: 'Crockery storage with display shelving above, positioned along the wall clear of the circulation path',
+    },
+    {
+      name: 'Serving Console',
+      category: 'console',
+      widthMM: 900,
+      depthMM: 400,
+      heightMM: 800,
+      material: 'Laminate Finish',
+      color: '#333333',
+      wall: 'west',
+      description: 'Serving console for buffet-style plating, near the kitchen pass-through',
+    },
+  ];
+
+  const fixtures: SceneFixture[] = [
+    {
+      name: 'Pendant Light Cluster',
+      widthMM: 600,
+      depthMM: 600,
+      heightMM: 400,
+      mountHeightMM: 1900,
+      wall: 'ceiling',
+      material: 'Metal + Glass, Matte Black Finish',
+      description: 'Cluster of 3 pendant lights hanging above the dining table centerline',
+    },
+  ];
+
+  const openings: SceneOpening[] = [
+    { type: 'door', wall: 'south', widthMM: 900, heightMM: 2100, sillHeightMM: 0, openDirection: 'inward', material: 'Laminate Flush Door' },
+    { type: 'window', wall: 'east', widthMM: 1200, heightMM: 1200, sillHeightMM: 900, material: 'Aluminium Sliding, Clear Glass' },
+  ];
+
+  const zones: SceneZone[] = [
+    { name: 'DINING ZONE', description: 'Table + chairs seating area', color: 'warm beige tint' },
+    { name: 'SERVING ZONE', description: 'Sideboard + serving console', color: 'light yellow tint' },
+    { name: 'CIRCULATION', description: "Min 2'-6\" clearance around table", color: 'dashed outline' },
+  ];
+
+  const accentWall =
+    moodBoardStyle === 'contemporary_indian'
+      ? { name: 'Textured Paint / Ethnic Wallpaper', description: 'Accent wall behind sideboard' }
+      : moodBoardStyle === 'industrial'
+      ? { name: 'Exposed Brick Cladding', description: 'Accent wall behind sideboard' }
+      : { name: 'Feature Wallpaper / Panel Moulding', description: 'Accent wall behind sideboard' };
+
+  return {
+    furniture,
+    fixtures,
+    openings,
+    zones,
+    materials: {
+      flooring: { name: interior?.flooring?.name || 'Vitrified Tiles', finish: 'Glossy', tileSize: '600×600 mm' },
+      wallFinish: { name: interior?.wallFinish?.name || 'Emulsion Paint', finish: 'Matt' },
+      accentWall,
+    },
+    keyDimensions: {},
+    lighting: {
+      description: 'Warm white 3000K pendant cluster over table, peripheral cove LED, recessed downlights for ambient fill',
+      fixtures: ['Pendant light cluster', 'Peripheral cove LED', 'Recessed downlights ×2'],
+    },
+    specificNotes: `${seats}-seater dining table centered with min 2'-6" clearance on all sides for chair pull-out. Sideboard positioned clear of the main circulation path.`,
+  };
+}
+
+function resolvePooja(areaSqft: number, interior: RoomInterior | undefined): ResolvedRoomContent {
+  const compact = areaSqft < 30;
+
+  const furniture: SceneFurnitureItem[] = [
+    {
+      name: compact ? 'Wall-Mount Mandir Unit' : 'Mandir / Temple Unit',
+      category: 'pooja_unit',
+      widthMM: compact ? 900 : 1200,
+      depthMM: compact ? 350 : 450,
+      heightMM: compact ? 1500 : 1800,
+      material: 'Carved Teak Wood, Natural Polish',
+      color: '#5C3A21',
+      wall: 'east',
+      description: 'Temple unit on the east wall (Vastu-ideal), carved wood facade with deity alcove and door shutters',
+    },
+    {
+      name: 'Storage Unit (Puja Accessories)',
+      category: 'storage',
+      widthMM: 600,
+      depthMM: 350,
+      heightMM: 450,
+      material: 'Marine Ply + Laminate',
+      color: '#4A2C2A',
+      wall: 'east',
+      description: 'Low storage below/beside the mandir for puja accessories and books',
+    },
+  ];
+
+  const fixtures: SceneFixture[] = [
+    {
+      name: 'Temple Bell (Ghanti)',
+      widthMM: 150,
+      depthMM: 150,
+      heightMM: 250,
+      mountHeightMM: 1800,
+      wall: 'east',
+      material: 'Brass',
+      description: 'Hanging brass bell at the mandir entrance, rung on entering the prayer zone',
+    },
+    {
+      name: 'Oil Lamp / Diya Shelf',
+      widthMM: 400,
+      depthMM: 150,
+      heightMM: 100,
+      mountHeightMM: 900,
+      wall: 'east',
+      material: 'Brass / Stone',
+      description: 'Small ledge shelf for the oil lamp, positioned beside the mandir',
+    },
+    {
+      name: 'Incense Holder',
+      widthMM: 100,
+      depthMM: 100,
+      heightMM: 150,
+      mountHeightMM: 900,
+      wall: 'east',
+      material: 'Brass',
+      description: 'Agarbatti/incense stand on the offering shelf',
+    },
+  ];
+
+  const openings: SceneOpening[] = [
+    { type: 'door', wall: 'south', widthMM: 750, heightMM: 2100, sillHeightMM: 0, openDirection: 'inward', material: 'Carved Wood Flush Door' },
+    { type: 'window', wall: 'east', widthMM: 450, heightMM: 450, sillHeightMM: 900, material: 'Aluminium Fixed, Clear Glass' },
+  ];
+
+  const zones: SceneZone[] = [
+    { name: 'PRAYER ZONE', description: 'Floor seating / prayer mat facing the mandir', color: 'soft saffron tint' },
+    { name: 'OFFERING ZONE', description: 'Mandir + offering shelf on the east wall', color: 'warm gold tint' },
+  ];
+
+  return {
+    furniture,
+    fixtures,
+    openings,
+    zones,
+    materials: {
+      flooring: { name: interior?.flooring?.name || 'White Marble', finish: 'Polished', tileSize: '600×600 mm' },
+      wallFinish: { name: interior?.wallFinish?.name || 'Textured Paint with Motif Border', finish: 'Matt' },
+      accentWall: { name: 'Marble / Stone Cladding with Temple Motif', description: 'Backdrop cladding behind the mandir unit' },
+    },
+    keyDimensions: {},
+    lighting: {
+      description: 'Warm white 2700K focused light on the mandir alcove, small brass diya-style accent lamp, soft ambient ceiling light',
+      fixtures: ['Mandir alcove spotlight', 'Diya accent lamp', 'Ceiling light point'],
+    },
+    specificNotes: `Mandir on the east wall per Vastu; ${compact ? 'compact' : 'standard'} prayer room (${areaSqft} sq.ft) with floor seating/prayer mat in front, morning light from the east window.`,
+  };
+}
+
+function resolveStudy(
+  areaSqft: number,
+  interior: RoomInterior | undefined,
+  moodBoardStyle: InteriorStyle,
+): ResolvedRoomContent {
+  const compact = areaSqft < 60;
+
+  const furniture: SceneFurnitureItem[] = [
+    {
+      name: 'Study Desk',
+      category: 'study_table',
+      widthMM: compact ? 1050 : 1350,
+      depthMM: 600,
+      heightMM: 750,
+      material: 'Engineered Wood, Laminate Finish',
+      color: '#3D3D3D',
+      wall: 'north',
+      description: 'Desk positioned against the window wall for natural daylight while working',
+    },
+    {
+      name: 'Ergonomic Chair',
+      category: 'chair',
+      widthMM: 600,
+      depthMM: 600,
+      heightMM: 1100,
+      material: 'Mesh Back, Adjustable Height',
+      color: '#1A1A1A',
+      wall: 'north',
+      description: 'Task chair tucked under the desk, facing the window',
+    },
+    {
+      name: 'Bookshelf',
+      category: 'bookshelf',
+      widthMM: 900,
+      depthMM: 300,
+      heightMM: 2000,
+      material: 'Laminate Finish, Open Shelving',
+      color: '#333333',
+      wall: 'east',
+      description: 'Full-height open bookshelf along the side wall',
+    },
+    {
+      name: 'Filing Unit',
+      category: 'filing_cabinet',
+      widthMM: 450,
+      depthMM: 450,
+      heightMM: 650,
+      material: 'Powder-Coated Steel / Laminate',
+      color: '#4A4A4A',
+      wall: 'west',
+      description: 'Mobile 2-drawer filing cabinet under/beside the desk',
+    },
+  ];
+
+  const fixtures: SceneFixture[] = [
+    {
+      name: 'Desk Lamp',
+      widthMM: 200,
+      depthMM: 200,
+      heightMM: 400,
+      mountHeightMM: 750,
+      wall: 'north',
+      material: 'Metal, Adjustable Arm',
+      description: 'Task lamp on the desk surface for focused reading light',
+    },
+    {
+      name: 'Pin / Notice Board',
+      widthMM: 900,
+      depthMM: 30,
+      heightMM: 600,
+      mountHeightMM: 1200,
+      wall: 'north',
+      material: 'Cork Board, Wood Frame',
+      description: 'Wall-mounted pin board above the desk for notes and schedules',
+    },
+  ];
+
+  const openings: SceneOpening[] = [
+    { type: 'door', wall: 'south', widthMM: 900, heightMM: 2100, sillHeightMM: 0, openDirection: 'inward', material: 'Laminate Flush Door' },
+    { type: 'window', wall: 'north', widthMM: 1200, heightMM: 1200, sillHeightMM: 900, material: 'Aluminium Sliding, Clear Glass' },
+  ];
+
+  const zones: SceneZone[] = [
+    { name: 'WORK ZONE', description: 'Desk + chair facing the window', color: 'light blue tint' },
+    { name: 'READING/STORAGE ZONE', description: 'Bookshelf + filing unit', color: 'warm beige tint' },
+  ];
+
+  const accentWall =
+    moodBoardStyle === 'industrial'
+      ? { name: 'Exposed Brick / Metal Shelving Accent', description: 'Feature wall behind the bookshelf' }
+      : { name: 'Textured Paint / Panel Moulding', description: 'Feature wall behind the bookshelf' };
+
+  return {
+    furniture,
+    fixtures,
+    openings,
+    zones,
+    materials: {
+      flooring: { name: interior?.flooring?.name || 'Wooden Laminate Flooring', finish: 'Matt Natural' },
+      wallFinish: { name: interior?.wallFinish?.name || 'Premium Emulsion Paint', finish: 'Matt' },
+      accentWall,
+    },
+    keyDimensions: {},
+    lighting: {
+      description: 'Task lamp on desk, recessed ceiling downlights for ambient fill, natural daylight from the north window',
+      fixtures: ['Desk task lamp', 'Recessed downlights ×2'],
+    },
+    specificNotes: `Desk placed to catch north daylight without glare on screens. Min 750mm clearance behind the chair for movement. ${compact ? 'Compact' : 'Standard'} study room (${areaSqft} sq.ft).`,
+  };
+}
+
+function resolveBalcony(areaSqft: number, interior: RoomInterior | undefined): ResolvedRoomContent {
+  const compact = areaSqft < 25;
+
+  const furniture: SceneFurnitureItem[] = [
+    {
+      name: 'Outdoor Chairs (Pair)',
+      category: 'chair',
+      widthMM: 500,
+      depthMM: 500,
+      heightMM: 800,
+      material: 'Weather-Resistant Rattan/Metal',
+      color: '#6B4A2F',
+      wall: 'center',
+      description: 'Pair of compact outdoor chairs facing the open railing side',
+    },
+    {
+      name: 'Small Side Table',
+      category: 'side_table',
+      widthMM: compact ? 400 : 500,
+      depthMM: compact ? 400 : 500,
+      heightMM: 500,
+      material: 'Weather-Resistant Metal/Wood',
+      color: '#333333',
+      wall: 'center',
+      description: 'Small table between the two chairs',
+    },
+    {
+      name: 'Planter Boxes',
+      category: 'planter',
+      widthMM: 300,
+      depthMM: 300,
+      heightMM: 400,
+      material: 'Weatherproof Fibre/Terracotta',
+      color: '#8B6914',
+      wall: 'north',
+      description: 'Row of planter boxes along the parapet/railing wall',
+    },
+  ];
+
+  const fixtures: SceneFixture[] = [
+    {
+      name: 'Railing (North)',
+      widthMM: 2400,
+      depthMM: 50,
+      heightMM: 1000,
+      mountHeightMM: 0,
+      wall: 'north',
+      material: 'MS/SS Balustrade with Glass Infill',
+      description: 'Open-side safety railing, 1000mm high per code',
+    },
+    {
+      name: 'Railing (East)',
+      widthMM: 2400,
+      depthMM: 50,
+      heightMM: 1000,
+      mountHeightMM: 0,
+      wall: 'east',
+      material: 'MS/SS Balustrade with Glass Infill',
+      description: 'Open-side safety railing, 1000mm high per code',
+    },
+    {
+      name: 'Ceiling Light',
+      widthMM: 250,
+      depthMM: 250,
+      heightMM: 150,
+      mountHeightMM: 2700,
+      wall: 'ceiling',
+      material: 'Weatherproof IP65 Fixture',
+      description: 'Weatherproof ceiling light for evening use',
+    },
+  ];
+
+  const openings: SceneOpening[] = [];
+
+  const zones: SceneZone[] = [
+    { name: 'SEATING ZONE', description: 'Chairs + side table facing the open side', color: 'light green tint' },
+    { name: 'PLANTER ZONE', description: 'Planter boxes along the railing wall', color: 'warm green tint' },
+  ];
+
+  return {
+    furniture,
+    fixtures,
+    openings,
+    zones,
+    materials: {
+      flooring: { name: interior?.flooring?.name || 'Anti-Skid Outdoor Tiles', finish: 'Matt Anti-Skid, Slope to Drain' },
+      wallFinish: { name: interior?.wallFinish?.name || 'Weatherproof Exterior Paint', finish: 'Matt' },
+    },
+    keyDimensions: {},
+    lighting: {
+      description: 'Weatherproof IP65 ceiling light for ambient evening lighting',
+      fixtures: ['Weatherproof ceiling light'],
+    },
+    specificNotes: `Open balcony accessed via sliding/French door from the adjoining room (no independent door of its own). Railing 1000mm high on the open north/east sides. ${compact ? 'Compact' : 'Standard'} balcony (${areaSqft} sq.ft).`,
+  };
+}
+
+/* ----------------------------------------------------------------
+   NEW RESOLVERS — office room types
+   ---------------------------------------------------------------- */
+
+function resolveOfficeCabin(
+  areaSqft: number,
+  interior: RoomInterior | undefined,
+  moodBoardStyle: InteriorStyle,
+): ResolvedRoomContent {
+  const compact = areaSqft < 120;
+
+  const furniture: SceneFurnitureItem[] = [
+    {
+      name: 'Executive Desk',
+      category: 'study_table',
+      widthMM: compact ? 1500 : 1800,
+      depthMM: 800,
+      heightMM: 750,
+      material: 'Engineered Wood, Veneer Finish',
+      color: '#3D2B1F',
+      wall: 'north',
+      description: 'Executive desk facing the door, back to the window wall',
+    },
+    {
+      name: 'Executive Chair',
+      category: 'chair',
+      widthMM: 650,
+      depthMM: 650,
+      heightMM: 1150,
+      material: 'Leather Upholstery, High-Back',
+      color: '#1A1A1A',
+      wall: 'north',
+      description: 'High-back executive chair behind the desk',
+    },
+    {
+      name: 'Visitor Chairs (Pair)',
+      category: 'chair',
+      widthMM: 550,
+      depthMM: 550,
+      heightMM: 900,
+      material: 'Fabric Upholstery, Metal Frame',
+      color: '#8B6914',
+      wall: 'south',
+      description: 'Two visitor chairs facing the desk across from the executive chair',
+    },
+    {
+      name: 'Filing Cabinet',
+      category: 'filing_cabinet',
+      widthMM: 900,
+      depthMM: 450,
+      heightMM: 1200,
+      material: 'Powder-Coated Steel / Laminate',
+      color: '#4A4A4A',
+      wall: 'west',
+      description: 'Lockable filing cabinet along the side wall',
+    },
+    {
+      name: 'Bookshelf / Display Unit',
+      category: 'bookshelf',
+      widthMM: 900,
+      depthMM: 350,
+      heightMM: 1800,
+      material: 'Laminate Finish',
+      color: '#333333',
+      wall: 'east',
+      description: 'Display shelving for awards, books, and decor',
+    },
+  ];
+
+  if (!compact) {
+    furniture.push({
+      name: 'Small Meeting Table (4-Seater)',
+      category: 'conference_table',
+      widthMM: 1200,
+      depthMM: 900,
+      heightMM: 750,
+      material: 'Engineered Wood, Veneer Finish',
+      color: '#3D2B1F',
+      wall: 'east',
+      description: '4-seater round/rectangular meeting table for informal discussions within the cabin',
+    });
+  }
+
+  const fixtures: SceneFixture[] = [
+    {
+      name: 'Split AC Unit',
+      widthMM: 900,
+      depthMM: 250,
+      heightMM: 300,
+      mountHeightMM: 2400,
+      wall: 'east',
+      material: 'White Plastic Body',
+      description: 'Wall-mounted split AC indoor unit',
+    },
+    {
+      name: 'Nameplate / Logo Panel',
+      widthMM: 600,
+      depthMM: 20,
+      heightMM: 300,
+      mountHeightMM: 1600,
+      wall: 'north',
+      material: 'Acrylic / Backlit Signage',
+      description: 'Designation nameplate mounted on the wall behind the desk',
+    },
+  ];
+
+  const openings: SceneOpening[] = [
+    { type: 'door', wall: 'south', widthMM: 900, heightMM: 2100, sillHeightMM: 0, openDirection: 'inward', material: 'Glazed Aluminium-Framed Door' },
+    { type: 'window', wall: 'north', widthMM: 1500, heightMM: 1200, sillHeightMM: 900, material: 'Aluminium Sliding, Clear Glass' },
+  ];
+
+  const zones: SceneZone[] = [
+    { name: 'WORK ZONE', description: 'Executive desk + chair', color: 'light blue tint' },
+    { name: 'MEETING ZONE', description: compact ? 'Visitor chairs facing desk' : 'Visitor chairs + small meeting table', color: 'warm beige tint' },
+  ];
+
+  const accentWall =
+    moodBoardStyle === 'contemporary_indian'
+      ? { name: 'Textured Paint / Wood Panel Moulding', description: 'Feature wall behind the executive desk' }
+      : moodBoardStyle === 'industrial'
+      ? { name: 'Exposed Concrete / Metal Cladding', description: 'Feature wall behind the executive desk' }
+      : { name: 'Veneer Panel with Backlit Logo', description: 'Feature wall behind the executive desk' };
+
+  return {
+    furniture,
+    fixtures,
+    openings,
+    zones,
+    materials: {
+      flooring: { name: interior?.flooring?.name || 'Engineered Wood / Laminate Flooring', finish: 'Matt Natural' },
+      wallFinish: { name: interior?.wallFinish?.name || 'Premium Emulsion Paint', finish: 'Matt' },
+      accentWall,
+    },
+    keyDimensions: {},
+    lighting: {
+      description: 'Recessed ceiling downlights over the desk and meeting area, warm white 3000K, peripheral cove LED',
+      fixtures: ['Recessed downlights ×3', 'Peripheral cove LED'],
+    },
+    specificNotes: `${compact ? 'Compact' : 'Standard'} executive cabin (${areaSqft} sq.ft). Desk faces the door for visibility; visitor seating faces the desk across the cabin.`,
+  };
+}
+
+function resolveConference(areaSqft: number, interior: RoomInterior | undefined): ResolvedRoomContent {
+  const large = areaSqft >= 200;
+  const seats = large ? 10 : 6;
+
+  const furniture: SceneFurnitureItem[] = [
+    {
+      name: `Conference Table (${seats}-Seater)`,
+      category: 'conference_table',
+      widthMM: large ? 4200 : 2400,
+      depthMM: 1200,
+      heightMM: 750,
+      material: 'Engineered Wood, Veneer Finish',
+      color: '#3D2B1F',
+      wall: 'center',
+      description: `${seats}-seater conference table centered in the room, long axis parallel to the presentation wall`,
+    },
+    {
+      name: `Conference Chairs (Set of ${seats})`,
+      category: 'chair',
+      widthMM: 600,
+      depthMM: 600,
+      heightMM: 1050,
+      material: 'Mesh Back, Adjustable Height',
+      color: '#1A1A1A',
+      wall: 'center',
+      description: `${seats} chairs arranged around the conference table`,
+    },
+    {
+      name: 'Credenza / Side Cabinet',
+      category: 'console',
+      widthMM: large ? 1800 : 1200,
+      depthMM: 450,
+      heightMM: 800,
+      material: 'Laminate Finish',
+      color: '#333333',
+      wall: 'west',
+      description: 'Storage credenza for AV equipment, stationery, and refreshments',
+    },
+  ];
+
+  const fixtures: SceneFixture[] = [
+    {
+      name: large ? '75" Presentation Screen' : '55" Presentation Screen',
+      widthMM: large ? 1680 : 1230,
+      depthMM: 60,
+      heightMM: large ? 970 : 710,
+      mountHeightMM: 1000,
+      wall: 'north',
+      material: 'Matte Black Frame',
+      description: 'Wall-mounted display for presentations and video conferencing, centered on the table',
+    },
+    {
+      name: 'Whiteboard',
+      widthMM: 1800,
+      depthMM: 30,
+      heightMM: 1200,
+      mountHeightMM: 900,
+      wall: 'east',
+      material: 'Melamine Whiteboard, Aluminium Frame',
+      description: 'Wall-mounted whiteboard for notes and diagrams',
+    },
+    {
+      name: 'Split AC Unit',
+      widthMM: 900,
+      depthMM: 250,
+      heightMM: 300,
+      mountHeightMM: 2400,
+      wall: 'west',
+      material: 'White Plastic Body',
+      description: 'Wall-mounted split AC indoor unit',
+    },
+  ];
+
+  const openings: SceneOpening[] = [
+    { type: 'door', wall: 'south', widthMM: 1000, heightMM: 2100, sillHeightMM: 0, openDirection: 'inward', material: 'Glazed Aluminium-Framed Door' },
+    { type: 'window', wall: 'north', widthMM: 1200, heightMM: 900, sillHeightMM: 900, material: 'Frosted Glass, Aluminium Frame' },
+  ];
+
+  const zones: SceneZone[] = [
+    { name: 'MEETING ZONE', description: 'Conference table + chairs', color: 'light blue tint' },
+    { name: 'PRESENTATION ZONE', description: 'Screen + whiteboard wall', color: 'warm beige tint' },
+  ];
+
+  return {
+    furniture,
+    fixtures,
+    openings,
+    zones,
+    materials: {
+      flooring: { name: interior?.flooring?.name || 'Carpet Tiles', finish: 'Loop Pile, Acoustic' },
+      wallFinish: { name: interior?.wallFinish?.name || 'Acoustic Panel + Emulsion Paint', finish: 'Matt' },
+    },
+    keyDimensions: {},
+    lighting: {
+      description: 'Recessed ceiling downlights with dimmer control, indirect cove lighting to reduce screen glare',
+      fixtures: ['Recessed dimmable downlights ×4', 'Peripheral cove LED'],
+    },
+    specificNotes: `${large ? 'Large' : 'Small'} conference room (${areaSqft} sq.ft) seating ${seats}. Presentation screen centered on the north wall, visible from every seat.`,
+  };
+}
+
+function resolveReception(
+  areaSqft: number,
+  interior: RoomInterior | undefined,
+  moodBoardStyle: InteriorStyle,
+): ResolvedRoomContent {
+  const compact = areaSqft < 150;
+
+  const furniture: SceneFurnitureItem[] = [
+    {
+      name: 'Reception Desk',
+      category: 'reception_desk',
+      widthMM: compact ? 1800 : 2400,
+      depthMM: 700,
+      heightMM: 1100,
+      material: 'Laminate + Stone/Corian Countertop',
+      color: '#333333',
+      wall: 'north',
+      description: 'Reception counter facing the main entrance, staffed side against the north wall',
+    },
+    {
+      name: 'Waiting Sofa (3-Seater)',
+      category: 'sofa',
+      widthMM: 1800,
+      depthMM: 800,
+      heightMM: 800,
+      material: 'Fabric Upholstery',
+      color: '#C4A882',
+      wall: 'west',
+      description: 'Waiting area seating for visitors',
+    },
+    {
+      name: 'Coffee Table',
+      category: 'console',
+      widthMM: 900,
+      depthMM: 500,
+      heightMM: 400,
+      material: 'Wood/Glass Top',
+      color: '#333333',
+      wall: 'center',
+      description: 'Coffee table in front of the waiting sofa',
+    },
+    {
+      name: 'Single Waiting Chairs (Pair)',
+      category: 'chair',
+      widthMM: 600,
+      depthMM: 600,
+      heightMM: 800,
+      material: 'Fabric Upholstery, Metal Frame',
+      color: '#8B6914',
+      wall: 'east',
+      description: 'Additional single seating for overflow visitors',
+    },
+  ];
+
+  const fixtures: SceneFixture[] = [
+    {
+      name: 'Company Signage / Logo Wall',
+      widthMM: 1500,
+      depthMM: 30,
+      heightMM: 800,
+      mountHeightMM: 1200,
+      wall: 'north',
+      material: 'Backlit Acrylic / Metal Letters',
+      description: 'Illuminated company logo mounted behind the reception desk',
+    },
+    {
+      name: 'Planter',
+      widthMM: 400,
+      depthMM: 400,
+      heightMM: 900,
+      mountHeightMM: 0,
+      wall: 'east',
+      material: 'Ceramic Pot + Live/Artificial Plant',
+      description: 'Floor planter near the waiting area',
+    },
+  ];
+
+  const openings: SceneOpening[] = [
+    { type: 'door', wall: 'south', widthMM: 1200, heightMM: 2100, sillHeightMM: 0, openDirection: 'outward', material: 'Glazed Aluminium-Framed Double Door' },
+    { type: 'window', wall: 'east', widthMM: 1800, heightMM: 1200, sillHeightMM: 900, material: 'Aluminium Framed, Clear Glass' },
+  ];
+
+  const zones: SceneZone[] = [
+    { name: 'RECEPTION ZONE', description: 'Reception desk facing the entrance', color: 'light blue tint' },
+    { name: 'WAITING ZONE', description: 'Sofa + chairs + coffee table', color: 'warm beige tint' },
+  ];
+
+  const accentWall =
+    moodBoardStyle === 'industrial'
+      ? { name: 'Exposed Brick / Metal Cladding with Backlit Logo', description: 'Feature wall behind the reception desk' }
+      : { name: 'Stone Cladding / Veneer Panel with Backlit Logo', description: 'Feature wall behind the reception desk' };
+
+  return {
+    furniture,
+    fixtures,
+    openings,
+    zones,
+    materials: {
+      flooring: { name: interior?.flooring?.name || 'Polished Vitrified Tiles', finish: 'Glossy', tileSize: '800×800 mm' },
+      wallFinish: { name: interior?.wallFinish?.name || 'Designer Wallpaper / Stone Cladding', finish: 'Matt' },
+      accentWall,
+    },
+    keyDimensions: {},
+    lighting: {
+      description: 'Backlit signage wall, recessed downlights over the desk and waiting area, warm white 3000K accent on planters',
+      fixtures: ['Backlit logo signage', 'Recessed downlights ×4', 'Accent planter light'],
+    },
+    specificNotes: `${compact ? 'Compact' : 'Standard'} reception (${areaSqft} sq.ft). Desk visible and reachable immediately from the main entrance; waiting area kept clear of the entry path.`,
+  };
+}
+
+function resolvePantry(areaSqft: number, interior: RoomInterior | undefined): ResolvedRoomContent {
+  const compact = areaSqft < 60;
+
+  const furniture: SceneFurnitureItem[] = [
+    {
+      name: 'Pantry Counter with Cabinets',
+      category: 'kitchen_cabinet',
+      widthMM: compact ? 1500 : 1800,
+      depthMM: 600,
+      heightMM: 850,
+      material: 'Marine Ply Carcass + Laminate Shutters',
+      color: '#2E3440',
+      wall: 'south',
+      description: 'Base cabinets with countertop for tea/coffee prep, sink, and small appliance storage',
+    },
+    {
+      name: 'Small Dining Table (4-Seater)',
+      category: 'dining_table',
+      widthMM: compact ? 900 : 1200,
+      depthMM: 750,
+      heightMM: 750,
+      material: 'Laminate Finish',
+      color: '#6B4A2F',
+      wall: 'center',
+      description: 'Compact table for staff to eat/take breaks',
+    },
+    {
+      name: 'Dining Chairs (Set of 4)',
+      category: 'dining_chair',
+      widthMM: 420,
+      depthMM: 450,
+      heightMM: 850,
+      material: 'Laminate/Plastic Shell, Metal Frame',
+      color: '#3D3D3D',
+      wall: 'center',
+      description: '4 chairs arranged around the small dining table',
+    },
+  ];
+
+  const fixtures: SceneFixture[] = [
+    {
+      name: 'SS Under-Mount Sink',
+      widthMM: 500,
+      depthMM: 400,
+      heightMM: 200,
+      mountHeightMM: 650,
+      wall: 'south',
+      material: 'SS 304, Satin Finish',
+      description: 'Single-bowl sink with gooseneck mixer faucet',
+    },
+    {
+      name: 'Microwave Shelf',
+      widthMM: 500,
+      depthMM: 450,
+      heightMM: 350,
+      mountHeightMM: 900,
+      wall: 'south',
+      material: 'Laminate Finish',
+      description: 'Open shelf above the counter for the microwave',
+    },
+    {
+      name: 'Under-Counter Refrigerator',
+      widthMM: 550,
+      depthMM: 550,
+      heightMM: 850,
+      mountHeightMM: 0,
+      wall: 'south',
+      material: 'Stainless Steel Body',
+      description: 'Small under-counter refrigerator zone at the end of the counter run',
+    },
+    {
+      name: 'Water Dispenser',
+      widthMM: 350,
+      depthMM: 350,
+      heightMM: 1000,
+      mountHeightMM: 0,
+      wall: 'west',
+      material: 'Plastic/Steel Body',
+      description: 'Hot & cold water dispenser, floor-standing',
+    },
+  ];
+
+  const openings: SceneOpening[] = [
+    { type: 'door', wall: 'south', widthMM: 900, heightMM: 2100, sillHeightMM: 0, openDirection: 'inward', material: 'Laminate Flush Door' },
+    { type: 'window', wall: 'north', widthMM: 900, heightMM: 900, sillHeightMM: 900, material: 'Aluminium Sliding, Frosted Glass' },
+  ];
+
+  const zones: SceneZone[] = [
+    { name: 'PREP ZONE', description: 'Counter + sink + microwave', color: 'warm orange tint' },
+    { name: 'EATING ZONE', description: 'Small dining table + chairs', color: 'light green tint' },
+  ];
+
+  return {
+    furniture,
+    fixtures,
+    openings,
+    zones,
+    materials: {
+      flooring: { name: interior?.flooring?.name || 'Anti-Skid Vitrified Tiles', finish: 'Matt Anti-Skid', tileSize: '600×600 mm' },
+      wallFinish: { name: interior?.wallFinish?.name || 'Dado Tiles + Paint', finish: 'Glossy dado, paint above' },
+      countertop: { name: 'Polished Quartz', thickness: 20, finish: 'Polished' },
+    },
+    keyDimensions: { counterHeight: 850 },
+    lighting: {
+      description: 'Recessed ceiling downlights over the counter and dining table, warm white 3000K',
+      fixtures: ['Recessed downlights ×3'],
+    },
+    specificNotes: `${compact ? 'Compact' : 'Standard'} office pantry (${areaSqft} sq.ft). Counter run along the south wall; small dining table kept clear of the counter workspace.`,
+  };
+}
+
+function resolveOpenOffice(areaSqft: number, interior: RoomInterior | undefined): ResolvedRoomContent {
+  const clusters = Math.max(1, Math.round(areaSqft / 60));
+
+  const furniture: SceneFurnitureItem[] = [
+    {
+      name: `Workstation Clusters (4-Person Bench Desks ×${clusters})`,
+      category: 'workstation',
+      widthMM: 2800,
+      depthMM: 2800,
+      heightMM: 750,
+      material: 'Laminate Worktop + Metal Frame Legs',
+      color: '#D9D2C4',
+      wall: 'center',
+      description: `${clusters} back-to-back 4-person bench desk clusters arranged in a grid across the floor plate`,
+    },
+    {
+      name: 'Partition Panels',
+      category: 'partition',
+      widthMM: 1200,
+      depthMM: 30,
+      heightMM: 1200,
+      material: 'Fabric-Wrapped Acoustic Panel, Metal Frame',
+      color: '#8C8C8C',
+      wall: 'center',
+      description: 'Low acoustic screens between workstation benches for visual/sound separation',
+    },
+    {
+      name: 'Shared Printer Zone Unit',
+      category: 'printer_stand',
+      widthMM: 900,
+      depthMM: 600,
+      heightMM: 900,
+      material: 'Laminate Finish',
+      color: '#333333',
+      wall: 'east',
+      description: 'Shared printer/scanner station with stationery storage below',
+    },
+    {
+      name: 'Breakout Seating (Pair + Table)',
+      category: 'breakout',
+      widthMM: 1400,
+      depthMM: 700,
+      heightMM: 800,
+      material: 'Fabric Upholstery + Laminate Table',
+      color: '#C4A882',
+      wall: 'west',
+      description: 'Informal breakout seating for quick huddles, away from the main desk grid',
+    },
+  ];
+
+  const fixtures: SceneFixture[] = [
+    {
+      name: 'Split AC Units (Multiple)',
+      widthMM: 900,
+      depthMM: 250,
+      heightMM: 300,
+      mountHeightMM: 2400,
+      wall: 'north',
+      material: 'White Plastic Body',
+      description: 'Wall-mounted split AC indoor units distributed across the north wall',
+    },
+  ];
+
+  const openings: SceneOpening[] = [
+    { type: 'door', wall: 'south', widthMM: 1000, heightMM: 2100, sillHeightMM: 0, openDirection: 'inward', material: 'Glazed Aluminium-Framed Door' },
+    { type: 'window', wall: 'north', widthMM: 2400, heightMM: 1200, sillHeightMM: 900, material: 'Aluminium Framed, Clear Glass' },
+  ];
+
+  const zones: SceneZone[] = [
+    { name: 'WORKSTATION ZONE', description: `${clusters} bench-desk clusters in a grid layout`, color: 'light blue tint' },
+    { name: 'CIRCULATION', description: "Min 3'-6\" main aisles between desk rows", color: 'dashed outline' },
+    { name: 'BREAKOUT ZONE', description: 'Informal seating away from the desk grid', color: 'warm beige tint' },
+  ];
+
+  return {
+    furniture,
+    fixtures,
+    openings,
+    zones,
+    materials: {
+      flooring: { name: interior?.flooring?.name || 'Carpet Tiles / Anti-Static Raised Flooring', finish: 'Loop Pile' },
+      wallFinish: { name: interior?.wallFinish?.name || 'Emulsion Paint', finish: 'Matt' },
+    },
+    keyDimensions: {},
+    lighting: {
+      description: 'Suspended linear LED fixtures over desk rows, recessed downlights in breakout zone, daylight-linked dimming near windows',
+      fixtures: ['Suspended linear LED ×' + clusters, 'Recessed downlights ×2 (breakout)'],
+    },
+    specificNotes: `Open office floor plate (${areaSqft} sq.ft) with ${clusters} desk cluster(s). Main aisles min 3'-6" wide; breakout seating kept clear of the primary circulation path.`,
+  };
+}
+
+function resolveServerRoom(areaSqft: number, interior: RoomInterior | undefined): ResolvedRoomContent {
+  const racks = Math.max(1, Math.round(areaSqft / 20));
+
+  const furniture: SceneFurnitureItem[] = [
+    {
+      name: `Server Rack Enclosures (×${racks})`,
+      category: 'server_rack',
+      widthMM: 600,
+      depthMM: 1000,
+      heightMM: 2000,
+      material: 'Powder-Coated Steel, 42U Enclosure',
+      color: '#1A1A1A',
+      wall: 'east',
+      description: `${racks} 42U server rack enclosures lined along the wall with rear service clearance`,
+    },
+    {
+      name: 'UPS Unit',
+      category: 'ups',
+      widthMM: 800,
+      depthMM: 600,
+      heightMM: 1000,
+      material: 'Powder-Coated Steel Cabinet',
+      color: '#2E2E2E',
+      wall: 'west',
+      description: 'Uninterruptible power supply unit with battery bank',
+    },
+  ];
+
+  const fixtures: SceneFixture[] = [
+    {
+      name: 'Overhead Cable Tray',
+      widthMM: 300,
+      depthMM: 100,
+      heightMM: 100,
+      mountHeightMM: 2600,
+      wall: 'ceiling',
+      material: 'Perforated Galvanised Steel',
+      description: 'Overhead cable tray routing power and data cabling to the racks',
+    },
+    {
+      name: 'Precision Cooling / Split AC Unit',
+      widthMM: 900,
+      depthMM: 250,
+      heightMM: 300,
+      mountHeightMM: 2400,
+      wall: 'north',
+      material: 'White Plastic Body, Dedicated Precision Unit',
+      description: 'Dedicated cooling unit maintaining constant temperature/humidity for the racks',
+    },
+    {
+      name: 'Fire Suppression Panel',
+      widthMM: 400,
+      depthMM: 150,
+      heightMM: 500,
+      mountHeightMM: 1500,
+      wall: 'south',
+      material: 'Clean-Agent (FM200) Control Panel',
+      description: 'Clean-agent fire suppression control panel near the entry',
+    },
+    {
+      name: 'Raised Access Flooring',
+      widthMM: 600,
+      depthMM: 600,
+      heightMM: 150,
+      mountHeightMM: 0,
+      wall: 'floor',
+      material: 'Anti-Static Raised Floor Panels on Pedestals',
+      description: '600×600mm raised floor panels for under-floor cabling and cooling airflow',
+    },
+  ];
+
+  const openings: SceneOpening[] = [
+    { type: 'door', wall: 'south', widthMM: 900, heightMM: 2100, sillHeightMM: 0, openDirection: 'outward', material: 'Fire-Rated Steel Door with Access Control' },
+  ];
+
+  const zones: SceneZone[] = [
+    { name: 'RACK ZONE', description: `${racks} server rack enclosure(s) along the wall`, color: 'cool grey tint' },
+    { name: 'COOLING ZONE', description: 'Precision cooling unit airflow path', color: 'light blue tint' },
+    { name: 'ACCESS ZONE', description: 'Clear service aisle in front of the racks', color: 'dashed outline' },
+  ];
+
+  return {
+    furniture,
+    fixtures,
+    openings,
+    zones,
+    materials: {
+      flooring: { name: interior?.flooring?.name || 'Anti-Static Raised Access Flooring', finish: 'Anti-Static, 600×600mm Panels' },
+      wallFinish: { name: interior?.wallFinish?.name || 'Fire-Rated Board + Paint', finish: 'Matt' },
+    },
+    keyDimensions: {},
+    lighting: {
+      description: 'Bright uniform ceiling lighting for maintenance visibility, emergency battery-backed light',
+      fixtures: ['Ceiling light points ×' + Math.max(2, racks), 'Emergency battery light'],
+    },
+    specificNotes: `No windows for security/thermal control. Racks require min 1000mm rear and front service clearance. ${racks} rack enclosure(s) sized to a ${areaSqft} sq.ft room.`,
+  };
+}
+
 function resolveGeneric(interior: RoomInterior | undefined): ResolvedRoomContent {
   return {
     furniture: mapGenericFurniture(interior),
@@ -633,7 +1698,14 @@ export function buildInteriorScene(
   let resolved: ResolvedRoomContent;
   const defaultCeilingType = 'false_ceiling_peripheral';
 
-  switch (room.type) {
+  // NOTE: 'pooja', 'study', 'cabin', 'conference', 'open_office', and
+  // 'server_room' are not yet part of the `RoomType` / `OfficeRoomType`
+  // unions in types.ts ('puja' is the existing residential literal, and
+  // the office-room enum uses different literals such as 'cabin_manager',
+  // 'conference_small', etc.). Those unions need to be broadened for this
+  // switch to type-check without `room.type` being widened/cast. See the
+  // Feedback section of the delegated task for details.
+  switch (room.type as string) {
     case 'toilet':
       resolved = resolveBathroom(areaSqft, interior);
       break;
@@ -648,6 +1720,40 @@ export function buildInteriorScene(
       break;
     case 'hall':
       resolved = resolveLiving(interior, style);
+      break;
+    case 'dining':
+      resolved = resolveDining(areaSqft, interior, style);
+      break;
+    case 'puja':
+      resolved = resolvePooja(areaSqft, interior);
+      break;
+    case 'study':
+      resolved = resolveStudy(areaSqft, interior, style);
+      break;
+    case 'balcony':
+      resolved = resolveBalcony(areaSqft, interior);
+      break;
+    case 'cabin_manager':
+    case 'cabin_director':
+    case 'cabin_md':
+      resolved = resolveOfficeCabin(areaSqft, interior, style);
+      break;
+    case 'conference_small':
+    case 'conference_large':
+    case 'board_room':
+      resolved = resolveConference(areaSqft, interior);
+      break;
+    case 'reception':
+      resolved = resolveReception(areaSqft, interior, style);
+      break;
+    case 'pantry':
+      resolved = resolvePantry(areaSqft, interior);
+      break;
+    case 'workstation_open':
+      resolved = resolveOpenOffice(areaSqft, interior);
+      break;
+    case 'server_room':
+      resolved = resolveServerRoom(areaSqft, interior);
       break;
     default:
       resolved = resolveGeneric(interior);
@@ -672,7 +1778,7 @@ export function buildInteriorScene(
 
   // Room-type-specific electrical defaults
   const defaultElectrical = (() => {
-    switch (room.type) {
+    switch (room.type as string) {
       case 'toilet':
         return { switches: 2, sockets: 1, dataPoints: 0, lightPoints: 2, fanPoints: 0, acPoints: 0 };
         // Bathrooms: exhaust fan (not ceiling fan) is in fixtures, no data points needed
@@ -685,6 +1791,40 @@ export function buildInteriorScene(
         return { switches: 3, sockets: 3, dataPoints: 1, lightPoints: 2, fanPoints: 1, acPoints: 1 };
       case 'hall':
         return { switches: 4, sockets: 4, dataPoints: 1, lightPoints: 4, fanPoints: 1, acPoints: 1 };
+      case 'dining':
+        return { switches: 3, sockets: 3, dataPoints: 0, lightPoints: 3, fanPoints: 1, acPoints: 0 };
+        // Dining: pendant light circuit + ambient, ceiling fan, no AC by default
+      case 'puja':
+        return { switches: 2, sockets: 1, dataPoints: 0, lightPoints: 2, fanPoints: 0, acPoints: 0 };
+        // Pooja room: focused mandir light + ambient light, no fan/AC typically
+      case 'study':
+        return { switches: 3, sockets: 4, dataPoints: 2, lightPoints: 2, fanPoints: 1, acPoints: 1 };
+        // Study: extra sockets/data points for laptop, monitor, router
+      case 'balcony':
+        return { switches: 1, sockets: 1, dataPoints: 0, lightPoints: 1, fanPoints: 0, acPoints: 0 };
+        // Balcony: single weatherproof light point + socket for outdoor use
+      case 'cabin_manager':
+    case 'cabin_director':
+    case 'cabin_md':
+        return { switches: 3, sockets: 5, dataPoints: 2, lightPoints: 3, fanPoints: 0, acPoints: 1 };
+        // Cabin: sockets/data for desk, laptop, printer; dedicated split AC
+      case 'conference_small':
+    case 'conference_large':
+    case 'board_room':
+        return { switches: 3, sockets: 8, dataPoints: 4, lightPoints: 4, fanPoints: 0, acPoints: 1 };
+        // Conference: many sockets/data points for laptops + AV equipment
+      case 'reception':
+        return { switches: 3, sockets: 4, dataPoints: 2, lightPoints: 4, fanPoints: 0, acPoints: 1 };
+        // Reception: desk sockets/data, signage lighting circuit
+      case 'pantry':
+        return { switches: 3, sockets: 6, dataPoints: 0, lightPoints: 3, fanPoints: 1, acPoints: 0 };
+        // Pantry: sockets for microwave, fridge, water dispenser, kettle
+      case 'workstation_open':
+        return { switches: 4, sockets: 12, dataPoints: 8, lightPoints: 6, fanPoints: 0, acPoints: 2 };
+        // Open office: per-cluster sockets/data points, multiple AC points across the floor
+      case 'server_room':
+        return { switches: 2, sockets: 6, dataPoints: 0, lightPoints: 3, fanPoints: 0, acPoints: 2 };
+        // Server room: dedicated UPS-backed sockets, precision cooling AC points, no ceiling fan
       default:
         return { switches: 2, sockets: 3, dataPoints: 1, lightPoints: 2, fanPoints: 1, acPoints: 0 };
     }

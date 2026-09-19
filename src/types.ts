@@ -18,6 +18,7 @@ export type RoomType =
   | 'passage'
   | 'entrance'
   | 'store'
+  | 'study'
   | 'utility';
 
 export interface FloorProgram {

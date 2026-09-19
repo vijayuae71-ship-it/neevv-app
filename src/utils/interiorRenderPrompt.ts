@@ -204,11 +204,39 @@ function zoneBoundaryDescription(scene: InteriorScene, zone: SceneZone): string 
   if (name.includes('COOKING')) return `- ${zone.name}: x=${roundMM(w * 0.2)} to ${roundMM(w * 0.65)}mm, y=0 to ${roundMM(d * 0.42)}mm (south counter band; ${zone.description})`;
   if (name.includes('WASH')) return `- ${zone.name}: x=0 to ${roundMM(w * 0.3)}mm, y=0 to ${roundMM(d * 0.42)}mm (${zone.description})`;
   if (name.includes('PREP')) return `- ${zone.name}: x=${roundMM(w * 0.3)} to ${roundMM(w * 0.7)}mm, y=0 to ${roundMM(d * 0.42)}mm (${zone.description})`;
+  // NOTE: check READING before the generic STORAGE check below, since the
+  // study resolver's zone is literally named "READING/STORAGE ZONE" and
+  // would otherwise always match the (unrelated) kitchen/bedroom STORAGE case.
+  if (name.includes('READING')) return `- ${zone.name}: x=${roundMM(w * 0.6)} to ${w}mm, y=0 to ${d}mm (bookshelf/filing side of the room; ${zone.description})`;
   if (name.includes('STORAGE')) return `- ${zone.name}: x=${roundMM(w * 0.7)} to ${w}mm, y=0 to ${d}mm (${zone.description})`;
   if (name.includes('SLEEP')) return `- ${zone.name}: x=0 to ${w}mm, y=${roundMM(d * 0.45)} to ${d}mm (north bed zone; ${zone.description})`;
   if (name.includes('SEATING')) return `- ${zone.name}: x=0 to ${w}mm, y=0 to ${roundMM(d * 0.55)}mm (south seating zone; ${zone.description})`;
   if (name.includes('ENTERTAINMENT')) return `- ${zone.name}: x=0 to ${w}mm, y=${roundMM(d * 0.7)} to ${d}mm (north TV-wall zone; ${zone.description})`;
   if (name.includes('CIRCULATION')) return `- ${zone.name}: central clear route, approximately x=${roundMM(w * 0.35)} to ${roundMM(w * 0.65)}mm and y=${roundMM(d * 0.35)} to ${roundMM(d * 0.65)}mm (${zone.description})`;
+
+  /* --------------------------------------------------------------
+     New zones — dining, pooja, study, balcony, and office room types
+     -------------------------------------------------------------- */
+  if (name.includes('DINING')) return `- ${zone.name}: x=${roundMM(w * 0.15)} to ${roundMM(w * 0.85)}mm, y=${roundMM(d * 0.15)} to ${roundMM(d * 0.85)}mm (central table zone; ${zone.description})`;
+  if (name.includes('PRAYER')) return `- ${zone.name}: x=0 to ${roundMM(w * 0.7)}mm, y=0 to ${d}mm (floor seating facing the east mandir wall; ${zone.description})`;
+  if (name.includes('OFFERING')) return `- ${zone.name}: x=${roundMM(w * 0.7)} to ${w}mm, y=0 to ${d}mm (east wall mandir + offering shelf; ${zone.description})`;
+  // WORKSTATION must be checked before the generic WORK case below, since
+  // "WORKSTATION ZONE" (open office) contains "WORK" as a substring.
+  if (name.includes('WORKSTATION')) return `- ${zone.name}: x=0 to ${w}mm, y=${roundMM(d * 0.15)} to ${roundMM(d * 0.85)}mm (central desk-cluster grid; ${zone.description})`;
+  if (name.includes('WORK')) return `- ${zone.name}: x=0 to ${w}mm, y=${roundMM(d * 0.55)} to ${d}mm (north desk wall zone; ${zone.description})`;
+  if (name.includes('PLANTER')) return `- ${zone.name}: x=0 to ${w}mm, y=${roundMM(d * 0.75)} to ${d}mm (along the railing wall; ${zone.description})`;
+  if (name.includes('MEETING')) return `- ${zone.name}: x=${roundMM(w * 0.15)} to ${roundMM(w * 0.85)}mm, y=${roundMM(d * 0.15)} to ${roundMM(d * 0.85)}mm (central table zone; ${zone.description})`;
+  if (name.includes('PRESENTATION')) return `- ${zone.name}: x=0 to ${w}mm, y=${roundMM(d * 0.75)} to ${d}mm (screen/whiteboard wall zone; ${zone.description})`;
+  if (name.includes('RECEPTION')) return `- ${zone.name}: x=0 to ${w}mm, y=${roundMM(d * 0.6)} to ${d}mm (desk wall zone facing the entrance; ${zone.description})`;
+  if (name.includes('WAITING')) return `- ${zone.name}: x=0 to ${roundMM(w * 0.6)}mm, y=0 to ${roundMM(d * 0.6)}mm (sofa + chairs near the entrance; ${zone.description})`;
+  // EATING must be checked after SEATING above, since "SEATING ZONE" contains
+  // "EATING" as a substring (S-EATING) — checking order avoids a false match.
+  if (name.includes('EATING')) return `- ${zone.name}: x=${roundMM(w * 0.3)} to ${w}mm, y=${roundMM(d * 0.42)} to ${d}mm (small dining table zone; ${zone.description})`;
+  if (name.includes('BREAKOUT')) return `- ${zone.name}: x=0 to ${roundMM(w * 0.25)}mm, y=0 to ${d}mm (informal seating away from the desk grid; ${zone.description})`;
+  if (name.includes('RACK')) return `- ${zone.name}: x=${roundMM(w * 0.6)} to ${w}mm, y=0 to ${d}mm (rack enclosures along the wall; ${zone.description})`;
+  if (name.includes('COOLING')) return `- ${zone.name}: x=0 to ${roundMM(w * 0.6)}mm, y=0 to ${d}mm (cooling airflow path; ${zone.description})`;
+  if (name.includes('ACCESS')) return `- ${zone.name}: central clear service aisle, approximately x=${roundMM(w * 0.35)} to ${roundMM(w * 0.65)}mm and y=0 to ${d}mm (${zone.description})`;
+
   return `- ${zone.name}: x=0 to ${w}mm, y=0 to ${d}mm (${zone.description})`;
 }
 
@@ -380,6 +408,30 @@ function elevationWallDescription(roomType: string): string {
       return 'Wardrobe wall — full wall view showing wardrobe and loft';
     case 'hall':
       return 'TV unit wall — the primary entertainment wall';
+    case 'dining':
+      return 'Sideboard/crockery wall — the primary dining storage and serving wall';
+    case 'puja':
+      return 'Mandir wall — the east wall showing the temple unit';
+    case 'study':
+      return 'Desk wall — the window-facing wall showing the study desk and bookshelf';
+    case 'balcony':
+      return 'Railing wall — the open parapet/railing side';
+    case 'cabin_manager':
+    case 'cabin_director':
+    case 'cabin_md':
+      return 'Desk wall — the wall behind the executive desk';
+    case 'conference_small':
+    case 'conference_large':
+    case 'board_room':
+      return 'Presentation wall — the wall with the screen and whiteboard';
+    case 'reception':
+      return 'Reception desk wall — the signage wall behind the front desk';
+    case 'pantry':
+      return 'Counter wall — the primary pantry working wall';
+    case 'workstation_open':
+      return 'Workstation wall — a representative desk-cluster row';
+    case 'server_room':
+      return 'Rack wall — the wall lined with server rack enclosures';
     default:
       return 'Primary wall — main furnished wall of the room';
   }
@@ -398,6 +450,30 @@ function render3DCameraDescription(roomType: string): string {
       return 'Eye-level interior view from door entry at slight angle, capturing bed, headboard accent wall, and window with natural light streaming in. 24mm lens.';
     case 'hall':
       return 'Interior view at seated eye level from a corner, capturing sofa arrangement, TV wall, and window with natural light. 20mm wide lens for a spacious feel.';
+    case 'dining':
+      return 'Eye-level interior view from the entry doorway at a slight angle, capturing the full dining table, chairs, and sideboard wall. 24mm lens.';
+    case 'puja':
+      return 'Eye-level interior view facing the mandir on the east wall, capturing the temple unit, offering shelf, and floor seating area. 28mm lens.';
+    case 'study':
+      return 'Eye-level interior view from the door, angled toward the desk and window, capturing the bookshelf wall. 28mm lens.';
+    case 'balcony':
+      return 'Eye-level view from just inside the room looking out through the open railing side, capturing seating and planters with the outdoor view beyond. 24mm lens.';
+    case 'cabin_manager':
+    case 'cabin_director':
+    case 'cabin_md':
+      return 'Eye-level interior view from the cabin door, angled to show the executive desk, visitor seating, and window wall. 28mm lens.';
+    case 'conference_small':
+    case 'conference_large':
+    case 'board_room':
+      return 'Eye-level interior view from the doorway corner, capturing the full conference table, chairs, and presentation screen wall. 20mm wide lens.';
+    case 'reception':
+      return 'Eye-level interior view from just inside the main entrance, capturing the reception desk, signage wall, and waiting area. 24mm lens.';
+    case 'pantry':
+      return 'Eye-level interior view from the doorway, angled to show the counter, appliances, and small dining table. 28mm lens.';
+    case 'workstation_open':
+      return 'Eye-level interior view down a main aisle between workstation clusters, capturing desk rows and the breakout zone in the distance. 20mm wide lens.';
+    case 'server_room':
+      return 'Eye-level interior view from the entry, angled along the service aisle to show the rack wall and cooling unit. 24mm lens.';
     default:
       return 'Interior eye-level view from the entry doorway at a slight angle. 24mm lens.';
   }
@@ -672,4 +748,3 @@ export function buildInteriorRoomPrompt(
   const scene = buildInteriorScene(room, interior, moodBoard);
   return buildPromptFromScene(type, scene);
 }
-
