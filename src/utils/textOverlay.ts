@@ -143,7 +143,7 @@ export function toOverlayData(structResult: any): StructuralOverlayData {
     beamTensionBars: text('2-16mm', beams.tensionBars, beams.bottomBars, beams.reinforcement?.tensionBars),
     beamStirrupsNear: text('8mm @ 150mm c/c', beams.stirrupsNear, beams.stirrupDiaMm ? `${beams.stirrupDiaMm}mm @ ${beams.stirrupSpacingNearSupportMm}mm c/c` : undefined, beams.stirrups?.nearSupport, beams.reinforcement?.stirrupsNear),
     beamStirrupsMid: text('8mm @ 200mm c/c', beams.stirrupsMid, beams.stirrupDiaMm ? `${beams.stirrupDiaMm}mm @ ${beams.stirrupSpacingMidSpanMm}mm c/c` : undefined, beams.stirrups?.midSpan, beams.reinforcement?.stirrupsMid),
-    slabThickness: num(125, slabs.thickness, slabs.thicknessMm, slabs.slabThickness),
+    slabThickness: num(150, slabs.thickness, slabs.thicknessMm, slabs.slabThickness),
     slabMainBars: text('10mm @ 150mm c/c', slabs.mainBars, slabs.mainBarDiaMm ? `${slabs.mainBarDiaMm}mm @ ${slabs.mainBarSpacingMm}mm c/c` : undefined, slabs.reinforcement?.mainBars),
     slabDistBars: text('8mm @ 200mm c/c', slabs.distBars, slabs.distBarDiaMm ? `${slabs.distBarDiaMm}mm @ ${slabs.distBarSpacingMm}mm c/c` : undefined, slabs.distributionBars, slabs.reinforcement?.distBars),
     footingSize: num(1200, footings.size, footings.footingSize, footings.footingSizeMm, footings.width),
@@ -226,7 +226,7 @@ function makeOverlaySections(
           {
             heading: 'MEMBER SIZES',
             rows: [
-              ['Slab thickness', d ? `${d.slabThickness}mm` : '125mm'],
+              ['Slab thickness', d ? `${d.slabThickness}mm` : '150mm'],
               ['Beam size', d ? `${d.beamWidth}mm × ${d.beamDepth}mm` : '230mm × 400mm'],
               ...(d ? ([['Beam tension bars', d.beamTensionBars], ['Beam stirrups', `${d.beamStirrupsNear} near / ${d.beamStirrupsMid} mid`], ['Slab main bars', d.slabMainBars], ['Slab dist. bars', d.slabDistBars]] as Array<[string, string]>) : []),
             ],
@@ -406,7 +406,7 @@ function makeOverlaySections(
               ['Floor-to-floor', '3000mm'],
               ['Parapet', '900mm above roof'],
               ['Total height', `${totalH}mm`],
-              ['Slab thickness', d ? `${d.slabThickness}mm` : '125mm'],
+              ['Slab thickness', d ? `${d.slabThickness}mm` : '150mm'],
               ['Beam depth', '400mm'],
             ],
           },

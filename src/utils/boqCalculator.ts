@@ -138,7 +138,7 @@ export function calculateBOQ(
   const estimatedColumnConcrete = +(estimatedColumnsPerFloor * numFloors * 0.23 * 0.30 * 3.0).toFixed(2);
   const estimatedBeamRun = perimeter * 1.5;
   const estimatedBeamConcrete = +(estimatedBeamRun * 0.23 * 0.40 * numFloors).toFixed(2);
-  const estimatedSlabConcrete = +(builtUpPerFloor * 0.125 * numFloors).toFixed(2);
+  const estimatedSlabConcrete = +(builtUpPerFloor * 0.150 * numFloors).toFixed(2);
   const stairFloors = numFloors - 1 > 0 ? numFloors - 1 : 0.5;
   const estimatedStairConcrete = +(0.15 * 16 * stairFloors).toFixed(2);
   const estimatedLintelConcrete = +(estimatedSlabConcrete * 0.05).toFixed(2);
@@ -167,7 +167,7 @@ export function calculateBOQ(
   const slabThicknesses = structuralResult
     ? [...new Set(structuralResult.slabs.map((slab) => slab.thicknessMm).filter((thickness) => Number.isFinite(thickness)))].sort((a, b) => a - b)
     : undefined;
-  const primarySlabThickness = slabThicknesses?.[0] ?? 125;
+  const primarySlabThickness = slabThicknesses?.[0] ?? 150;
 
   // ────── MASONRY ──────
   const externalWallArea = perimeter * wallHeight * numFloors;
@@ -277,7 +277,7 @@ export function calculateBOQ(
   add('DPC (Damp Proof Course)', +(perimeter * 0.23 * 0.05).toFixed(2), 'm³', 6000, 'structural', 'CM 1:2 + waterproofing compound');
   add('RCC Columns (M25)', columnConcrete, 'm³', 8000, 'structural', quantityBasis === 'engineered' ? `Engineered: ${actualColumnCount ?? 0} actual column member(s), IS 456` : '230×300mm, IS 456');
   add('RCC Beams (M25)', beamConcrete, 'm³', 8000, 'structural', quantityBasis === 'engineered' ? `Engineered beam sizes: ${beamSizes?.map((size) => `${size.widthMm}×${size.depthMm}mm × ${size.count}`).join(', ') || 'refer structural schedule'}, IS 456` : '230×400mm, IS 456');
-  add(`RCC Roof Slab (M25, ${primarySlabThickness}mm)`, slabConcrete, 'm³', 7500, 'structural', quantityBasis === 'engineered' ? `Engineered slab thickness(es): ${slabThicknesses?.join(', ') || primarySlabThickness}mm, IS 456` : '125mm thick');
+  add(`RCC Roof Slab (M25, ${primarySlabThickness}mm)`, slabConcrete, 'm³', 7500, 'structural', quantityBasis === 'engineered' ? `Engineered slab thickness(es): ${slabThicknesses?.join(', ') || primarySlabThickness}mm, IS 456` : '150mm thick');
   add('RCC Staircase (M25)', stairConcrete, 'm³', 9000, 'structural', 'Waist slab type, IS 456');
   add('RCC Lintels (M25)', +(lintelConcrete * 0.7).toFixed(2), 'm³', 8000, 'structural', 'Above openings');
   add('RCC Chajjas / Sunshade', +(lintelConcrete * 0.3).toFixed(2), 'm³', 8500, 'structural', '450mm projection');

@@ -13,7 +13,7 @@ export const metadata: Metadata = {
   alternates: { canonical: 'https://neevv.in' },
   openGraph: {
     title: "neevv — AI-Powered Home Design Studio",
-    description: "Design your dream home in minutes. Free floor plans, 3D renders, 17 working drawings, BOQ & cost estimation. NBC 2016 compliant.",
+    description: "Design your dream home in minutes. Free floor plans, 3D renders, 21+ working drawings, BOQ & cost estimation. NBC 2016 compliant.",
     siteName: "neevv",
     type: "website",
     locale: "en_IN",
@@ -37,7 +37,7 @@ const structuredData = {
   "@context": "https://schema.org",
   "@type": "ProfessionalService",
   "name": "neevv",
-  "description": "AI-powered architecture studio for Indian homeowners. Professional floor plans, 3D renders, 17+ working drawings, BOQ & interior design.",
+  "description": "AI-powered architecture studio for Indian homeowners. Professional floor plans, 3D renders, 21+ working drawings, BOQ & interior design.",
   "url": "https://neevv.in",
   "logo": "https://neevv.in/logo.png",
   "image": "https://neevv.in/og-image.png",

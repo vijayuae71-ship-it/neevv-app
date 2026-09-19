@@ -18,7 +18,7 @@ const STEPS = [
   },
   {
     title: 'Step 2: 3D Views & Drawings',
-    description: 'Get photorealistic 3D renders, 17 professional working drawings (excavation to waterproofing), and AI-enhanced versions.',
+    description: 'Get photorealistic 3D renders, 21+ professional working drawings (excavation to waterproofing), and AI-enhanced versions.',
     icon: <Eye size={24} className="text-amber-600" />,
   },
   {
