@@ -134,8 +134,8 @@ export function toOverlayData(structResult: any): StructuralOverlayData {
   return {
     concreteGrade: text('M25', root.concreteGrade, root.parameters?.concreteGrade, root.grade, root.materials?.concreteGrade, columns.concreteGrade),
     steelGrade: text('Fe500', root.steelGrade, root.parameters?.steelGrade, root.materials?.steelGrade, columns.steelGrade),
-    columnWidth: num(230, columns.width, columns.widthMM, columns.columnWidth, columns.size?.width),
-    columnDepth: num(300, columns.depth, columns.depthMM, columns.columnDepth, columns.size?.depth),
+    columnWidth: num(230, columns.width, columns.widthMm, columns.widthMM, columns.columnWidth, columns.size?.width),
+    columnDepth: num(300, columns.depth, columns.depthMm, columns.depthMM, columns.columnDepth, columns.size?.depth),
     columnMainBars: text('4-12mm', columns.mainBars, columns.reinforcement?.mainBars, columns.reinforcement?.longitudinal),
     columnTies: text('8mm @ 150mm c/c', columns.ties, columns.tieDiaMm ? `${columns.tieDiaMm}mm @ ${columns.tieSpacingMm}mm c/c` : undefined, columns.stirrups, columns.reinforcement?.ties),
     beamWidth: num(230, beams.width, beams.widthMm, beams.beamWidth, beams.size?.width),

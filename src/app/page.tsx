@@ -824,7 +824,7 @@ const BRAND_GREEN = '#4f6f52';
             )}
 
             {step === 'isometric' && selectedLayout && requirements && (
-              <IsometricView layout={selectedLayout} requirements={requirements} />
+              <IsometricView layout={selectedLayout} requirements={requirements} structuralResult={structuralResult} />
             )}
             {step === 'working' && selectedLayout && requirements && (
               <WorkingDrawings layout={selectedLayout} requirements={requirements} boq={boq} onDrawingGenerated={handleDrawingGenerated} structuralResult={structuralResult} />

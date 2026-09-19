@@ -8,7 +8,7 @@ import { ModelARView } from './ModelARView';
 import { Box, Sparkles, Ruler, Smartphone } from 'lucide-react';
 
 /** Floating dimension info panel */
-const DimensionPanel: React.FC<{ layout: Layout; requirements: ProjectRequirements }> = ({ layout, requirements }) => {
+const DimensionPanel: React.FC<{ layout: Layout; requirements: ProjectRequirements; structuralResult?: any }> = ({ layout, requirements, structuralResult }) => {
   // Use layout's authoritative computed values — single source of truth
   const numFloors = layout.numFloors || layout.floors.length;
   const setbacks = layout.setbacks;
@@ -17,6 +17,8 @@ const DimensionPanel: React.FC<{ layout: Layout; requirements: ProjectRequiremen
   const builtUpPerFloor = layout.effectivePerFloorSqFt || Math.round(buildW * buildD * 10.764);
   const totalBuiltUp = layout.totalBuiltUpSqFt || Math.round(layout.builtUpAreaSqM * 10.764);
   const totalHeight = numFloors * 3;
+  const slabThicknessMm = structuralResult?.slabs?.[0]?.thicknessMm ?? 150;
+  const concreteGrade = structuralResult?.parameters?.concreteGrade ?? 'M25';
 
   return (
     <div className="absolute bottom-3 right-3 bg-white/90 backdrop-blur-sm rounded-lg shadow-lg p-3 text-xs z-10 border border-gray-200" style={{ maxWidth: '220px' }}>
@@ -29,7 +31,7 @@ const DimensionPanel: React.FC<{ layout: Layout; requirements: ProjectRequiremen
         <div className="flex justify-between"><span>Building:</span><span className="font-semibold">{buildW.toFixed(1)}m × {buildD.toFixed(1)}m</span></div>
         <div className="flex justify-between"><span>Height:</span><span className="font-semibold">{totalHeight}m ({numFloors}F)</span></div>
         <div className="flex justify-between"><span>Floor Ht:</span><span className="font-semibold">3000mm</span></div>
-        <div className="flex justify-between"><span>Slab:</span><span className="font-semibold">150mm RCC</span></div>
+        <div className="flex justify-between"><span>Slab:</span><span className="font-semibold">{slabThicknessMm}mm RCC ({concreteGrade})</span></div>
         <div className="flex justify-between"><span>Walls:</span><span className="font-semibold">230mm</span></div>
         <div className="flex justify-between"><span>Built-up/F:</span><span className="font-semibold">{builtUpPerFloor} sq.ft</span></div>
         <div className="flex justify-between"><span>Total:</span><span className="font-semibold text-blue-600">{totalBuiltUp} sq.ft</span></div>
@@ -46,9 +48,10 @@ const DimensionPanel: React.FC<{ layout: Layout; requirements: ProjectRequiremen
 interface Props {
   layout: Layout;
   requirements: ProjectRequirements;
+  structuralResult?: any;
 }
 
-export const IsometricView: React.FC<Props> = ({ layout, requirements }) => {
+export const IsometricView: React.FC<Props> = ({ layout, requirements, structuralResult }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<any>(null);
   const sceneRef = useRef<any>(null);
@@ -271,7 +274,7 @@ export const IsometricView: React.FC<Props> = ({ layout, requirements }) => {
             className="flex-1 rounded-lg overflow-hidden bg-gray-200 min-h-0 relative"
             style={{ minHeight: '400px' }}
           >
-            {showDimensions && <DimensionPanel layout={layout} requirements={requirements} />}
+            {showDimensions && <DimensionPanel layout={layout} requirements={requirements} structuralResult={structuralResult} />}
           </div>
           {/* Legend */}
           <div className="flex flex-wrap gap-2 mt-2 p-2 bg-gray-100 rounded-lg">

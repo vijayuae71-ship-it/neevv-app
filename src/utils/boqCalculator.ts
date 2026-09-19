@@ -418,6 +418,16 @@ export function calculateBOQ(
     waterproofingAreaSqM: waterproofingArea,
     plasteringAreaSqM: plasteringArea,
     quantityBasis,
+    // === Structural-engine wiring: top-level convenience fields for BOQReport display ===
+    concreteGrade: 'M25',
+    steelGrade: 'Fe500D',
+    slabThicknessesMm: slabThicknesses ?? [primarySlabThickness],
+    steelKgPerSqFt: +(steelKg / totalBuiltUpSqFt).toFixed(2),
+    columnSizeMm: structuralResult?.columns?.[0]
+      ? `${structuralResult.columns[0].widthMm}mm × ${structuralResult.columns[0].depthMm}mm`
+      : '230mm × 300mm',
+    beamSizesMm: beamSizes,
+    builtUpPerFloorSqFt: Math.round(builtUpPerFloor * SQM_TO_SQFT),
     structuralDetails: {
       source: quantityBasis,
       actualColumnCount,

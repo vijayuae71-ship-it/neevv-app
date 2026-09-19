@@ -207,6 +207,15 @@ export interface BOQ {
   };
   waterproofingAreaSqM: number;
   plasteringAreaSqM: number;
+  // === Structural-engine wiring (optional — populated by calculateBOQ when available) ===
+  concreteGrade?: string;
+  steelGrade?: string;
+  quantityBasis?: 'estimated' | 'engineered';
+  slabThicknessesMm?: number[];
+  steelKgPerSqFt?: number;
+  columnSizeMm?: string;
+  beamSizesMm?: Array<{ widthMm: number; depthMm: number; count: number }>;
+  builtUpPerFloorSqFt?: number;
 }
 
 export type AppStep = 'requirements' | 'layouts' | 'isometric' | 'working' | 'rates' | 'boq' | 'verification' | 'interior';

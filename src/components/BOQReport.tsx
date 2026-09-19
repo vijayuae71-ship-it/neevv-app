@@ -70,7 +70,7 @@ export const BOQReport: React.FC<Props> = ({ boq, layout }) => {
                     <Ruler size={14} className="text-blue-600" /> Area Summary
                   </h3>
                   <div className="grid grid-cols-3 gap-2">
-                    <StatBox label="Built-up / Floor" value={`${layout.builtUpAreaSqFt}`} unit="sqft" />
+                    <StatBox label="Built-up / Floor" value={`${boq.builtUpPerFloorSqFt ?? Math.round(layout.builtUpAreaSqFt / (boq.numFloors || 1))}`} unit="sqft" />
                     <StatBox label="Total Built-up" value={`${boq.totalBuiltUpAreaSqFt.toLocaleString()}`} unit="sqft" />
                     <StatBox label="Total Built-up" value={`${boq.totalBuiltUpAreaSqM}`} unit="m²" />
                   </div>
@@ -87,7 +87,7 @@ export const BOQReport: React.FC<Props> = ({ boq, layout }) => {
                     <table className="table table-zebra table-sm">
                       <thead><tr><th>Item</th><th className="text-right">Qty</th><th>Unit</th></tr></thead>
                       <tbody>
-                        <tr><td>Concrete (M20)</td><td className="text-right font-mono">{boq.concreteVolumeM3}</td><td>m³</td></tr>
+                        <tr><td>Concrete ({boq.concreteGrade ?? 'M25'})</td><td className="text-right font-mono">{boq.concreteVolumeM3}</td><td>m³</td></tr>
                         <tr><td>Steel (Fe500D)</td><td className="text-right font-mono">{boq.steelWeightMT}</td><td>MT</td></tr>
                         <tr><td>Brick Masonry (230mm)</td><td className="text-right font-mono">{(boq.brickCount / 480).toFixed(1)}</td><td>m³</td></tr>
                         <tr><td>Cement (OPC 53)</td><td className="text-right font-mono">{boq.cementBags.toLocaleString()}</td><td>bags</td></tr>
@@ -194,7 +194,7 @@ export const BOQReport: React.FC<Props> = ({ boq, layout }) => {
             <div className="card bg-gray-100">
               <div className="card-body p-4 space-y-3">
                 <h3 className="text-sm font-semibold flex items-center gap-2">
-                  <Building2 size={14} className="text-blue-600" /> Concrete Volume Breakdown (M20 Grade)
+                  <Building2 size={14} className="text-blue-600" /> Concrete Volume Breakdown ({boq.concreteGrade ?? 'M25'} Grade)
                 </h3>
                 <div className="overflow-x-auto">
                   <table className="table table-sm">
@@ -241,7 +241,7 @@ export const BOQReport: React.FC<Props> = ({ boq, layout }) => {
                 </div>
 
                 <div className="text-xs text-gray-500 font-mono mt-2">
-                  Steel requirement: {boq.steelWeightMT} MT @ 4.5 kg/sqft • Ready-mix truck loads (6m³): {Math.ceil(boq.concreteVolumeM3 / 6)}
+                  Steel requirement: {boq.steelWeightMT} MT @ {boq.steelKgPerSqFt ?? 4.5} kg/sqft • Ready-mix truck loads (6m³): {Math.ceil(boq.concreteVolumeM3 / 6)}
                 </div>
               </div>
             </div>
@@ -396,13 +396,13 @@ export const BOQReport: React.FC<Props> = ({ boq, layout }) => {
                 <div className="card-body p-3 space-y-1">
                   <h3 className="text-xs font-bold uppercase tracking-wider text-gray-600">Design Assumptions</h3>
                   <ul className="text-[10px] text-gray-500 space-y-0.5 list-disc list-inside font-mono">
-                    <li>Column: 230mm × 300mm at all wall junctions</li>
+                    <li>Column: {boq.columnSizeMm ?? '230mm × 300mm'} at all wall junctions {boq.quantityBasis === 'engineered' ? '(engineered)' : '(default)'}</li>
                     <li>Max span without beam: 4.5m (NBC 2016 cl. 8.1)</li>
-                    <li>Slab: 125mm RCC M20, Fe500D</li>
+                    <li>Slab: {(boq.slabThicknessesMm ?? [125]).join(', ')}mm RCC {boq.concreteGrade ?? 'M25'}, {boq.steelGrade ?? 'Fe500D'}</li>
                     <li>Wall: 230mm brick/block masonry (CM 1:6)</li>
                     <li>Floor-to-floor: 3.0m (clear 2.7m)</li>
                     <li>Foundation: Isolated footings, SBC 150 kN/m²</li>
-                    <li>Steel ratio: 4.5 kg/sqft (residential G+1/G+2)</li>
+                    <li>Steel ratio: {boq.steelKgPerSqFt ?? 4.5} kg/sqft ({boq.quantityBasis === 'engineered' ? 'engineered' : 'estimated, residential G+1/G+2'})</li>
                     <li>Rates: South India 2024-25 average (±15% variation)</li>
                     <li>Excludes: Furniture, modular kitchen, AC, interiors</li>
                   </ul>
