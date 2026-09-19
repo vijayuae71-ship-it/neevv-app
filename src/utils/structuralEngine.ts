@@ -114,6 +114,7 @@ export interface StructuralDesignResult {
     concreteBreakdown: { foundation: number; columns: number; beams: number; slabs: number; staircase: number; lintels: number; };
     steelBreakdown: { foundation: number; columns: number; beams: number; slabs: number; staircase: number; };
   };
+  cityData?: CityEngineeringData;
   warnings: string[];
   disclaimer: string;
 }
@@ -672,6 +673,7 @@ export function designStructure(input: StructuralDesignInput): StructuralDesignR
     summary: { totalConcreteM3: totalConcrete, totalSteelKg: totalSteel, totalSteelMT: totalSteel / 1000,
       concreteBreakdown: { foundation: foundationConcrete, columns: columnConcrete, beams: beamConcrete, slabs: slabConcrete, staircase: staircaseConcrete, lintels },
       steelBreakdown: { foundation: foundationSteel, columns: columnSteel, beams: beamSteel, slabs: slabSteel, staircase: staircaseSteel } },
+    cityData: city,
     warnings, disclaimer: STRUCTURAL_DISCLAIMER,
   };
 }

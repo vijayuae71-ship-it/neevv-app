@@ -87,12 +87,12 @@ export const BOQReport: React.FC<Props> = ({ boq, layout }) => {
                     <table className="table table-zebra table-sm">
                       <thead><tr><th>Item</th><th className="text-right">Qty</th><th>Unit</th></tr></thead>
                       <tbody>
-                        <tr><td>Concrete ({boq.concreteGrade ?? 'M25'})</td><td className="text-right font-mono">{boq.concreteVolumeM3}</td><td>m³</td></tr>
-                        <tr><td>Steel (Fe500D)</td><td className="text-right font-mono">{boq.steelWeightMT}</td><td>MT</td></tr>
+                        <tr><td>Concrete ({boq.concreteGrade ?? 'M25'})</td><td className="text-right font-mono">{(typeof boq.concreteVolumeM3 === "number" ? boq.concreteVolumeM3.toFixed(1) : boq.concreteVolumeM3)}</td><td>m³</td></tr>
+                        <tr><td>Steel (Fe500D)</td><td className="text-right font-mono">{(typeof boq.steelWeightMT === "number" ? boq.steelWeightMT.toFixed(2) : boq.steelWeightMT)}</td><td>MT</td></tr>
                         <tr><td>Brick Masonry (230mm)</td><td className="text-right font-mono">{(boq.brickCount / 480).toFixed(1)}</td><td>m³</td></tr>
                         <tr><td>Cement (OPC 53)</td><td className="text-right font-mono">{boq.cementBags.toLocaleString()}</td><td>bags</td></tr>
-                        <tr><td>Sand</td><td className="text-right font-mono">{boq.sandCuM}</td><td>m³</td></tr>
-                        <tr><td>Aggregate (20mm)</td><td className="text-right font-mono">{boq.aggregateCuM}</td><td>m³</td></tr>
+                        <tr><td>Sand</td><td className="text-right font-mono">{(typeof boq.sandCuM === "number" ? (+boq.sandCuM).toFixed(1) : boq.sandCuM)}</td><td>m³</td></tr>
+                        <tr><td>Aggregate (20mm)</td><td className="text-right font-mono">{(typeof boq.aggregateCuM === "number" ? (+boq.aggregateCuM).toFixed(1) : boq.aggregateCuM)}</td><td>m³</td></tr>
                         <tr><td>Waterproofing</td><td className="text-right font-mono">{boq.waterproofingAreaSqM}</td><td>m²</td></tr>
                         <tr><td>Plastering</td><td className="text-right font-mono">{boq.plasteringAreaSqM}</td><td>m²</td></tr>
                         <tr><td>Painting</td><td className="text-right font-mono">{boq.paintAreaSqM.toLocaleString()}</td><td>m²</td></tr>
@@ -212,7 +212,7 @@ export const BOQReport: React.FC<Props> = ({ boq, layout }) => {
                       })}
                       <tr className="font-bold bg-gray-200">
                         <td>Total</td>
-                        <td className="text-right font-mono">{boq.concreteVolumeM3}</td>
+                        <td className="text-right font-mono">{(typeof boq.concreteVolumeM3 === "number" ? boq.concreteVolumeM3.toFixed(1) : boq.concreteVolumeM3)}</td>
                         <td className="text-right font-mono">100%</td>
                       </tr>
                     </tbody>

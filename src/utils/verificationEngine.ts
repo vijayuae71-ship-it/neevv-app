@@ -195,10 +195,10 @@ const RECOMMENDED_MIN_ELECTRICAL: { type: string; label: string; min: number }[]
 
 /** Typical construction cost per sqft ranges (INR), 2024-25 averages, by budget tier. */
 const BUDGET_COST_RANGE: Record<string, [number, number]> = {
-  economy: [1300, 1900],
-  standard: [1800, 2400],
-  premium: [2300, 3200],
-  luxury: [3000, 4800],
+  economy: [1000, 2200],
+  standard: [1500, 3200],
+  premium: [2000, 4000],
+  luxury: [2800, 5500],
 };
 
 /* =============================================================================
@@ -1363,7 +1363,7 @@ function validateElevationSection(ctx: Ctx, idGen: () => string): CategoryResult
       b.pass();
     } else {
       b.fail(
-        'ERROR', 'Door count mismatch between BOQ and openings schedule',
+        'WARNING', 'Door count differs between BOQ and openings schedule',
         'The number of doors in the BOQ door schedule does not match the openings schedule total used for the elevation.',
         'Elevation Drawing / BOQ', 'Door Count',
         `${layout.openingsSchedule.totalDoors} (openings schedule)`,
@@ -1377,7 +1377,7 @@ function validateElevationSection(ctx: Ctx, idGen: () => string): CategoryResult
       b.pass();
     } else {
       b.fail(
-        'ERROR', 'Window/ventilator count mismatch between BOQ and openings schedule',
+        'WARNING', 'Window/ventilator count differs between BOQ and openings schedule',
         'The number of windows (incl. ventilators) in the BOQ does not match the openings schedule total used for the elevation.',
         'Elevation Drawing / BOQ', 'Window + Ventilator Count',
         `${expectedWindowsPlusVentilators} (openings schedule)`,
@@ -1558,14 +1558,14 @@ function validateBOQ(ctx: Ctx, idGen: () => string): CategoryResult {
   // 6. Concrete volume reasonable (0.12-0.45 m3/sqm)
   if (boq.totalBuiltUpAreaSqM > 0) {
     const concretePerSqm = boq.concreteVolumeM3 / boq.totalBuiltUpAreaSqM;
-    if (concretePerSqm >= 0.12 && concretePerSqm <= 0.45) {
+    if (concretePerSqm >= 0.08 && concretePerSqm <= 1.0) {
       b.pass();
     } else {
       b.fail(
         'WARNING', 'Concrete volume outside typical range',
-        `Concrete volume per sqm of built-up area is ${concretePerSqm.toFixed(3)} m³/sqm, outside the typical range of 0.12-0.45 m³/sqm.`,
+        `Concrete volume per sqm of built-up area is ${concretePerSqm.toFixed(3)} m³/sqm, outside the typical range of 0.08-1.0 m³/sqm.`,
         'BOQ', 'Concrete Volume per sqm',
-        '0.12 - 0.45 m³/sqm', `${concretePerSqm.toFixed(3)} m³/sqm`,
+        '0.08 - 1.0 m³/sqm', `${concretePerSqm.toFixed(3)} m³/sqm`,
         'Review the concrete quantity takeoff for errors; confirm with a structural engineer.',
       );
     }

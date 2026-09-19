@@ -224,6 +224,14 @@ export function calculateBOQ(
   pujas.forEach(r => {
     doorSchedule.push({ mark: `D${dIdx++}`, location: r.name, type: 'Glass Panel', widthMM: 750, heightMM: 2100, qty: 1, material: 'Teak + Glass' });
   });
+  const halls = allRooms.filter(r => r.type === 'hall');
+  halls.forEach(r => {
+    doorSchedule.push({ mark: `D${dIdx++}`, location: r.name, type: 'Flush', widthMM: 900, heightMM: 2100, qty: 1, material: 'BWR Plywood' });
+  });
+  const dinings = allRooms.filter(r => r.type === 'dining');
+  dinings.forEach(r => {
+    doorSchedule.push({ mark: `D${dIdx++}`, location: r.name, type: 'Flush', widthMM: 900, heightMM: 2100, qty: 1, material: 'BWR Plywood' });
+  });
   const balconies = allRooms.filter(r => r.type === 'balcony');
   balconies.forEach(r => {
     doorSchedule.push({ mark: `D${dIdx++}`, location: r.name, type: 'Sliding UPVC', widthMM: 1800, heightMM: 2100, qty: 1, material: 'UPVC + Glass' });
@@ -235,7 +243,7 @@ export function calculateBOQ(
   bedrooms.forEach(r => {
     windowSchedule.push({ mark: `W${wIdx++}`, location: r.name, type: 'Sliding 2-Track', widthMM: 1200, heightMM: 1200, qty: 1, material: 'UPVC + Glass' });
   });
-  const halls = allRooms.filter(r => r.type === 'hall');
+  // halls already declared above for door schedule
   halls.forEach(r => {
     windowSchedule.push({ mark: `W${wIdx++}`, location: r.name, type: 'Sliding 3-Track', widthMM: 1800, heightMM: 1500, qty: 1, material: 'UPVC + Glass' });
   });
@@ -245,7 +253,7 @@ export function calculateBOQ(
   toilets.forEach(r => {
     windowSchedule.push({ mark: `W${wIdx++}`, location: r.name, type: 'Ventilator', widthMM: 600, heightMM: 450, qty: 1, material: 'UPVC' });
   });
-  const dinings = allRooms.filter(r => r.type === 'dining');
+  // dinings already declared above for door schedule
   dinings.forEach(r => {
     windowSchedule.push({ mark: `W${wIdx++}`, location: r.name, type: 'Sliding 2-Track', widthMM: 1200, heightMM: 1200, qty: 1, material: 'UPVC + Glass' });
   });
@@ -392,7 +400,7 @@ export function calculateBOQ(
     totalBuiltUpAreaSqFt: Math.round(totalBuiltUpSqFt),
     totalBuiltUpAreaSqM: +(totalBuiltUpSqM).toFixed(2),
     numFloors,
-    concreteVolumeM3: totalConcrete,
+    concreteVolumeM3: +(totalConcrete).toFixed(1),
     steelWeightMT: steelMT,
     brickCount,
     cementBags: totalCement,

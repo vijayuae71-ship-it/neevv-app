@@ -814,7 +814,7 @@ const BRAND_GREEN = '#4f6f52';
       {mode === 'new_build' && requirements && (
         <div className="bg-gray-50 border-b border-gray-200 px-4 py-1.5 text-center">
           <span className="text-xs text-gray-500">
-            {requirements.plotWidthFt}×{requirements.plotDepthFt} ft • {requirements.facing}-Facing • {requirements.floors.length === 1 ? 'Ground Floor' : `G+${requirements.floors.length - 1}`} • {requirements.floors[0]?.bedrooms || 2} BHK
+            {requirements.plotWidthFt}×{requirements.plotDepthFt} ft • {requirements.facing}-Facing • {requirements.floors.length === 1 ? 'Ground Floor' : `G+${requirements.floors.length - 1}`} • {requirements.floors.reduce((s: number, f: any) => s + (f.bedrooms || 0), 0) || 2} BHK
           </span>
         </div>
       )}

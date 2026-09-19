@@ -307,7 +307,7 @@ export function buildDrawingPrompt(drawingType: DrawingType, layout: any, requir
     colD: structuralData?.columnDepthMm ?? 300,
     beamW: structuralData?.beamWidthMm ?? 230,
     beamD: structuralData?.beamDepthMm ?? 400,
-    slabT: structuralData?.slabThicknessMm ?? 125,
+    slabT: structuralData?.slabThicknessMm ?? 150,
     grade: structuralData?.concreteGrade ?? 'M25',
     steel: structuralData?.steelGrade ?? 'Fe500D',
     ftgSize: structuralData?.footingSizeMm ?? 1200,
