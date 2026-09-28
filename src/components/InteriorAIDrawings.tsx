@@ -12,6 +12,7 @@ import { authFetch } from '@/utils/authFetch';
 /* ------------------------------------------------------------------ */
 
 const BRAND_GREEN = '#4f6f52';
+const RENDER_TIMEOUT_MS = 45000;
 
 const RENDER_TYPES: { key: RenderTypeKey; label: string; description: string }[] = [
   { key: 'plan', label: 'Plan View', description: 'Top-down furniture layout drawing' },
@@ -175,15 +176,29 @@ const InteriorAIDrawings: React.FC<Props> = ({ layout, interiorSelections, moodB
         promptText += `\n\n--- CUSTOMER MODIFICATIONS ---\nApply the following changes to the design above. Keep everything else exactly the same unless contradicted by these changes.\n${modificationPrompt}`;
       }
 
-      const response = await authFetch('/api/generate-render', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          prompt: promptText,
-          projectId: 'interior-project',
-          renderType: `interior_${type}`,
-        }),
-      });
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), RENDER_TIMEOUT_MS);
+
+      let response: Response;
+      try {
+        response = await authFetch('/api/generate-render', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            prompt: promptText,
+            projectId: 'interior-project',
+            renderType: `interior_${type}`,
+          }),
+          signal: controller.signal,
+        });
+      } catch (err: unknown) {
+        if (err instanceof Error && err.name === 'AbortError') {
+          throw new Error('Render generation timed out after 45 seconds. Please try again.');
+        }
+        throw err;
+      } finally {
+        clearTimeout(timeoutId);
+      }
 
       const data = await response.json();
 

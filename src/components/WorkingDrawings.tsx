@@ -91,8 +91,8 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq, on
         slabThicknessMm: slab?.thicknessMm ?? 150,
         concreteGrade: structuralResult.parameters?.concreteGrade ?? 'M25',
         steelGrade: structuralResult.parameters?.steelGrade ?? 'Fe500D',
-        footingSizeMm: ftg?.footingSizeMm ?? ftg?.widthMm ?? 1200,
-        footingDepthMm: ftg?.footingDepthMm ?? ftg?.depthMm ?? 1500,
+        footingSizeMm: ftg?.widthMm ?? 1200,
+        footingDepthMm: ftg?.depthMm ?? 1500,
         sbc: structuralResult.cityData?.defaultSBC_kNm2 ?? 150,
         seismicZone: structuralResult.cityData?.seismicZone ?? 'III',
         soilType: structuralResult.cityData?.soilType ?? 'Medium',
@@ -191,7 +191,10 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq, on
           return updated;
         });
         saveDrawingToCache(cacheKey, finalImg);
-        onDrawingGenerated?.(drawingType);
+        // Report the floor-qualified cache key (e.g. "electrical-FF"), not the bare
+        // drawing type, so verification can tell Ground Floor and First Floor
+        // generations of the same floor-specific drawing type apart.
+        onDrawingGenerated?.(cacheKey);
       } else {
         throw new Error('No image in response from neevv Generation Pro');
       }
@@ -252,7 +255,9 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq, on
             return updated;
           });
           saveDrawingToCache(cacheKey, finalImg);
-          onDrawingGenerated?.(dt);
+          // Same floor-qualified cache key as generateSingle — keeps GF/FF generations
+          // distinguishable to the verification engine.
+          onDrawingGenerated?.(cacheKey);
         }
       } catch {
         // Continue to next drawing

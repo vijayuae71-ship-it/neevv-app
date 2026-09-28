@@ -87,12 +87,12 @@ export const BOQReport: React.FC<Props> = ({ boq, layout }) => {
                     <table className="table table-zebra table-sm">
                       <thead><tr><th>Item</th><th className="text-right">Qty</th><th>Unit</th></tr></thead>
                       <tbody>
-                        <tr><td>Concrete ({boq.concreteGrade ?? 'M25'})</td><td className="text-right font-mono">{(typeof boq.concreteVolumeM3 === "number" ? boq.concreteVolumeM3.toFixed(1) : boq.concreteVolumeM3)}</td><td>m³</td></tr>
-                        <tr><td>Steel (Fe500D)</td><td className="text-right font-mono">{(typeof boq.steelWeightMT === "number" ? boq.steelWeightMT.toFixed(2) : boq.steelWeightMT)}</td><td>MT</td></tr>
+                        <tr><td>Concrete ({boq.concreteGrade ?? 'M25'})</td><td className="text-right font-mono">{boq.concreteVolumeM3}</td><td>m³</td></tr>
+                        <tr><td>Steel (Fe500D)</td><td className="text-right font-mono">{boq.steelWeightMT}</td><td>MT</td></tr>
                         <tr><td>Brick Masonry (230mm)</td><td className="text-right font-mono">{(boq.brickCount / 480).toFixed(1)}</td><td>m³</td></tr>
                         <tr><td>Cement (OPC 53)</td><td className="text-right font-mono">{boq.cementBags.toLocaleString()}</td><td>bags</td></tr>
-                        <tr><td>Sand</td><td className="text-right font-mono">{(typeof boq.sandCuM === "number" ? (+boq.sandCuM).toFixed(1) : boq.sandCuM)}</td><td>m³</td></tr>
-                        <tr><td>Aggregate (20mm)</td><td className="text-right font-mono">{(typeof boq.aggregateCuM === "number" ? (+boq.aggregateCuM).toFixed(1) : boq.aggregateCuM)}</td><td>m³</td></tr>
+                        <tr><td>Sand</td><td className="text-right font-mono">{boq.sandCuM}</td><td>m³</td></tr>
+                        <tr><td>Aggregate (20mm)</td><td className="text-right font-mono">{boq.aggregateCuM}</td><td>m³</td></tr>
                         <tr><td>Waterproofing</td><td className="text-right font-mono">{boq.waterproofingAreaSqM}</td><td>m²</td></tr>
                         <tr><td>Plastering</td><td className="text-right font-mono">{boq.plasteringAreaSqM}</td><td>m²</td></tr>
                         <tr><td>Painting</td><td className="text-right font-mono">{boq.paintAreaSqM.toLocaleString()}</td><td>m²</td></tr>
@@ -212,7 +212,7 @@ export const BOQReport: React.FC<Props> = ({ boq, layout }) => {
                       })}
                       <tr className="font-bold bg-gray-200">
                         <td>Total</td>
-                        <td className="text-right font-mono">{(typeof boq.concreteVolumeM3 === "number" ? boq.concreteVolumeM3.toFixed(1) : boq.concreteVolumeM3)}</td>
+                        <td className="text-right font-mono">{boq.concreteVolumeM3}</td>
                         <td className="text-right font-mono">100%</td>
                       </tr>
                     </tbody>
@@ -398,7 +398,7 @@ export const BOQReport: React.FC<Props> = ({ boq, layout }) => {
                   <ul className="text-[10px] text-gray-500 space-y-0.5 list-disc list-inside font-mono">
                     <li>Column: {boq.columnSizeMm ?? '230mm × 300mm'} at all wall junctions {boq.quantityBasis === 'engineered' ? '(engineered)' : '(default)'}</li>
                     <li>Max span without beam: 4.5m (NBC 2016 cl. 8.1)</li>
-                    <li>Slab: {(boq.slabThicknessesMm ?? [125]).join(', ')}mm RCC {boq.concreteGrade ?? 'M25'}, {boq.steelGrade ?? 'Fe500D'}</li>
+                    <li>Slab: {(boq.slabThicknessesMm ?? [150]).join(', ')}mm RCC {boq.concreteGrade ?? 'M25'}, {boq.steelGrade ?? 'Fe500D'}</li>
                     <li>Wall: 230mm brick/block masonry (CM 1:6)</li>
                     <li>Floor-to-floor: 3.0m (clear 2.7m)</li>
                     <li>Foundation: Isolated footings, SBC 150 kN/m²</li>

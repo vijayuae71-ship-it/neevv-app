@@ -101,6 +101,8 @@ export default function HomePage() {
         selectedLayout,
         boq,
         customRates,
+        drawingsGenerated,
+        generatedDrawingTypes,
         savedAt: Date.now(),
       };
       try {
@@ -109,7 +111,7 @@ export default function HomePage() {
         console.warn('Auto-save failed:', e);
       }
     }
-  }, [mode, step, requirements, layouts, selectedLayout, boq, customRates]);
+  }, [mode, step, requirements, layouts, selectedLayout, boq, customRates, drawingsGenerated, generatedDrawingTypes]);
 
   // Restore from localStorage on mount
   useEffect(() => {
@@ -127,6 +129,23 @@ export default function HomePage() {
           if (data.customRates) setCustomRates(data.customRates);
           if (data.mode && data.mode !== 'landing') setMode(data.mode);
           if (data.step) setStep(data.step);
+          if (typeof data.drawingsGenerated === 'number') setDrawingsGenerated(data.drawingsGenerated);
+          if (data.generatedDrawingTypes?.length) setGeneratedDrawingTypes(data.generatedDrawingTypes);
+
+          // A saved project with a locked layout and city/state data was designed with
+          // the structural engine's numbers (columns, slab thickness, BOQ steel/concrete).
+          // Re-run it on restore instead of leaving structuralResult/bbsResult null,
+          // and recompute BOQ from the fresh structural result so figures stay consistent.
+          if (data.selectedLayout && data.requirements?.city && data.requirements?.state) {
+            const engineResult = runStructuralDesign(data.selectedLayout, data.requirements);
+            const sr = engineResult?.structuralResult ?? null;
+            const br = engineResult?.bbsResult ?? undefined;
+            if (sr) {
+              const materialRates = data.customRates?.materials ?? [];
+              const b = calculateBOQ(data.selectedLayout, materialRates, data.requirements.floors?.length || 1, sr, br);
+              setBOQ(b);
+            }
+          }
         }
       }
     } catch (e) {
@@ -198,10 +217,30 @@ export default function HomePage() {
         steelGrade: 'Fe500D',
         roofAccessible: true,
       });
-      
-      setStructuralResult(result);
-      
+
       const bbs = generateBBS(result, numFloors);
+
+      // Reconcile the headline steel total: the bar bending schedule is the
+      // authoritative procurement quantity (it includes development length, laps,
+      // and cutting-waste allowances per IS 2502/IS 456 that the structural
+      // engine's theoretical design total intentionally omits). Reconciling here,
+      // in the one place both are generated together, means every downstream
+      // consumer that reads structuralResult.summary.totalSteelKg (BOQ, working
+      // drawings, verification) automatically reports the same number as the BBS
+      // grand total — instead of two different "total steel" figures in the app.
+      if (Number.isFinite(bbs.totalSteelKg) && bbs.totalSteelKg > 0 && result.summary.totalSteelKg > 0) {
+        const steelScale = bbs.totalSteelKg / result.summary.totalSteelKg;
+        result.summary.totalSteelKg = bbs.totalSteelKg;
+        result.summary.steelBreakdown = {
+          foundation: result.summary.steelBreakdown.foundation * steelScale,
+          columns: result.summary.steelBreakdown.columns * steelScale,
+          beams: result.summary.steelBreakdown.beams * steelScale,
+          slabs: result.summary.steelBreakdown.slabs * steelScale,
+          staircase: result.summary.steelBreakdown.staircase * steelScale,
+        };
+      }
+
+      setStructuralResult(result);
       setBBSResult(bbs);
       
       return { structuralResult: result, bbsResult: bbs };
@@ -482,13 +521,13 @@ const BRAND_GREEN = '#4f6f52';
   /* ============ LANDING PAGE ============ */
   if (mode === 'landing') {
     const heroCards = [
-      { icon: <Home className="w-6 h-6" />, title: 'Design Your Home', subtitle: 'For homeowners & builders', desc: 'Your plot. Your layout. 21+ execution-ready drawings — plans, structure, electrical, plumbing — ready in minutes.', onClick: () => { analytics.modeSelected('new_build'); setMode('new_build'); } },
+      { icon: <Home className="w-6 h-6" />, title: 'Design Your Home', subtitle: 'For homeowners & builders', desc: 'Your plot. Your layout. 17+ execution-ready drawings — plans, structure, electrical, plumbing — ready in minutes.', onClick: () => { analytics.modeSelected('new_build'); setMode('new_build'); } },
       { icon: <Palette className="w-6 h-6" />, title: 'Design Your Interiors', subtitle: 'For homeowners & designers', desc: 'Pick your style, materials, and finishes. See your room come to life in 3D.', onClick: () => { analytics.modeSelected('interior_only'); setMode('interior_only'); } },
       { icon: <Building2 className="w-6 h-6" />, title: 'Design Your Workspace', subtitle: 'For businesses & teams', desc: 'Plan your office layout with fire safety, MEP, and NBC compliance built in.', onClick: () => { analytics.modeSelected('office_design'); setMode('office_design'); } },
     ];
 
     const featureItems = [
-      { icon: <FileStack className="w-5 h-5" />, value: '21+', label: 'Construction Drawings' },
+      { icon: <FileStack className="w-5 h-5" />, value: '17+', label: 'Construction Drawings' },
       { icon: <Clock className="w-5 h-5" />, value: '< 5 min', label: 'Ready in Minutes' },
       { icon: <ShieldCheck className="w-5 h-5" />, value: 'NBC 2016', label: 'Fully Compliant' },
       { icon: <Layers className="w-5 h-5" />, value: 'IS 962', label: 'Drawing Standards' },
@@ -511,7 +550,7 @@ const BRAND_GREEN = '#4f6f52';
       { icon: <ClipboardList className="w-5 h-5" />, title: 'Enter your plot details', desc: 'Plot size, facing, floors, rooms' },
       { icon: <Layers className="w-5 h-5" />, title: 'Pick from 3 layouts', desc: 'AI-generated, NBC-compliant, Vastu-optimized' },
       { icon: <Lock className="w-5 h-5" />, title: 'Lock your design', desc: 'This becomes your single source of truth' },
-      { icon: <FileStack className="w-5 h-5" />, title: 'Download everything', desc: '21+ drawings, renders, BOQ — execution-ready' },
+      { icon: <FileStack className="w-5 h-5" />, title: 'Download everything', desc: '17+ drawings, renders, BOQ — execution-ready' },
     ];
 
     const tabData = [
@@ -547,23 +586,31 @@ const BRAND_GREEN = '#4f6f52';
             }}
             onOpenProject={(project: SavedProject) => {
               if (project.requirements) setRequirements(project.requirements);
+              // Track whether we recomputed BOQ from a freshly re-run structural design
+              // below — if so, that number (consistent with the new structural/BBS
+              // result) must win over the stale `project.boq` that was saved before,
+              // instead of being silently overwritten by it.
+              let recalculatedBOQ = false;
               if (project.selectedLayout) {
                 setSelectedLayout(project.selectedLayout);
                 setMotherLayoutLocked(true);
+                let sr: StructuralDesignResult | null = null;
+                let br: BBSResult | undefined;
                 if (project.requirements && project.selectedLayout) {
                   const engineResult = runStructuralDesign(project.selectedLayout, project.requirements);
-                  const sr = engineResult?.structuralResult ?? null;
-                  const br = engineResult?.bbsResult ?? undefined;
+                  sr = engineResult?.structuralResult ?? null;
+                  br = engineResult?.bbsResult ?? undefined;
+                }
+                if (project.requirements) {
+                  const materialRates = customRates?.materials ?? [];
                   const b = sr
-                    ? calculateBOQ(project.selectedLayout, customRates?.materials ?? [], project.requirements.floors?.length || 1, sr, br)
+                    ? calculateBOQ(project.selectedLayout, materialRates, project.requirements.floors?.length || 1, sr, br)
                     : calculateBOQ(project.selectedLayout, project.requirements.floors?.length || 1, customRates);
                   setBOQ(b);
-                } else if (project.requirements) {
-                  const b = calculateBOQ(project.selectedLayout, project.requirements.floors?.length || 1, customRates);
-                  setBOQ(b);
+                  recalculatedBOQ = true;
                 }
               }
-              if (project.boq) setBOQ(project.boq);
+              if (project.boq && !recalculatedBOQ) setBOQ(project.boq);
               setDrawingsGenerated(project.drawingsGenerated ?? 0);
               setGeneratedDrawingTypes(project.generatedDrawingTypes ?? []);
 
@@ -814,7 +861,7 @@ const BRAND_GREEN = '#4f6f52';
       {mode === 'new_build' && requirements && (
         <div className="bg-gray-50 border-b border-gray-200 px-4 py-1.5 text-center">
           <span className="text-xs text-gray-500">
-            {requirements.plotWidthFt}×{requirements.plotDepthFt} ft • {requirements.facing}-Facing • {requirements.floors.length === 1 ? 'Ground Floor' : `G+${requirements.floors.length - 1}`} • {requirements.floors.reduce((s: number, f: any) => s + (f.bedrooms || 0), 0) || 2} BHK
+            {requirements.plotWidthFt}×{requirements.plotDepthFt} ft • {requirements.facing}-Facing • {requirements.floors.length === 1 ? 'Ground Floor' : `G+${requirements.floors.length - 1}`} • {requirements.floors[0]?.bedrooms || 2} BHK
           </span>
         </div>
       )}
@@ -838,18 +885,21 @@ const BRAND_GREEN = '#4f6f52';
               <RateSheet
                 onSave={(rates) => {
                   setCustomRates(rates);
-                  // Recalculate BOQ with new rates using structural data when available
+                  // Recalculate BOQ with new rates — keep using the already-computed
+                  // structural/BBS result so steel & concrete stay consistent instead of
+                  // reverting to area-based estimates.
+                  const materialRates = rates?.materials ?? [];
                   const b = structuralResult
-                    ? calculateBOQ(selectedLayout, rates?.materials ?? [], requirements.floors.length, structuralResult, bbsResult ?? undefined)
+                    ? calculateBOQ(selectedLayout, materialRates, requirements.floors.length, structuralResult, bbsResult ?? undefined)
                     : calculateBOQ(selectedLayout, requirements.floors.length, rates);
                   setBOQ(b);
                   setStep('boq');
                 }}
                 onSkip={() => {
-                  // Use default rates with structural data when available
+                  // Use default rates
                   setCustomRates(null);
                   const b = structuralResult
-                    ? calculateBOQ(selectedLayout, customRates?.materials ?? [], requirements.floors.length, structuralResult, bbsResult ?? undefined)
+                    ? calculateBOQ(selectedLayout, [], requirements.floors.length, structuralResult, bbsResult ?? undefined)
                     : calculateBOQ(selectedLayout, requirements.floors.length, null);
                   setBOQ(b);
                   setStep('boq');

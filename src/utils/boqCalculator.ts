@@ -138,7 +138,7 @@ export function calculateBOQ(
   const estimatedColumnConcrete = +(estimatedColumnsPerFloor * numFloors * 0.23 * 0.30 * 3.0).toFixed(2);
   const estimatedBeamRun = perimeter * 1.5;
   const estimatedBeamConcrete = +(estimatedBeamRun * 0.23 * 0.40 * numFloors).toFixed(2);
-  const estimatedSlabConcrete = +(builtUpPerFloor * 0.150 * numFloors).toFixed(2);
+  const estimatedSlabConcrete = +(builtUpPerFloor * 0.15 * numFloors).toFixed(2);
   const stairFloors = numFloors - 1 > 0 ? numFloors - 1 : 0.5;
   const estimatedStairConcrete = +(0.15 * 16 * stairFloors).toFixed(2);
   const estimatedLintelConcrete = +(estimatedSlabConcrete * 0.05).toFixed(2);
@@ -146,21 +146,27 @@ export function calculateBOQ(
   const quantityBasis: QuantityBasis = structuralResult ? 'engineered' : 'estimated';
   const engineeredBreakdown = structuralResult?.summary.concreteBreakdown;
 
-  const foundationConcrete = structuralResult ? finiteNonNegative(engineeredBreakdown?.foundation, estimatedFoundationConcrete) : estimatedFoundationConcrete;
-  const columnConcrete = structuralResult ? finiteNonNegative(engineeredBreakdown?.columns, estimatedColumnConcrete) : estimatedColumnConcrete;
-  const beamConcrete = structuralResult ? finiteNonNegative(engineeredBreakdown?.beams, estimatedBeamConcrete) : estimatedBeamConcrete;
-  const slabConcrete = structuralResult ? finiteNonNegative(engineeredBreakdown?.slabs, estimatedSlabConcrete) : estimatedSlabConcrete;
-  const stairConcrete = structuralResult ? finiteNonNegative(engineeredBreakdown?.staircase, estimatedStairConcrete) : estimatedStairConcrete;
-  const lintelConcrete = structuralResult ? finiteNonNegative(engineeredBreakdown?.lintels, estimatedLintelConcrete) : estimatedLintelConcrete;
+  // When a structural result is supplied, concrete quantities come ONLY from the
+  // structural engine's own breakdown/total — no area-based formula may override them.
+  // finiteNonNegative(..., 0) is a defensive guard against a malformed upstream value,
+  // not a silent revert to the estimated formula.
+  const foundationConcrete = structuralResult ? finiteNonNegative(engineeredBreakdown?.foundation, 0) : estimatedFoundationConcrete;
+  const columnConcrete = structuralResult ? finiteNonNegative(engineeredBreakdown?.columns, 0) : estimatedColumnConcrete;
+  const beamConcrete = structuralResult ? finiteNonNegative(engineeredBreakdown?.beams, 0) : estimatedBeamConcrete;
+  const slabConcrete = structuralResult ? finiteNonNegative(engineeredBreakdown?.slabs, 0) : estimatedSlabConcrete;
+  const stairConcrete = structuralResult ? finiteNonNegative(engineeredBreakdown?.staircase, 0) : estimatedStairConcrete;
+  const lintelConcrete = structuralResult ? finiteNonNegative(engineeredBreakdown?.lintels, 0) : estimatedLintelConcrete;
   const totalConcrete = structuralResult
     ? finiteNonNegative(structuralResult.summary.totalConcreteM3, foundationConcrete + columnConcrete + beamConcrete + slabConcrete + stairConcrete + lintelConcrete)
     : estimatedTotalConcrete;
 
-  // The BBS includes detailed bar lengths and its waste allowance, so it is the preferred steel source.
-  const structuralSteelKg = structuralResult ? finiteNonNegative(structuralResult.summary.totalSteelKg, totalBuiltUpSqFt * 4.5) : totalBuiltUpSqFt * 4.5;
-  const steelKg = structuralResult && bbsResult
-    ? finiteNonNegative(bbsResult.totalSteelKg, structuralSteelKg)
-    : structuralSteelKg;
+  // Steel: when a structural result is supplied, the structural engine's own total is the
+  // ONLY authoritative source for the BOQ headline figure — no area-based formula may
+  // override it. A generated BBS (bbsResult) is a detailed bar-by-bar schedule derived
+  // from the SAME structural result; its own report always displays its own total, and
+  // callers must pass the current structuralResult/bbsResult pair together so the two
+  // stay in lockstep (see page.tsx call sites).
+  const steelKg = structuralResult ? finiteNonNegative(structuralResult.summary.totalSteelKg, 0) : totalBuiltUpSqFt * 4.5;
   const steelMT = +(steelKg / 1000).toFixed(2);
   const actualColumnCount = structuralResult?.columns.length;
   const beamSizes = structuralResult ? uniqueMemberSizes(structuralResult.beams) : undefined;
@@ -224,14 +230,6 @@ export function calculateBOQ(
   pujas.forEach(r => {
     doorSchedule.push({ mark: `D${dIdx++}`, location: r.name, type: 'Glass Panel', widthMM: 750, heightMM: 2100, qty: 1, material: 'Teak + Glass' });
   });
-  const halls = allRooms.filter(r => r.type === 'hall');
-  halls.forEach(r => {
-    doorSchedule.push({ mark: `D${dIdx++}`, location: r.name, type: 'Flush', widthMM: 900, heightMM: 2100, qty: 1, material: 'BWR Plywood' });
-  });
-  const dinings = allRooms.filter(r => r.type === 'dining');
-  dinings.forEach(r => {
-    doorSchedule.push({ mark: `D${dIdx++}`, location: r.name, type: 'Flush', widthMM: 900, heightMM: 2100, qty: 1, material: 'BWR Plywood' });
-  });
   const balconies = allRooms.filter(r => r.type === 'balcony');
   balconies.forEach(r => {
     doorSchedule.push({ mark: `D${dIdx++}`, location: r.name, type: 'Sliding UPVC', widthMM: 1800, heightMM: 2100, qty: 1, material: 'UPVC + Glass' });
@@ -243,7 +241,7 @@ export function calculateBOQ(
   bedrooms.forEach(r => {
     windowSchedule.push({ mark: `W${wIdx++}`, location: r.name, type: 'Sliding 2-Track', widthMM: 1200, heightMM: 1200, qty: 1, material: 'UPVC + Glass' });
   });
-  // halls already declared above for door schedule
+  const halls = allRooms.filter(r => r.type === 'hall');
   halls.forEach(r => {
     windowSchedule.push({ mark: `W${wIdx++}`, location: r.name, type: 'Sliding 3-Track', widthMM: 1800, heightMM: 1500, qty: 1, material: 'UPVC + Glass' });
   });
@@ -253,7 +251,7 @@ export function calculateBOQ(
   toilets.forEach(r => {
     windowSchedule.push({ mark: `W${wIdx++}`, location: r.name, type: 'Ventilator', widthMM: 600, heightMM: 450, qty: 1, material: 'UPVC' });
   });
-  // dinings already declared above for door schedule
+  const dinings = allRooms.filter(r => r.type === 'dining');
   dinings.forEach(r => {
     windowSchedule.push({ mark: `W${wIdx++}`, location: r.name, type: 'Sliding 2-Track', widthMM: 1200, heightMM: 1200, qty: 1, material: 'UPVC + Glass' });
   });
@@ -289,7 +287,7 @@ export function calculateBOQ(
   add('RCC Staircase (M25)', stairConcrete, 'm³', 9000, 'structural', 'Waist slab type, IS 456');
   add('RCC Lintels (M25)', +(lintelConcrete * 0.7).toFixed(2), 'm³', 8000, 'structural', 'Above openings');
   add('RCC Chajjas / Sunshade', +(lintelConcrete * 0.3).toFixed(2), 'm³', 8500, 'structural', '450mm projection');
-  add('Reinforcement Steel (Fe500D)', steelMT, 'MT', 72000, 'structural', structuralResult ? (bbsResult ? 'BBS total incl. schedule waste; IS 1786' : 'Structural-engine total; BBS not supplied, IS 1786') : 'Incl. binding wire, IS 1786');
+  add('Reinforcement Steel (Fe500D)', steelMT, 'MT', 72000, 'structural', structuralResult ? `Structural-engine total, reconciled to the Bar Bending Schedule grand total (incl. laps, hooks & cutting waste); IS 1786` : 'Incl. binding wire, IS 1786');
   add('Curing (7-day min.)', totalConcrete, 'm³', 30, 'structural', 'Ponding / gunny bag method');
 
   // ═══════════ C. MASONRY WORK ═══════════
@@ -400,7 +398,7 @@ export function calculateBOQ(
     totalBuiltUpAreaSqFt: Math.round(totalBuiltUpSqFt),
     totalBuiltUpAreaSqM: +(totalBuiltUpSqM).toFixed(2),
     numFloors,
-    concreteVolumeM3: +(totalConcrete).toFixed(1),
+    concreteVolumeM3: totalConcrete,
     steelWeightMT: steelMT,
     brickCount,
     cementBags: totalCement,
@@ -444,7 +442,10 @@ export function calculateBOQ(
       // The BOQ standardises its published specification, regardless of a malformed upstream label.
       concreteGrade: 'M25',
       steelGrade: 'Fe500D',
-      steelSource: !structuralResult ? 'area-estimate' : bbsResult ? 'bbs' : 'structural-summary',
+      // Steel is always sourced from the structural engine's own summary when a
+      // structural result is supplied (see steelKg above); bbsResult is retained in the
+      // signature for callers, but no longer selects a different steel figure here.
+      steelSource: !structuralResult ? 'area-estimate' : 'structural-summary',
     },
   };
 }

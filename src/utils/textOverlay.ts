@@ -577,7 +577,7 @@ function makeOverlaySections(
               ['Waist slab', `${d?.waistSlabThickness ?? 150}mm RCC`],
               ['Main bars', d?.staircaseMainBars || '10mm @ 150mm c/c'],
               ['Distribution bars', d?.staircaseDistBars || '8mm @ 200mm c/c'],
-              ['Landing', '125mm RCC slab'],
+              ['Landing', '150mm RCC slab'],
               ['Handrail', '1000mm height, SS / MS'],
             ],
           },

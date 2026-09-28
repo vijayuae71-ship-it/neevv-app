@@ -195,6 +195,7 @@ export function generateLayouts(req: ProjectRequirements): Layout[] {
   for (const strat of strategies) {
     const floors: FloorLayout[] = [];
     let totalBuiltUp = 0;
+    const overlapWarnings: string[] = [];
 
     for (let fi = 0; fi < effectiveFloors.length; fi++) {
       const fp = effectiveFloors[fi];
@@ -209,7 +210,8 @@ export function generateLayouts(req: ProjectRequirements): Layout[] {
         adjFp, buildW, buildD, setbacks, fi,
         strat.id, req.facing, isStilt,
         req.floors.length > 1, hasParking,
-        proportionalBudget.floors[fi]?.rooms
+        proportionalBudget.floors[fi]?.rooms,
+        overlapWarnings
       );
 
       const columns = placeColumns(rooms, buildW, buildD, setbacks);
@@ -233,6 +235,12 @@ export function generateLayouts(req: ProjectRequirements): Layout[] {
     const fsiValue = req.fsi ?? 1.0;
     totalBuiltUp = Math.min(totalBuiltUp, plotArea * fsiValue);
     const { compliant, issues } = checkNBCCompliance(allRooms, plotArea, totalBuiltUp, req.floors.length);
+    // Overlap-resolution warnings are always non-fatal ('warning' severity) — the
+    // geometry has already been auto-corrected; these flag cases worth a manual look.
+    const combinedIssues = [
+      ...issues,
+      ...overlapWarnings.map((w) => ({ room: 'Layout', issue: w, severity: 'warning' as const })),
+    ];
 
     layouts.push({
       id: strat.id,
@@ -243,7 +251,7 @@ export function generateLayouts(req: ProjectRequirements): Layout[] {
       vastuScore: req.vastuCompliance ? score : -1,
       vastuDetails: details,
       nbcCompliant: compliant,
-      nbcIssues: issues,
+      nbcIssues: combinedIssues,
       builtUpAreaSqM: round2(totalBuiltUp),
       builtUpAreaSqFt: Math.round(totalBuiltUp * SQM_TO_SQFT),
       setbacks,
@@ -295,7 +303,8 @@ function placeRoomsForStrategy(
   isStilt: boolean,
   isMultiFloor: boolean,
   hasParking: boolean,
-  roomBudgets?: RoomAllocation[]
+  roomBudgets?: RoomAllocation[],
+  outWarnings?: string[]
 ): Room[] {
   const ox = snap(setbacks.left);
   const oy = snap(setbacks.front);
@@ -603,53 +612,39 @@ function placeRoomsForStrategy(
   }
 
   // ===== VASTU ZONE PLACEMENT (from proportional budget) =====
-  // If we have budgets with zone info, adjust room positions to match Vastu quadrants
-  if (roomBudgets && roomBudgets.length > 0) {
-    const midX = ox + buildW / 2;
-    const midY = oy + buildD / 2;
-
-    for (const room of rooms) {
-      let budget: RoomAllocation | undefined;
-      if (room.type === 'hall') budget = getBudget('Living & Dining');
-      else if (room.type === 'kitchen') budget = getBudget('Kitchen');
-      else if (room.type === 'master_bedroom') budget = getBudget('Master Bedroom');
-      else if (room.type === 'puja') budget = getBudget('Pooja Room');
-
-      if (!budget || !budget.vastuZone || budget.vastuZone === 'Center') continue;
-
-      // Compute target quadrant center for this zone
-      const zone = budget.vastuZone;
-      let targetX = room.x; // keep current if no match
-      let targetY = room.y;
-
-      // NE = low-x high-y for North-facing (front=North); adjust based on facing
-      // For simplicity, use absolute quadrants: NE=right-back, SE=right-front, etc.
-      // In the coordinate system: x increases right, y increases from front to back
-      const needsXHigh = zone.includes('E') || zone === 'SE' || zone === 'NE';
-      const needsXLow = zone.includes('W') || zone === 'SW' || zone === 'NW';
-      const needsYHigh = zone.includes('S') || zone === 'SE' || zone === 'SW';
-      const needsYLow = zone.includes('N') || zone === 'NE' || zone === 'NW';
-
-      // Soft nudge: if room is in wrong half, try to move it 20% toward correct half
-      // Only if the room type is one that Vastu cares about (kitchen, master bed, pooja)
-      if (needsXHigh && room.x + room.width / 2 < midX) {
-        targetX = Math.min(ox + buildW - room.width, room.x + buildW * 0.15);
-      } else if (needsXLow && room.x + room.width / 2 > midX) {
-        targetX = Math.max(ox, room.x - buildW * 0.15);
-      }
-      if (needsYHigh && room.y + room.depth / 2 < midY) {
-        targetY = Math.min(oy + buildD - room.depth, room.y + buildD * 0.15);
-      } else if (needsYLow && room.y + room.depth / 2 > midY) {
-        targetY = Math.max(oy, room.y - buildD * 0.15);
-      }
-
-      room.x = snap(targetX);
-      room.y = snap(targetY);
-    }
-  }
+  // REMOVED: this used to translate a single room toward its ideal Vastu quadrant
+  // without checking any other room's position, which reliably produced overlaps
+  // (a room nudged into a neighbor is exactly as broken as one resized into a
+  // neighbor). The zone-based placement above already achieves coarse Vastu
+  // alignment for the rooms Vastu cares about most (kitchen SE/NE via
+  // `kitchenOnRight`, bedroom/master ordering, puja placement) without needing a
+  // second, unsafe translation pass. No replacement nudge is applied.
 
   // ===== APPLY PROPORTIONAL BUDGET DIMENSIONS (flexible aspect ratio) =====
+  // Rooms may grow toward their budgeted (ideal) area, but growth is bounded not
+  // just by the outer building envelope but also by the nearest neighboring room's
+  // edge in the growth direction — otherwise a room can grow straight through a
+  // sibling that is already correctly tiled next to it (this was the direct cause
+  // of the Living/Dining-Car Parking, Kitchen-Master Bedroom, etc. overlaps).
+  // Neighbor bounds are computed from a snapshot taken before any room in this
+  // pass is resized, so the result does not depend on array iteration order.
   if (roomBudgets) {
+    const outerMaxX = snap(ox + buildW);
+    const outerMaxY = snap(oy + buildD);
+    const snapshot = rooms.map((r) => ({ ...r }));
+    const neighborBounds = (room: Room): { rightBound: number; bottomBound: number } => {
+      let rightBound = outerMaxX;
+      let bottomBound = outerMaxY;
+      for (const o of snapshot) {
+        if (o.id === room.id) continue;
+        const yOverlap = Math.min(room.y + room.depth, o.y + o.depth) - Math.max(room.y, o.y);
+        if (yOverlap > 0.05 && o.x >= room.x - 0.05 && o.x < rightBound) rightBound = o.x;
+        const xOverlap = Math.min(room.x + room.width, o.x + o.width) - Math.max(room.x, o.x);
+        if (xOverlap > 0.05 && o.y >= room.y - 0.05 && o.y < bottomBound) bottomBound = o.y;
+      }
+      return { rightBound, bottomBound };
+    };
+
     for (const room of rooms) {
       let budget: RoomAllocation | undefined;
       if (room.type === 'hall') budget = getBudget('Living & Dining');
@@ -667,22 +662,27 @@ function placeRoomsForStrategy(
         let targetW = budget.widthM;
         let targetD = budget.depthM;
 
-        // Check if budget dimensions would overflow available space
-        const maxAvailW = snap(ox + buildW - room.x);
-        const maxAvailD = snap(oy + buildD - room.y);
+        // Check if budget dimensions would overflow the space actually available
+        // (outer envelope AND nearest neighboring room, whichever is closer).
+        const { rightBound, bottomBound } = neighborBounds(room);
+        const maxAvailW = snap(rightBound - room.x);
+        const maxAvailD = snap(bottomBound - room.y);
 
-        if (targetW > maxAvailW && budget.aspectRatioRange) {
+        if (targetW > maxAvailW) {
           // Room too wide — increase depth, decrease width (lower aspect ratio)
           targetW = Math.max(snap(maxAvailW), 1.0);
-          targetD = snap(budget.areaSqm / targetW);
-        } else if (targetD > maxAvailD && budget.aspectRatioRange) {
+          if (budget.aspectRatioRange) targetD = snap(budget.areaSqm / targetW);
+        }
+        if (targetD > maxAvailD) {
           // Room too deep — increase width, decrease depth (higher aspect ratio)
           targetD = Math.max(snap(maxAvailD), 1.0);
-          targetW = snap(budget.areaSqm / targetD);
+          if (budget.aspectRatioRange) targetW = snap(budget.areaSqm / targetD);
+          // Re-check the width bound after an aspect-ratio-driven width increase.
+          if (targetW > maxAvailW) targetW = Math.max(snap(maxAvailW), 1.0);
         }
 
-        room.width = snap(targetW);
-        room.depth = snap(targetD);
+        room.width = snap(Math.max(targetW, 0.5));
+        room.depth = snap(Math.max(targetD, 0.5));
       }
     }
   }
@@ -707,7 +707,147 @@ function placeRoomsForStrategy(
     room.depth = snap(room.depth);
   }
 
+  // ===== OVERLAP DETECTION & RESOLUTION =====
+  // Zone-based placement above can leave two rooms overlapping, or push a room's edge
+  // outside the buildable footprint after aspect-ratio/Vastu adjustments. This pass
+  // re-clamps to the footprint and resolves pairwise overlaps by shifting the later
+  // room into free space, or — if it cannot be shifted without leaving the footprint —
+  // shrinking it just enough to remove the overlap. Rooms that still cannot be fully
+  // resolved are reported via outWarnings rather than silently left broken.
+  const overlapWarnings = resolveOverlappingRooms(rooms, ox, oy, maxX, maxY);
+  if (outWarnings) outWarnings.push(...overlapWarnings);
+
   return rooms;
+}
+
+/** Axis-aligned overlap amount (m) between two rooms in each dimension; <=0 means no overlap in that axis. */
+function overlapAmount(a: Room, b: Room): { overlapX: number; overlapY: number } {
+  const overlapX = Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x);
+  const overlapY = Math.min(a.y + a.depth, b.y + b.depth) - Math.max(a.y, b.y);
+  return { overlapX, overlapY };
+}
+
+/**
+ * Detects overlapping room rectangles and resolves them in place by shifting or
+ * shrinking rooms so the final layout has no overlaps and stays within
+ * [ox, maxX] x [oy, maxY]. Returns warnings for anything that could not be
+ * cleanly resolved (still overlapping, or shrunk below a usable minimum).
+ */
+function resolveOverlappingRooms(rooms: Room[], ox: number, oy: number, maxX: number, maxY: number): string[] {
+  const warnings: string[] = [];
+  const MIN_DIM = 0.9; // do not auto-shrink a room below ~0.9m in any dimension
+  const clampRoom = (r: Room) => {
+    if (r.x < ox) r.x = snap(ox);
+    if (r.y < oy) r.y = snap(oy);
+    if (r.x + r.width > maxX) r.width = Math.max(MIN_DIM, snap(maxX - r.x));
+    if (r.y + r.depth > maxY) r.depth = Math.max(MIN_DIM, snap(maxY - r.y));
+  };
+
+  const MAX_PASSES = 10;
+  for (let pass = 0; pass < MAX_PASSES; pass++) {
+    let anyOverlap = false;
+    for (let i = 0; i < rooms.length; i++) {
+      for (let j = i + 1; j < rooms.length; j++) {
+        const a = rooms[i];
+        const b = rooms[j];
+        const { overlapX, overlapY } = overlapAmount(a, b);
+        if (overlapX > 0.02 && overlapY > 0.02) {
+          anyOverlap = true;
+          if (overlapX <= overlapY) {
+            // Resolve along X: push b clear of a (or a clear of b), else shrink.
+            if (b.x >= a.x) {
+              const shifted = snap(a.x + a.width);
+              if (shifted + b.width <= maxX + 0.02) b.x = shifted;
+              else if (snap(b.x - a.width) >= ox - 0.02) a.x = snap(b.x - a.width);
+              else b.width = Math.max(MIN_DIM, snap(b.width - overlapX));
+            } else {
+              const shifted = snap(b.x + b.width);
+              if (shifted + a.width <= maxX + 0.02) a.x = shifted;
+              else if (snap(a.x - b.width) >= ox - 0.02) b.x = snap(a.x - b.width);
+              else a.width = Math.max(MIN_DIM, snap(a.width - overlapX));
+            }
+          } else {
+            // Resolve along Y: push b clear of a (or a clear of b), else shrink.
+            if (b.y >= a.y) {
+              const shifted = snap(a.y + a.depth);
+              if (shifted + b.depth <= maxY + 0.02) b.y = shifted;
+              else if (snap(b.y - a.depth) >= oy - 0.02) a.y = snap(b.y - a.depth);
+              else b.depth = Math.max(MIN_DIM, snap(b.depth - overlapY));
+            } else {
+              const shifted = snap(b.y + b.depth);
+              if (shifted + a.depth <= maxY + 0.02) a.y = shifted;
+              else if (snap(a.y - b.depth) >= oy - 0.02) b.y = snap(a.y - b.depth);
+              else a.depth = Math.max(MIN_DIM, snap(a.depth - overlapY));
+            }
+          }
+          clampRoom(a);
+          clampRoom(b);
+        }
+      }
+    }
+    if (!anyOverlap) break;
+  }
+
+  // Last-resort hard guarantee: the shift/shrink passes above can still deadlock
+  // when a room is bounded on every side (e.g. wedged between the outer wall and
+  // two neighbors), because MIN_DIM prevents shrinking further. As an absolute
+  // final step, force-eliminate any remaining overlap by shrinking whichever room
+  // of the pair has room to spare along the lower-overlap axis, down to a hard
+  // floor of 0.3 m, and only crossing below that (down to a 0.05 m geometric
+  // floor) when neither room has anything left to give — a genuinely infeasible
+  // room program for this plot. Either way the "shrunk below usable minimum" and
+  // "still overlap" warnings below will flag it for manual review.
+  const HARD_MIN_DIM = 0.3;
+  const ABSOLUTE_FLOOR = 0.05;
+  for (let hardPass = 0; hardPass < 8; hardPass++) {
+    let anyHardOverlap = false;
+    for (let i = 0; i < rooms.length; i++) {
+      for (let j = i + 1; j < rooms.length; j++) {
+        const a = rooms[i];
+        const b = rooms[j];
+        const { overlapX, overlapY } = overlapAmount(a, b);
+        if (overlapX > 0.02 && overlapY > 0.02) {
+          anyHardOverlap = true;
+          if (overlapX <= overlapY) {
+            const aCanShrink = a.width - overlapX >= HARD_MIN_DIM;
+            const bCanShrink = b.width - overlapX >= HARD_MIN_DIM;
+            const target = aCanShrink ? a : bCanShrink ? b : (a.width >= b.width ? a : b);
+            target.width = Math.max(ABSOLUTE_FLOOR, snap(target.width - overlapX));
+          } else {
+            const aCanShrink = a.depth - overlapY >= HARD_MIN_DIM;
+            const bCanShrink = b.depth - overlapY >= HARD_MIN_DIM;
+            const target = aCanShrink ? a : bCanShrink ? b : (a.depth >= b.depth ? a : b);
+            target.depth = Math.max(ABSOLUTE_FLOOR, snap(target.depth - overlapY));
+          }
+        }
+      }
+    }
+    if (!anyHardOverlap) break;
+  }
+
+  // Final report: anything still overlapping, out-of-bounds, or shrunk to the floor.
+  for (let i = 0; i < rooms.length; i++) {
+    const room = rooms[i];
+    for (let j = i + 1; j < rooms.length; j++) {
+      const other = rooms[j];
+      const { overlapX, overlapY } = overlapAmount(room, other);
+      if (overlapX > 0.05 && overlapY > 0.05) {
+        warnings.push(
+          `${room.name} and ${other.name} still overlap by ${(overlapX * overlapY).toFixed(2)} m² after auto-resolution; manual layout review required.`
+        );
+      }
+    }
+    if (room.width <= MIN_DIM + 0.01 || room.depth <= MIN_DIM + 0.01) {
+      warnings.push(
+        `${room.name} was shrunk to ${room.width.toFixed(2)}m × ${room.depth.toFixed(2)}m to resolve an overlap/boundary conflict; verify manually.`
+      );
+    }
+    if (room.x < ox - 0.05 || room.y < oy - 0.05 || room.x + room.width > maxX + 0.05 || room.y + room.depth > maxY + 0.05) {
+      warnings.push(`${room.name} extends outside the buildable footprint after auto-resolution; manual layout review required.`);
+    }
+  }
+
+  return warnings;
 }
 
 /**

@@ -114,7 +114,6 @@ export interface StructuralDesignResult {
     concreteBreakdown: { foundation: number; columns: number; beams: number; slabs: number; staircase: number; lintels: number; };
     steelBreakdown: { foundation: number; columns: number; beams: number; slabs: number; staircase: number; };
   };
-  cityData?: CityEngineeringData;
   warnings: string[];
   disclaimer: string;
 }
@@ -230,19 +229,23 @@ function makePanels(layout: Layout, floor: number, geometry: ReturnType<typeof b
   return [{ id: `floor-${floor}-panel`, floor, x: geometry.originX, y: geometry.originY, width: geometry.width, depth: geometry.depth, type: 'residential floor' }];
 }
 function generateColumns(layout: Layout, floor: number, geometry: ReturnType<typeof buildingGeometry>, panels: Panel[]): Point[] {
-  // A vertical frame must use one coherent support grid. Retain every user supplied
-  // column coordinate from all storeys, then supplement it if fewer than four exist.
-  const provided = layout.floors.flatMap((item) => item.columns).map((c) => ({ x: c.x, y: c.y }));
-  // Supplement supplied locations with a maximum-5 m rational frame grid; supplied points
-  // remain in the grid even where the architectural module is irregular.
+  // A vertical frame must use one coherent, rational support grid at a maximum of 5 m
+  // spacing. Room corners and stair corners are deliberately NOT added here — they
+  // bloated the column count into the 50+ range for a typical 7-room house.
+  //
+  // NOTE: `layout.floors[].columns` in this app is always populated by
+  // layoutGenerator.ts's `placeColumns()`, which places a column at every room-corner
+  // and wall junction for the architectural floor-plan drawing. That is NOT a
+  // genuinely user-supplied structural column layout (e.g. imported from a stamped
+  // structural drawing) — it is auto-generated architectural output and must not be
+  // folded into the structural grid, or the count balloons back into the 70-90 range.
+  // A hook for real user-authored structural columns would live on a distinct,
+  // explicitly-flagged field; no such field exists in this app's data model today,
+  // so the rational grid alone is the structural column layout.
   const xs = gridCoordinates(geometry.width, geometry.originX);
   const ys = gridCoordinates(geometry.depth, geometry.originY);
-  const points: Point[] = [...provided];
+  const points: Point[] = [];
   for (const x of xs) for (const y of ys) points.push({ x, y });
-  // Put support points at internal room intersections / stair corners, retaining only grid rationality.
-  for (const p of panels.filter((p) => panelUse(p).includes('stair'))) {
-    for (const x of [p.x, p.x + p.width]) for (const y of [p.y, p.y + p.depth]) points.push({ x, y });
-  }
   return uniquePoints(points);
 }
 function uniquePoints(points: Point[]): Point[] {
@@ -336,8 +339,8 @@ function slabMomentCoefficients(ratio: number): { short: number; long: number } 
 function designSlab(panel: Panel, materialsUsed: MaterialGrades, isRoof: boolean, roofAccessible: boolean): SlabDesignResult {
   const lx = Math.min(panel.width, panel.depth); const ly = Math.max(panel.width, panel.depth);
   const ratio = ly / lx; const oneWay = ratio > 2;
-  // L/26 assumes continuity, with conservative 125 mm practical minimum for RCC residential slabs.
-  const thickness = roundUp(Math.max(125, lx * 1000 / (oneWay ? 24 : 28)), 5);
+  // L/26 assumes continuity, with conservative 150 mm practical minimum for RCC residential slabs (IS 456).
+  const thickness = roundUp(Math.max(150, lx * 1000 / (oneWay ? 24 : 28)), 5);
   const cover = 20; const mainDia = 10; const d = thickness - cover - mainDia / 2;
   const dead = thickness / 1000 * RCC_DENSITY + FINISH_LOAD;
   const live = panelLiveLoad(panel, isRoof, roofAccessible);
@@ -535,7 +538,7 @@ function designStaircase(floorHeight: number, materialsUsed: MaterialGrades): St
     numRisers: risers, riserMm: riser, treadMm: tread, flightWidthMm: 1000, waistSlabThicknessMm: waist,
     effectiveSpanM: span, deadLoadKNm2: dead, liveLoadKNm2: live, factoredLoadKNm2: wu, maxMomentKNm: moment,
     mainBarDiaMm: main.dia, mainBarSpacingMm: main.spacing, distBarDiaMm: distribution.dia,
-    distBarSpacingMm: distribution.spacing, landingThicknessMm: Math.max(125, waist),
+    distBarSpacingMm: distribution.spacing, landingThicknessMm: Math.max(150, waist),
   };
 }
 function barWeightKgPerM(dia: number): number { return dia * dia / 162; }
@@ -568,7 +571,7 @@ export function designStructure(input: StructuralDesignInput): StructuralDesignR
   for (let floor = 0; floor < floorsCount; floor++) panelsByFloor.set(floor, makePanels(layout, floor, geometry));
   const basePanels = panelsByFloor.get(0) ?? [];
   const baseColumns = generateColumns(layout, 0, geometry, basePanels);
-  if ((floorFor(layout.floors, 0)?.columns.length ?? 0) < 4) warnings.push('Column grid was generated from building envelope at maximum 5 m spacing; verify all actual wall/support intersections.');
+  warnings.push('Column grid was generated from building envelope at maximum 5 m spacing; verify all actual wall/support intersections against the final architectural drawing.');
 
   const slabs: SlabDesignResult[] = [];
   for (let floor = 0; floor < floorsCount; floor++) {
@@ -673,7 +676,6 @@ export function designStructure(input: StructuralDesignInput): StructuralDesignR
     summary: { totalConcreteM3: totalConcrete, totalSteelKg: totalSteel, totalSteelMT: totalSteel / 1000,
       concreteBreakdown: { foundation: foundationConcrete, columns: columnConcrete, beams: beamConcrete, slabs: slabConcrete, staircase: staircaseConcrete, lintels },
       steelBreakdown: { foundation: foundationSteel, columns: columnSteel, beams: beamSteel, slabs: slabSteel, staircase: staircaseSteel } },
-    cityData: city,
     warnings, disclaimer: STRUCTURAL_DISCLAIMER,
   };
 }
