@@ -161,6 +161,13 @@ export default function HomePage() {
 
   // Restore from localStorage on mount
   useEffect(() => {
+    // When the user navigated directly to a sub-route (e.g. /interiors, /office),
+    // the URL-path useEffect above already set the correct mode. Skip restoring
+    // a stale localStorage snapshot so it doesn't override the URL-based mode.
+    const subRoutePaths = ['/interiors', '/office', '/room', '/upload'];
+    const isSubRoute = subRoutePaths.includes(window.location.pathname.replace(/\/$/, ''));
+    if (isSubRoute) return; // URL route takes priority — don't restore saved project
+
     try {
       const saved = localStorage.getItem('neevv_project_autosave');
       if (saved) {
