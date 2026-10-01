@@ -55,15 +55,39 @@ export default function HomePage() {
 
   // Wrap setMode to push browser history — back button returns to landing
   const setMode = useCallback((newMode: AppMode) => {
+    const modePathMap: Record<string, string> = {
+      'interior_only': '/interiors',
+      'office_design': '/office',
+      'room_design': '/room',
+      'upload_drawing': '/upload',
+      'new_build': '/',
+      'landing': '/',
+      'dashboard': '/',
+    };
+    const newPath = modePathMap[newMode] || '/';
     setModeRaw(prevMode => {
       if (newMode !== 'landing' && prevMode === 'landing') {
-        window.history.pushState({ mode: newMode }, '', window.location.pathname);
+        window.history.pushState({ mode: newMode }, '', newPath);
       } else if (newMode === 'landing') {
-        // When going to landing programmatically, replace state
-        window.history.replaceState({ mode: 'landing' }, '', window.location.pathname);
+        window.history.replaceState({ mode: 'landing' }, '', '/');
       }
       return newMode;
     });
+  }, []);
+
+  // Read URL path on mount to support direct navigation (e.g., /interiors, /office)
+  useEffect(() => {
+    const pathModeMap: Record<string, AppMode> = {
+      '/interiors': 'interior_only',
+      '/office': 'office_design',
+      '/room': 'room_design',
+      '/upload': 'upload_drawing',
+    };
+    const initialMode = pathModeMap[window.location.pathname.replace(/\/$/, '')];
+    if (initialMode) {
+      setModeRaw(initialMode);
+      window.history.replaceState({ mode: initialMode }, '', window.location.pathname);
+    }
   }, []);
   const [step, setStep] = useState<AppStep>('requirements');
   const [requirements, setRequirements] = useState<ProjectRequirements | null>(null);
@@ -178,13 +202,19 @@ export default function HomePage() {
       if (event.state?.mode) {
         setModeRaw(event.state.mode);
       } else {
-        // No state = initial landing page
-        setModeRaw('landing');
+        const pathModeMap: Record<string, AppMode> = {
+          '/interiors': 'interior_only',
+          '/office': 'office_design',
+          '/room': 'room_design',
+          '/upload': 'upload_drawing',
+        };
+        const urlMode = pathModeMap[window.location.pathname.replace(/\/$/, '')];
+        setModeRaw(urlMode || 'landing');
       }
     };
     window.addEventListener('popstate', handlePopState);
     // Set initial state for landing
-    window.history.replaceState({ mode: 'landing' }, '', window.location.pathname);
+    if (window.location.pathname === '/' || !window.history.state?.mode) window.history.replaceState({ mode: 'landing' }, '', window.location.pathname);
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
@@ -561,9 +591,11 @@ const BRAND_GREEN = '#4f6f52';
   /* ============ LANDING PAGE ============ */
   if (mode === 'landing') {
     const heroCards = [
-      { icon: <Home className="w-6 h-6" />, title: 'Design Your Home', subtitle: 'For homeowners & builders', desc: 'Your plot. Your layout. 21+ drawings ready for professional review — plans, structure, electrical, plumbing — ready in minutes.', onClick: () => { analytics.modeSelected('new_build'); setMode('new_build'); } },
-      { icon: <Palette className="w-6 h-6" />, title: 'Design Your Interiors', subtitle: 'For homeowners & designers', desc: 'Pick your style, materials, and finishes. See your room come to life in 3D.', onClick: () => { analytics.modeSelected('interior_only'); setMode('interior_only'); } },
-      { icon: <Building2 className="w-6 h-6" />, title: 'Design Your Workspace', subtitle: 'For businesses & teams', desc: 'Plan your office layout with fire safety, MEP, and NBC compliance built in.', onClick: () => { analytics.modeSelected('office_design'); setMode('office_design'); } },
+      { icon: <Home className="w-6 h-6" />, title: 'Design My Home', subtitle: 'For homeowners & builders', desc: 'Your plot. Your layout. 21+ preliminary drawings — plans, structure, electrical, plumbing — ready for professional review in minutes.', onClick: () => { analytics.modeSelected('new_build'); setMode('new_build'); } },
+      { icon: <Palette className="w-6 h-6" />, title: 'Home Interiors', subtitle: 'For homeowners & designers', desc: 'Pick your style, materials, and finishes. See every room come to life in 3D with coordinated plan, elevation, and renders.', onClick: () => { analytics.modeSelected('interior_only'); setMode('interior_only'); } },
+      { icon: <Building2 className="w-6 h-6" />, title: 'Office Interiors', subtitle: 'For businesses & teams', desc: 'Plan your office layout with MEP and NBC compliance built in.', onClick: () => { analytics.modeSelected('office_design'); setMode('office_design'); } },
+      { icon: <Sparkles className="w-6 h-6" />, title: 'Design a Room', subtitle: 'Quick start — most shareable', desc: 'Design any single room in minutes. Perfect for trying ideas fast.', onClick: () => { analytics.modeSelected('room_design'); setMode('room_design'); } },
+      { icon: <Upload className="w-6 h-6" />, title: 'Upload Your Plan', subtitle: 'For professionals', desc: 'Have an existing drawing? Upload it and get 3D renders, BOQ, and analysis.', onClick: () => { analytics.modeSelected('upload_drawing'); setMode('upload_drawing'); } },
     ];
 
     const featureItems = [

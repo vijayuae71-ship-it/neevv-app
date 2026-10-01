@@ -234,30 +234,41 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         {/* HERO CARDS */}
         <section className="py-10 md:py-14 bg-white">
           <div className="max-w-6xl mx-auto px-5 md:px-10">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {heroCards.map((c, i) => (
+            {/* TOP ROW — primary offerings */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+              {heroCards.slice(0, 2).map((c, i) => (
                 <Reveal key={c.title} delay={i * 80} className="h-full">
-                  <button onClick={c.onClick} className="group w-full text-left rounded-2xl p-6 flex flex-col h-full bg-white border border-gray-200 shadow-sm transition-all duration-300 hover:-translate-y-1.5 hover:shadow-xl hover:border-gray-300">
+                  <button onClick={c.onClick} className="group w-full text-left rounded-2xl p-6 md:p-7 flex flex-col h-full bg-white border border-gray-200 shadow-sm transition-all duration-300 hover:-translate-y-1.5 hover:shadow-xl hover:border-gray-300">
                     <div className="flex items-center gap-3 mb-3">
-                      <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: `${BRAND}12`, color: BRAND }}>{c.icon}</div>
-                      <div><h3 className="text-base font-bold text-gray-900">{c.title}</h3><p className="text-xs text-gray-400">{c.subtitle}</p></div>
+                      <div className="w-11 h-11 rounded-xl flex items-center justify-center" style={{ backgroundColor: i === 0 ? `${ACCENT}15` : `${BRAND}12`, color: i === 0 ? ACCENT : BRAND }}>{c.icon}</div>
+                      <div><h3 className="text-lg font-bold text-gray-900">{c.title}</h3><p className="text-xs text-gray-400">{c.subtitle}</p></div>
                     </div>
                     <p className="text-sm text-gray-600 leading-relaxed flex-1">{c.desc}</p>
                     <div className="mt-5 flex items-center justify-between">
-                      <span className="inline-flex items-center gap-2 text-sm font-semibold group-hover:gap-3 transition-all" style={{ color: ACCENT }}>Design my home — free <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" /></span>
+                      <span className="inline-flex items-center gap-2 text-sm font-semibold group-hover:gap-3 transition-all" style={{ color: i === 0 ? ACCENT : BRAND }}>{i === 0 ? 'Start designing' : 'Get started'} <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" /></span>
                       <span className="text-[10px] font-bold px-2.5 py-1 rounded-full" style={{ backgroundColor: `${BRAND}10`, color: BRAND }}>Free in beta</span>
                     </div>
                   </button>
                 </Reveal>
               ))}
             </div>
-            <Reveal delay={300}>
-              <div className="mt-7 flex flex-col sm:flex-row items-center justify-center gap-4">
-                <button onClick={onUploadClick} className="inline-flex items-center gap-2 text-sm font-medium text-gray-400 hover:text-gray-600 transition-colors"><Upload className="w-4 h-4" /> Already have a drawing? Upload it here <ArrowRight className="w-3.5 h-3.5" /></button>
-                <span className="hidden sm:inline text-gray-300">|</span>
-                <button onClick={onRoomDesignClick} className="inline-flex items-center gap-2 text-sm font-medium text-gray-400 hover:text-gray-600 transition-colors">🎨 Design a single room <ArrowRight className="w-3.5 h-3.5" /></button>
-              </div>
-            </Reveal>
+            {/* BOTTOM ROW — secondary offerings */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              {heroCards.slice(2, 5).map((c, i) => (
+                <Reveal key={c.title} delay={(i + 2) * 80} className="h-full">
+                  <button onClick={c.onClick} className="group w-full text-left rounded-2xl p-5 flex flex-col h-full bg-white border border-gray-200 shadow-sm transition-all duration-300 hover:-translate-y-1.5 hover:shadow-xl hover:border-gray-300">
+                    <div className="flex items-center gap-3 mb-2">
+                      <div className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ backgroundColor: `${BRAND}12`, color: BRAND }}>{c.icon}</div>
+                      <div><h3 className="text-sm font-bold text-gray-900">{c.title}</h3><p className="text-[11px] text-gray-400">{c.subtitle}</p></div>
+                    </div>
+                    <p className="text-xs text-gray-600 leading-relaxed flex-1">{c.desc}</p>
+                    <div className="mt-4 flex items-center">
+                      <span className="inline-flex items-center gap-1.5 text-xs font-semibold group-hover:gap-2.5 transition-all" style={{ color: BRAND }}>Get started <ArrowRight className="w-3.5 h-3.5 transition-transform group-hover:translate-x-1" /></span>
+                    </div>
+                  </button>
+                </Reveal>
+              ))}
+            </div>
           </div>
         </section>
 
