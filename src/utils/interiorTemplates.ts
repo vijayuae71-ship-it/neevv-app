@@ -645,6 +645,17 @@ export function mapRoomTypeToFinish(roomType: RoomType): RoomFinishType {
     case 'washroom_female':
     case 'washroom_accessible':
       return 'bathroom';
+    case 'cabin_manager':
+    case 'cabin_director':
+    case 'cabin_md':
+      return 'study';
+    case 'conference_small':
+    case 'conference_large':
+    case 'board_room':
+    case 'workstation_open':
+      return 'living';
+    case 'washroom_handicap':
+      return 'bathroom';
     default:
       return 'bedroom';
   }

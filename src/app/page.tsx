@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import type { RoomInterior } from '@/types';
 import { AppStep, ProjectRequirements, Layout, Column, BOQ, CustomRateSheet, OfficeRequirements } from '@/types';
 import { StepIndicator } from '@/components/StepIndicator';
 import { RequirementForm } from '@/components/RequirementForm';
@@ -10,6 +11,8 @@ import { IsometricView } from '@/components/IsometricView';
 import { WorkingDrawings } from '@/components/WorkingDrawings';
 import { BOQReport } from '@/components/BOQReport';
 import { InteriorDesign } from '@/components/InteriorDesign';
+import InteriorAIDrawings from '@/components/InteriorAIDrawings';
+import { mapRoomTypeToFinish, getDefaultFurniture, getDefaultMaterials, STYLE_TEMPLATES } from '@/utils/interiorTemplates';
 import { VerificationReport } from '@/components/VerificationReport';
 import ApartmentForm from '@/components/ApartmentForm';
 import { generateLayouts } from '@/utils/layoutGenerator';
@@ -717,7 +720,37 @@ const BRAND_GREEN = '#4f6f52';
             </span>
           </div>
           <div className="flex-1 overflow-y-auto">
-            <InteriorDesign layout={selectedLayout} requirements={requirements} />
+            {(() => {
+              const room = selectedLayout.floors[0]?.rooms[0];
+              if (!room) return null;
+              const styleKey = (roomDesignStyle in STYLE_TEMPLATES ? roomDesignStyle : 'modern_minimalist') as keyof typeof STYLE_TEMPLATES;
+              const finishType = mapRoomTypeToFinish(room.type);
+              const furniture = getDefaultFurniture(finishType, styleKey);
+              const materials = getDefaultMaterials(finishType, styleKey);
+              const selectionsMap: Record<string, RoomInterior> = {
+                [room.id]: {
+                  roomId: room.id,
+                  roomName: room.name,
+                  roomType: finishType,
+                  style: styleKey,
+                  palette: { ...STYLE_TEMPLATES[styleKey].palette },
+                  flooring: materials.flooring,
+                  wallFinish: materials.wallFinish,
+                  ceilingType: 'false_ceiling_peripheral',
+                  ceilingHeight: 2900,
+                  furniture: furniture.filter(fu => fu.defaultSelected !== false),
+                  electricalPoints: { switches: 2, sockets: 3, dataPoints: 1, lightPoints: 2, fanPoints: 1, acPoints: 0 },
+                  specialFeatures: [],
+                },
+              };
+              return (
+                <InteriorAIDrawings
+                  layout={selectedLayout}
+                  interiorSelections={selectionsMap}
+                  moodBoard={STYLE_TEMPLATES[styleKey]}
+                />
+              );
+            })()}
           </div>
         </div>
       );

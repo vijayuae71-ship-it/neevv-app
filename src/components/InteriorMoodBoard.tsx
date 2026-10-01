@@ -82,6 +82,14 @@ function buildRoomInterior(room: Room, style: InteriorStyle): RoomInterior {
   };
 }
 
+function initialExclusions(interiors: RoomInterior[]): Record<string, Set<string>> {
+  const out: Record<string, Set<string>> = {};
+  interiors.forEach(ri => {
+    out[ri.roomId] = new Set(ri.furniture.filter(fu => fu.defaultSelected === false).map(fu => fu.id));
+  });
+  return out;
+}
+
 function ColorSwatch({ color, size = 24, onClick }: { color: string; size?: number; onClick?: () => void }) {
   return (
     <div
@@ -115,7 +123,7 @@ export default function InteriorMoodBoard({ layout, onComplete }: Props) {
     setRoomInteriors(interiors);
     setSelectedRoomIdx(0);
     setConfiguredSet(new Set());
-    setExcludedFurniture({});
+    setExcludedFurniture(initialExclusions(interiors));
     setSubStep('customize');
   };
 
@@ -137,6 +145,7 @@ export default function InteriorMoodBoard({ layout, onComplete }: Props) {
     const rebuilt = buildRoomInterior(room, style);
     // keep special features
     rebuilt.specialFeatures = currentRoom.specialFeatures;
+    setExcludedFurniture(prev => ({ ...prev, ...initialExclusions([rebuilt]) }));
     setRoomInteriors(prev => {
       const next = [...prev];
       next[selectedRoomIdx] = rebuilt;
@@ -436,6 +445,27 @@ export default function InteriorMoodBoard({ layout, onComplete }: Props) {
                 </span>
               </div>
             </div>
+
+            {/* Tile Height — only for bathrooms */}
+            {mapRoomTypeToFinish(designableRooms[selectedRoomIdx]?.type) === 'bathroom' && (
+              <div>
+                <label className="text-sm font-semibold block mb-1">Tile Height</label>
+                <select
+                  className="select select-bordered select-sm w-full max-w-xs"
+                  value={currentRoom.wallFinish.name}
+                  onChange={e => updateCurrentRoom({ wallFinish: { ...currentRoom.wallFinish, name: e.target.value } })}
+                >
+                  <option value="Ceramic Wall Tiles — Skirting (150mm)">Skirting (150mm)</option>
+                  <option value="Ceramic Wall Tiles — Dado (900mm)">Dado (900mm)</option>
+                  <option value="Ceramic Wall Tiles — Half Wall (1200mm)">Half Wall (1200mm)</option>
+                  <option value="Ceramic Wall Tiles (up to 7 ft)">Up to 7 ft (2100mm)</option>
+                  <option value="Ceramic Wall Tiles — Floor to Ceiling">Floor to Ceiling</option>
+                  {![ 'Ceramic Wall Tiles — Skirting (150mm)','Ceramic Wall Tiles — Dado (900mm)','Ceramic Wall Tiles — Half Wall (1200mm)','Ceramic Wall Tiles (up to 7 ft)','Ceramic Wall Tiles — Floor to Ceiling'].includes(currentRoom.wallFinish.name) && (
+                    <option value={currentRoom.wallFinish.name}>{currentRoom.wallFinish.name}</option>
+                  )}
+                </select>
+              </div>
+            )}
 
             {/* Ceiling Type */}
             <div>
