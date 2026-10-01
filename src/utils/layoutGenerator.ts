@@ -306,8 +306,8 @@ function placeRoomsForStrategy(
   roomBudgets?: RoomAllocation[],
   outWarnings?: string[]
 ): Room[] {
-  const ox = snap(setbacks.left);
-  const oy = snap(setbacks.front);
+  const ox = 0;
+  const oy = 0;
 
   const getBudget = (type: string): RoomAllocation | undefined =>
     roomBudgets?.find(b => b.roomType === type);
@@ -856,8 +856,8 @@ function resolveOverlappingRooms(rooms: Room[], ox: number, oy: number, maxX: nu
  */
 function placeColumns(rooms: Room[], buildW: number, buildD: number, setbacks: Setbacks): Column[] {
   const columns: Column[] = [];
-  const ox = snap(setbacks.left);
-  const oy = snap(setbacks.front);
+  const ox = 0;
+  const oy = 0;
 
   const xCoords = new Set<number>();
   const yCoords = new Set<number>();

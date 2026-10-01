@@ -212,6 +212,10 @@ export function calculateBOQ(
   };
   const electricalPoints = allRooms.reduce((sum, r) => sum + (pointMap[r.type] || 2), 0);
 
+  // ────── ROOM TYPE FILTERS ──────
+  const halls = allRooms.filter(r => r.type === 'hall');
+  const dinings = allRooms.filter(r => r.type === 'dining');
+
   // ────── DOOR SCHEDULE ──────
   const doorSchedule: DoorScheduleItem[] = [];
   let dIdx = 1;
@@ -234,6 +238,12 @@ export function calculateBOQ(
   balconies.forEach(r => {
     doorSchedule.push({ mark: `D${dIdx++}`, location: r.name, type: 'Sliding UPVC', widthMM: 1800, heightMM: 2100, qty: 1, material: 'UPVC + Glass' });
   });
+  halls.forEach(r => {
+    doorSchedule.push({ mark: `D${dIdx++}`, location: r.name, type: 'Flush', widthMM: 900, heightMM: 2100, qty: 1, material: 'BWR Plywood' });
+  });
+  dinings.forEach(r => {
+    doorSchedule.push({ mark: `D${dIdx++}`, location: r.name, type: 'Flush', widthMM: 900, heightMM: 2100, qty: 1, material: 'BWR Plywood' });
+  });
 
   // ────── WINDOW SCHEDULE ──────
   const windowSchedule: WindowScheduleItem[] = [];
@@ -241,7 +251,6 @@ export function calculateBOQ(
   bedrooms.forEach(r => {
     windowSchedule.push({ mark: `W${wIdx++}`, location: r.name, type: 'Sliding 2-Track', widthMM: 1200, heightMM: 1200, qty: 1, material: 'UPVC + Glass' });
   });
-  const halls = allRooms.filter(r => r.type === 'hall');
   halls.forEach(r => {
     windowSchedule.push({ mark: `W${wIdx++}`, location: r.name, type: 'Sliding 3-Track', widthMM: 1800, heightMM: 1500, qty: 1, material: 'UPVC + Glass' });
   });
@@ -251,7 +260,6 @@ export function calculateBOQ(
   toilets.forEach(r => {
     windowSchedule.push({ mark: `W${wIdx++}`, location: r.name, type: 'Ventilator', widthMM: 600, heightMM: 450, qty: 1, material: 'UPVC' });
   });
-  const dinings = allRooms.filter(r => r.type === 'dining');
   dinings.forEach(r => {
     windowSchedule.push({ mark: `W${wIdx++}`, location: r.name, type: 'Sliding 2-Track', widthMM: 1200, heightMM: 1200, qty: 1, material: 'UPVC + Glass' });
   });

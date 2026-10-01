@@ -251,7 +251,9 @@ function expectedDoorCount(rooms: Room[]): number {
   const kitchens = rooms.filter(r => r.type === 'kitchen').length;
   const pujas = rooms.filter(r => r.type === 'puja').length;
   const balconies = rooms.filter(r => r.type === 'balcony').length;
-  return 1 /* main entrance */ + bedrooms + toilets + kitchens + pujas + balconies;
+  const halls = rooms.filter(r => r.type === 'hall').length;
+  const dinings = rooms.filter(r => r.type === 'dining').length;
+  return 1 /* main entrance */ + bedrooms + toilets + kitchens + pujas + balconies + halls + dinings;
 }
 
 /** Replicates the exact window-count logic in boqCalculator.ts so cross-checks never drift. */
