@@ -48,9 +48,10 @@ declare global {
 interface Props {
   layout: Layout;
   requirements: ProjectRequirements;
+  structuralResult?: any;
 }
 
-export const ModelARView: React.FC<Props> = ({ layout, requirements }) => {
+export const ModelARView: React.FC<Props> = ({ layout, requirements, structuralResult }) => {
   const modelRef = useRef<HTMLElement>(null);
   const [arSupported, setArSupported] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
@@ -64,12 +65,14 @@ export const ModelARView: React.FC<Props> = ({ layout, requirements }) => {
   const builtUpPerFloor = layout.effectivePerFloorSqFt || Math.round(buildW * buildD * 10.764);
   const totalBuiltUp = layout.totalBuiltUpSqFt || Math.round(layout.builtUpAreaSqM * 10.764);
 
-  // Material estimates (approximate)
-  const cementBags = Math.round(totalBuiltUp * 0.4);      // ~0.4 bags per sq.ft
-  const steelKg = Math.round(totalBuiltUp * 4.5);          // 4.5 kg/sq.ft
-  const bricks = Math.round(totalBuiltUp * 8);              // ~8 bricks per sq.ft
-  const sandCFT = Math.round(totalBuiltUp * 1.25);          // 1.25 CFT per sq.ft
-  const aggregateCFT = Math.round(totalBuiltUp * 0.85);     // 0.85 CFT per sq.ft
+  // Material estimates — use structural engine data when available, fall back to area-based
+  const cementBags = Math.round(totalBuiltUp * 0.4);
+  const steelKg = structuralResult?.summary?.totalSteelKg
+    ? Math.round(structuralResult.summary.totalSteelKg)
+    : Math.round(totalBuiltUp * 4.5);
+  const bricks = Math.round(totalBuiltUp * 8);
+  const sandCFT = Math.round(totalBuiltUp * 1.25);
+  const aggregateCFT = Math.round(totalBuiltUp * 0.85);
 
   useEffect(() => {
     const el = modelRef.current;

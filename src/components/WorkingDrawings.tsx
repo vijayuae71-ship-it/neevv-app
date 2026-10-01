@@ -22,6 +22,7 @@ interface Props {
   requirements: ProjectRequirements;
   boq?: BOQ | null;
   structuralResult?: any;
+  bbsResult?: any;
 }
 
 type DrawingType =
@@ -67,7 +68,7 @@ const aiDrawingMap: Record<DrawingType, string> = {
 /* Drawing types that differ between Ground Floor and First Floor and need separate generation/caching */
 const FLOOR_SPECIFIC: DrawingType[] = ['electrical', 'plumbing', 'tiling', 'brickwork'];
 
-export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq, onDrawingGenerated, structuralResult }) => {
+export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq, onDrawingGenerated, structuralResult, bbsResult }) => {
   const structuralOverlay = useMemo(() => {
     if (!structuralResult) return undefined;
     try {
@@ -102,6 +103,16 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq, on
       };
     } catch { return undefined; }
   }, [structuralResult]);
+
+  const mergedStructuralData = useMemo(() => {
+    if (!structuralResult) return undefined;
+    const merged = { ...structuralResult };
+    if (bbsResult?.entries) {
+      merged.bbsEntries = bbsResult.entries;
+      merged.bbsSummary = bbsResult.summary;
+    }
+    return merged;
+  }, [structuralResult, bbsResult]);
 
   const [activeDrawing, setActiveDrawing] = useState<DrawingType>('excavation');
   const [zoom, setZoom] = useState(100);
@@ -169,7 +180,7 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq, on
       // Use programmatic engine for coordinated drawing types (no AI, instant, accurate)
       const apiType = aiDrawingMap[drawingType];
       if (apiType && (PROGRAMMATIC_TYPES as readonly string[]).includes(apiType)) {
-        const dataUri = generateProgrammaticDrawing(apiType, layout, requirements, structuralResult, boq || null, FLOOR_SPECIFIC.includes(drawingType) ? selectedFloor : undefined);
+        const dataUri = generateProgrammaticDrawing(apiType, layout, requirements, mergedStructuralData, boq || null, FLOOR_SPECIFIC.includes(drawingType) ? selectedFloor : undefined);
         if (dataUri) {
           setAiImages(prev => ({ ...prev, [cacheKey]: dataUri }));
           saveDrawingToCache(cacheKey, dataUri);
@@ -220,7 +231,7 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq, on
     } finally {
       setAiLoading(null);
     }
-  }, [layout, requirements, boq, selectedFloor, structuralOverlay, structuralPromptData, getCacheKey, saveDrawingToCache, onDrawingGenerated]);
+  }, [layout, requirements, boq, selectedFloor, mergedStructuralData, structuralOverlay, structuralPromptData, getCacheKey, saveDrawingToCache, onDrawingGenerated]);
 
   /* ---------- Click handler for generate button ---------- */
   const handleGenerate = useCallback((drawingType: DrawingType) => {
@@ -250,7 +261,7 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq, on
         // Use programmatic engine for coordinated drawing types
         const apiTypeForGen = aiDrawingMap[dt];
         if (apiTypeForGen && (PROGRAMMATIC_TYPES as readonly string[]).includes(apiTypeForGen)) {
-          const dataUri = generateProgrammaticDrawing(apiTypeForGen, layout, requirements, structuralResult, boq || null, FLOOR_SPECIFIC.includes(dt) ? floor : undefined);
+          const dataUri = generateProgrammaticDrawing(apiTypeForGen, layout, requirements, mergedStructuralData, boq || null, FLOOR_SPECIFIC.includes(dt) ? floor : undefined);
           if (dataUri) {
             setAiImages(prev => ({ ...prev, [cacheKey]: dataUri }));
             saveDrawingToCache(cacheKey, dataUri);
@@ -301,7 +312,7 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq, on
     setAiLoading(null);
     setSelectedFloor('GF');
     setGeneratingAll(false);
-  }, [aiImages, layout, requirements, boq, structuralOverlay, structuralPromptData, isMultiFloor, getCacheKey, saveDrawingToCache, onDrawingGenerated]);
+  }, [aiImages, layout, requirements, boq, mergedStructuralData, structuralOverlay, structuralPromptData, isMultiFloor, getCacheKey, saveDrawingToCache, onDrawingGenerated]);
 
   /* ---------- PDF Export ---------- */
   const handleExportPDF = async () => {

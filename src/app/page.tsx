@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { AppStep, ProjectRequirements, Layout, BOQ, CustomRateSheet, OfficeRequirements } from '@/types';
+import { AppStep, ProjectRequirements, Layout, Column, BOQ, CustomRateSheet, OfficeRequirements } from '@/types';
 import { StepIndicator } from '@/components/StepIndicator';
 import { RequirementForm } from '@/components/RequirementForm';
 import { LayoutSelector } from '@/components/LayoutSelector';
@@ -238,6 +238,21 @@ export default function HomePage() {
           slabs: result.summary.steelBreakdown.slabs * steelScale,
           staircase: result.summary.steelBreakdown.staircase * steelScale,
         };
+      }
+
+      // === SINGLE SOURCE OF TRUTH: sync structural column grid to layout ===
+      // The structural engine produces the authoritative column grid (rational ~5m spacing).
+      // The layout generator's placeColumns() placed columns at every wall junction (~39),
+      // but those are architectural markers, not structural members. Overwrite with the
+      // engineered grid so every consumer (verification, drawings, BOQ) sees the same columns.
+      const engineColumns: Column[] = result.columns.map((c: any) => ({
+        x: c.x,
+        y: c.y,
+        widthMM: c.widthMm,
+        depthMM: c.depthMm,
+      }));
+      for (const floor of layout.floors) {
+        floor.columns = engineColumns;
       }
 
       setStructuralResult(result);
@@ -905,7 +920,7 @@ const BRAND_GREEN = '#4f6f52';
               <IsometricView layout={selectedLayout} requirements={requirements} structuralResult={structuralResult} />
             )}
             {step === 'working' && selectedLayout && requirements && (
-              <WorkingDrawings layout={selectedLayout} requirements={requirements} boq={boq} onDrawingGenerated={handleDrawingGenerated} structuralResult={structuralResult} />
+              <WorkingDrawings layout={selectedLayout} requirements={requirements} boq={boq} onDrawingGenerated={handleDrawingGenerated} structuralResult={structuralResult} bbsResult={bbsResult} />
             )}
             {step === 'rates' && selectedLayout && requirements && (
               <RateSheet

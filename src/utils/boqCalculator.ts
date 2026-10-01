@@ -150,15 +150,16 @@ export function calculateBOQ(
   // structural engine's own breakdown/total — no area-based formula may override them.
   // finiteNonNegative(..., 0) is a defensive guard against a malformed upstream value,
   // not a silent revert to the estimated formula.
-  const foundationConcrete = structuralResult ? finiteNonNegative(engineeredBreakdown?.foundation, 0) : estimatedFoundationConcrete;
+  const foundationConcrete = +(structuralResult ? finiteNonNegative(engineeredBreakdown?.foundation, 0) : estimatedFoundationConcrete).toFixed(2);
   const columnConcrete = +(structuralResult ? finiteNonNegative(engineeredBreakdown?.columns, 0) : estimatedColumnConcrete).toFixed(2);
   const beamConcrete = +(structuralResult ? finiteNonNegative(engineeredBreakdown?.beams, 0) : estimatedBeamConcrete).toFixed(2);
   const slabConcrete = +(structuralResult ? finiteNonNegative(engineeredBreakdown?.slabs, 0) : estimatedSlabConcrete).toFixed(2);
   const stairConcrete = +(structuralResult ? finiteNonNegative(engineeredBreakdown?.staircase, 0) : estimatedStairConcrete).toFixed(2);
   const lintelConcrete = +(structuralResult ? finiteNonNegative(engineeredBreakdown?.lintels, 0) : estimatedLintelConcrete).toFixed(2);
-  const totalConcrete = structuralResult
+  let totalConcrete = structuralResult
     ? finiteNonNegative(structuralResult.summary.totalConcreteM3, foundationConcrete + columnConcrete + beamConcrete + slabConcrete + stairConcrete + lintelConcrete)
     : estimatedTotalConcrete;
+  totalConcrete = +totalConcrete.toFixed(1);
 
   // Steel: when a structural result is supplied, the structural engine's own total is the
   // ONLY authoritative source for the BOQ headline figure — no area-based formula may
