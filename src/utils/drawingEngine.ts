@@ -881,9 +881,25 @@ function columnDetail(k: Context): void {
     'Bar laps, development and hooks require design review.'], 1090, 1130, 15, 23);
 }
 
+
+/** Map bbsGenerator.ts field names to drawingEngine conventions. */
+function normalizeBBSRow(r: Data): Data {
+  const totalLenMm = typeof r.totalLengthM === 'number' ? r.totalLengthM * 1000 : undefined;
+  return { ...r,
+    diameter: r.diameter ?? r.barDiaMm ?? r.diaMm,
+    noOfBars: r.noOfBars ?? r.numberOfBars,
+    cuttingLength: r.cuttingLength ?? r.barLengthMm,
+    totalLength: r.totalLength ?? totalLenMm,
+    weight: r.weight ?? r.totalWeightKg,
+    barMark: r.barMark ?? r.barMarkNo,
+    member: r.member ?? r.memberDescription,
+    shape: r.shape ?? r.barShape,
+  };
+}
+
 /* 6. Data-driven bar bending schedule. Never invent entry quantities. */
 function barBending(k: Context): void {
-  const c = k.c, raw = list(k.data.bbsEntries).map(obj);
+  const c = k.c, raw = list(k.data.bbsEntries).map(obj).map(normalizeBBSRow);
   const columns = [110, 205, 360, 685, 810, 960, 1125, 1310, 1530, 1840];
   const headers = ['S.No', 'Bar Mark', 'Member', 'Dia', 'Shape', 'No.Bars', 'Cut Length', 'Total Length', 'Weight'];
   label(c, 'BAR BENDING SCHEDULE — ALL LENGTHS IN mm', 120, 150, 28, 'left', COLORS.green, true);

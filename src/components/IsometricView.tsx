@@ -10,11 +10,11 @@ import { Box, Sparkles, Ruler, Smartphone } from 'lucide-react';
 /** Floating dimension info panel */
 const DimensionPanel: React.FC<{ layout: Layout; requirements: ProjectRequirements; structuralResult?: any }> = ({ layout, requirements, structuralResult }) => {
   // Use layout's authoritative computed values — single source of truth
-  const numFloors = layout.numFloors || layout.floors.length;
-  const setbacks = layout.setbacks;
+    const setbacks = layout.setbacks;
   const buildW = layout.buildableWidthM;
   const buildD = layout.buildableDepthM;
-  const builtUpPerFloor = layout.effectivePerFloorSqFt || Math.round(buildW * buildD * 10.764);
+  const numFloors = requirements?.floors?.length || 1;
+  const builtUpPerFloor = layout.effectivePerFloorSqFt || Math.round((layout.builtUpAreaSqM / numFloors) * 10.764);
   const totalBuiltUp = layout.totalBuiltUpSqFt || Math.round(layout.builtUpAreaSqM * 10.764);
   const totalHeight = numFloors * 3;
   const slabThicknessMm = structuralResult?.slabs?.[0]?.thicknessMm ?? 150;

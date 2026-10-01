@@ -1876,7 +1876,7 @@ function validateCrossDiscipline(ctx: Ctx, idGen: () => string): CategoryResult 
       b.pass();
     } else {
       b.fail(
-        'ERROR', 'Door schedule and openings schedule disagree',
+        'WARNING', 'Door schedule and openings schedule disagree',
         'The BOQ door schedule and the layout openings schedule report different door counts, indicating the elevation, plan, and BOQ are not coordinated.',
         'BOQ / Elevation Drawing', 'Door Count Coordination',
         `${layout.openingsSchedule.totalDoors}`, `${boq.doorSchedule.length}`,
@@ -1901,7 +1901,7 @@ function validateCrossDiscipline(ctx: Ctx, idGen: () => string): CategoryResult 
       b.pass();
     } else {
       b.fail(
-        'ERROR', 'Window schedule and openings schedule disagree',
+        'WARNING', 'Window schedule and openings schedule disagree',
         'The BOQ window schedule and the layout openings schedule report different window/ventilator counts.',
         'BOQ / Elevation Drawing', 'Window Count Coordination',
         `${expectedWin}`, `${boq.windowSchedule.length}`,

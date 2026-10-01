@@ -403,7 +403,7 @@ export const BOQReport: React.FC<Props> = ({ boq, layout }) => {
                     <li>Floor-to-floor: 3.0m (clear 2.7m)</li>
                     <li>Foundation: Isolated footings, SBC 150 kN/m²</li>
                     <li>Steel ratio: {boq.steelKgPerSqFt ?? 4.5} kg/sqft ({boq.quantityBasis === 'engineered' ? 'engineered' : 'estimated, residential G+1/G+2'})</li>
-                    <li>Rates: South India 2024-25 average (±15% variation)</li>
+                    <li>Rates: India 2024-25 market average (±15% regional variation)</li>
                     <li>Excludes: Furniture, modular kitchen, AC, interiors</li>
                   </ul>
                 </div>

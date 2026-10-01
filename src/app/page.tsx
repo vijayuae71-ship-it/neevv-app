@@ -551,8 +551,8 @@ const BRAND_GREEN = '#4f6f52';
     ];
 
     const showcaseItems = [
-      { title: 'Floor Plan', src: SHOWCASE_FLOORPLAN, category: 'Architectural' },
-      { title: 'Front Elevation', src: SHOWCASE_ELEVATION, category: 'Architectural' },
+      { title: 'Floor Plan', src: SHOWCASE_FLOORPLAN, category: 'Design' },
+      { title: 'Front Elevation', src: SHOWCASE_ELEVATION, category: 'Design' },
       { title: '3D Exterior Render', src: SHOWCASE_3DRENDER, category: 'Visualization' },
       { title: 'Electrical Layout', src: SHOWCASE_ELECTRICAL, category: 'MEP' },
       { title: 'Plumbing Layout', src: SHOWCASE_PLUMBING, category: 'MEP' },
