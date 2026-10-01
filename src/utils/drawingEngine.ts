@@ -1047,7 +1047,8 @@ function sectionAA(k: Context): void {
       const center = project(room.x + room.w / 2, baseZ + 1250);
       const span = room.w * s;
       if (span > 60) {
-        label(c, room.source.name.toUpperCase(), center.x, center.y, Math.min(15, span / 10), 'center');
+        const roomLabel = room.source.name.replace(/\s*\(.*?\)\s*/g, '').trim().toUpperCase();
+        label(c, roomLabel, center.x, center.y, Math.min(15, span / 10), 'center');
         label(c, `${round(room.w)} mm`, center.x, center.y + 19, 12, 'center', COLORS.dim);
       }
     }
@@ -1144,7 +1145,8 @@ function frontElevation(k: Context): void {
   if (!front.length) label(c, 'No front-wall entries in schedule.', 1715, 604, 14);
   front.slice(0, 12).forEach((o, i) => {
     const mark = o.source.type === 'door' ? 'D' : o.source.type === 'window' ? 'W' : 'V';
-    label(c, `${mark}${i + 1} ${o.room.source.name.slice(0, 11)} ${round(o.a - b.x)}–${round(o.b - b.x)} mm`,
+    const elevRoomName = o.room.source.name.replace(/\s*\(.*?\)\s*/g, '').trim().slice(0, 11);
+    label(c, `${mark}${i + 1} ${elevRoomName} ${round(o.a - b.x)}–${round(o.b - b.x)} mm`,
       1715, 605 + i * 25, 13);
     label(c, `SILL ${round(o.source.sillHeightMm)} / HEIGHT ${round(o.source.heightMm)} mm`,
       1728, 620 + i * 25, 11, 'left', COLORS.dim);

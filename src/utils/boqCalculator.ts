@@ -166,7 +166,13 @@ export function calculateBOQ(
   // from the SAME structural result; its own report always displays its own total, and
   // callers must pass the current structuralResult/bbsResult pair together so the two
   // stay in lockstep (see page.tsx call sites).
-  const steelKg = structuralResult ? finiteNonNegative(structuralResult.summary.totalSteelKg, 0) : totalBuiltUpSqFt * 4.5;
+  // BBS is the authoritative procurement quantity — it includes development lengths,
+  // laps, hooks, and wastage that the engine's design total intentionally omits.
+  // Use BBS directly when available, falling back to structural engine, then area estimate.
+  const steelKg = bbsResult && Number.isFinite(bbsResult.totalSteelKg) && bbsResult.totalSteelKg > 0
+    ? bbsResult.totalSteelKg
+    : structuralResult ? finiteNonNegative(structuralResult.summary.totalSteelKg, 0)
+    : totalBuiltUpSqFt * 4.5;
   const steelMT = +(steelKg / 1000).toFixed(2);
   const actualColumnCount = structuralResult?.columns.length;
   const beamSizes = structuralResult ? uniqueMemberSizes(structuralResult.beams) : undefined;
@@ -453,7 +459,8 @@ export function calculateBOQ(
       // Steel is always sourced from the structural engine's own summary when a
       // structural result is supplied (see steelKg above); bbsResult is retained in the
       // signature for callers, but no longer selects a different steel figure here.
-      steelSource: !structuralResult ? 'area-estimate' : 'structural-summary',
+      steelSource: bbsResult && Number.isFinite(bbsResult.totalSteelKg) && bbsResult.totalSteelKg > 0
+        ? 'bbs' : !structuralResult ? 'area-estimate' : 'structural-summary',
     },
   };
 }
