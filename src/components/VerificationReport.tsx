@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { Layout, ProjectRequirements, BOQ } from '../types';
 import {
   runVerification,
@@ -29,6 +29,7 @@ interface Props {
   requirements: ProjectRequirements;
   boq: BOQ | null;
   generatedDrawingTypes: string[];
+  onValidationResult?: (report: VReport) => void;
 }
 
 /* =============================================================================
@@ -172,7 +173,7 @@ function buildReportText(report: VReport): string {
         lines.push(`    Affected Object: ${issue.affectedObject}`);
         lines.push(`    Expected Value: ${issue.expectedValue}`);
         lines.push(`    Generated Value: ${issue.generatedValue}`);
-        lines.push(`    Suggested Correction: ${issue.suggestedCorrection}`);
+        lines.push(`    What you can do: ${issue.suggestion}`);
         lines.push('');
       });
     }
@@ -303,8 +304,8 @@ const IssueCard: React.FC<{
                 </div>
               </div>
               <div className="sm:col-span-2 bg-blue-50 border border-blue-200 rounded-lg p-2.5">
-                <div className="text-blue-600 uppercase tracking-wide text-[10px] font-bold mb-1">Suggested Correction</div>
-                <div className="text-blue-800 font-medium break-words">{issue.suggestedCorrection}</div>
+                <div className="text-blue-600 uppercase tracking-wide text-[10px] font-bold mb-1">What you can do</div>
+                <div className="text-blue-800 font-medium break-words">{issue.suggestion}</div>
               </div>
             </div>
           </div>
@@ -408,7 +409,7 @@ const CategoryAccordionItem: React.FC<{
  * MAIN COMPONENT
  * ========================================================================== */
 
-export const VerificationReport: React.FC<Props> = ({ layout, requirements, boq, generatedDrawingTypes }) => {
+export const VerificationReport: React.FC<Props> = ({ layout, requirements, boq, generatedDrawingTypes, onValidationResult }) => {
   const [refreshKey, setRefreshKey] = useState(0);
   const [isRerunning, setIsRerunning] = useState(false);
 
@@ -417,6 +418,10 @@ export const VerificationReport: React.FC<Props> = ({ layout, requirements, boq,
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [layout, requirements, boq, generatedDrawingTypes, refreshKey],
   );
+
+  useEffect(() => {
+    onValidationResult?.(report);
+  }, [report, onValidationResult]);
 
   const [expandedCategories, setExpandedCategories] = useState<Set<VerificationCategory>>(
     () => new Set(report.categories.filter((c) => c.status === 'ERROR' || c.status === 'BLOCKED').map((c) => c.category)),

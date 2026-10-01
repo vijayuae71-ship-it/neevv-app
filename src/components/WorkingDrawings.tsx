@@ -23,6 +23,7 @@ interface Props {
   boq?: BOQ | null;
   structuralResult?: any;
   bbsResult?: any;
+  statusBadge?: React.ReactNode;
 }
 
 type DrawingType =
@@ -68,7 +69,7 @@ const aiDrawingMap: Record<DrawingType, string> = {
 /* Drawing types that differ between Ground Floor and First Floor and need separate generation/caching */
 const FLOOR_SPECIFIC: DrawingType[] = ['electrical', 'plumbing', 'tiling', 'brickwork'];
 
-export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq, onDrawingGenerated, structuralResult, bbsResult }) => {
+export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq, onDrawingGenerated, structuralResult, bbsResult, statusBadge }) => {
   const structuralOverlay = useMemo(() => {
     if (!structuralResult) return undefined;
     try {
@@ -436,6 +437,7 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq, on
           <Sparkles size={10} className="inline mr-1" />
           {generatedCount}/{totalDrawings} generated
         </span>
+        {statusBadge}
         <div className="w-20 bg-gray-200 rounded-full h-1.5">
           <div className="bg-green-500 h-1.5 rounded-full transition-all" style={{ width: `${(generatedCount / totalDrawings) * 100}%` }} />
         </div>
@@ -530,13 +532,14 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq, on
                 Generating {activeTab?.label || activeDrawing}...
               </p>
               <p className="text-xs text-gray-400 mt-2">
-                Professional architectural drawing with NBC 2016 compliance
+                Preliminary design drawing per NBC 2016 guidelines
               </p>
             </div>
           </div>
         ) : activeImage ? (
           /* Generated image */
-          <div className="flex justify-center">
+          <div className="flex flex-col items-center gap-2">
+            {statusBadge}
             <img
               src={activeImage}
               alt={activeTab?.label || activeDrawing}
@@ -555,6 +558,7 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq, on
             </div>
             <div className="text-center max-w-md">
               <h3 className="text-lg font-semibold text-gray-700">{activeTab?.label || activeDrawing}</h3>
+              {statusBadge}
               <p className="text-sm text-gray-500 mt-1">{descriptions[activeDrawing]}</p>
             </div>
 

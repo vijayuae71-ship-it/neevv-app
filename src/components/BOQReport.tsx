@@ -7,6 +7,7 @@ import { Package, Zap, Droplets, Building2, Ruler, Layers, DoorOpen, PieChart, I
 interface Props {
   boq: BOQ;
   layout: Layout;
+  statusBadge?: React.ReactNode;
 }
 
 type BOQTab = 'summary' | 'itemized' | 'doors_windows' | 'concrete' | 'cost';
@@ -21,8 +22,11 @@ const CAT_LABELS: Record<string, string> = {
 };
 
 const formatINR = (n: number) => '₹' + n.toLocaleString('en-IN');
+const formatCostRange = (n: number) => `₹${(n * 0.9 / 100000).toFixed(1)} – ${(n * 1.1 / 100000).toFixed(1)} lakh`;
+const formatPerSqFtRange = (n: number) => `₹${Math.round(n * 0.9).toLocaleString('en-IN')}–${Math.round(n * 1.1).toLocaleString('en-IN')}`;
+const COST_NOTE = 'Estimate based on 2024-25 market averages. Actual costs vary by location, contractor and material choices.';
 
-export const BOQReport: React.FC<Props> = ({ boq, layout }) => {
+export const BOQReport: React.FC<Props> = ({ boq, layout, statusBadge }) => {
   const [tab, setTab] = useState<BOQTab>('summary');
 
   const tabs: { id: BOQTab; label: string; icon: React.ReactNode }[] = [
@@ -47,6 +51,7 @@ export const BOQReport: React.FC<Props> = ({ boq, layout }) => {
         <span className="text-xs font-bold uppercase tracking-wider text-gray-600 mr-2">
           <Package size={12} className="inline mr-1" />BILL OF QUANTITIES
         </span>
+        {statusBadge}
         {tabs.map(t => (
           <button key={t.id} className={`btn btn-xs ${tab === t.id ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setTab(t.id)}>
             {t.icon}<span className="ml-1">{t.label}</span>
@@ -59,6 +64,7 @@ export const BOQReport: React.FC<Props> = ({ boq, layout }) => {
           <div className="text-xs text-gray-500 font-mono">
             {layout.name} • {boq.numFloors} floor(s) • {boq.totalBuiltUpAreaSqFt.toLocaleString()} sqft total built-up • Rates: 2024-25 market average
           </div>
+          <p className="text-xs text-amber-800 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2">{COST_NOTE} Total estimate shown as a ±10% range; itemized quantities and rates are indicative.</p>
 
           {/* ─── SUMMARY TAB ─── */}
           {tab === 'summary' && (
@@ -128,11 +134,11 @@ export const BOQReport: React.FC<Props> = ({ boq, layout }) => {
                   <div className="flex justify-between items-center">
                     <div>
                       <div className="text-xs opacity-70">Estimated Construction Cost</div>
-                      <div className="text-2xl font-bold">{formatINR(boq.totalCost)}</div>
+                      <div className="text-2xl font-bold">{formatCostRange(boq.totalCost)}</div>
                     </div>
                     <div className="text-right">
                       <div className="text-xs opacity-70">Cost per Sqft</div>
-                      <div className="text-lg font-bold">{formatINR(boq.costPerSqFt)}/sqft</div>
+                      <div className="text-lg font-bold">{formatPerSqFtRange(boq.costPerSqFt)}/sqft</div>
                     </div>
                   </div>
                 </div>
@@ -183,7 +189,7 @@ export const BOQReport: React.FC<Props> = ({ boq, layout }) => {
               <div className="card bg-blue-600 text-white">
                 <div className="card-body p-3 flex-row justify-between items-center">
                   <span className="font-bold">GRAND TOTAL</span>
-                  <span className="text-xl font-bold">{formatINR(boq.totalCost)}</span>
+                  <span className="text-xl font-bold">{formatCostRange(boq.totalCost)}</span>
                 </div>
               </div>
             </>
@@ -347,7 +353,7 @@ export const BOQReport: React.FC<Props> = ({ boq, layout }) => {
                         })}
                         <tr className="font-bold bg-gray-200">
                           <td>Material + Labour (Base)</td>
-                          <td className="text-right font-mono">{formatINR(boq.totalCost)}</td>
+                          <td className="text-right font-mono">{formatCostRange(boq.totalCost)}</td>
                           <td className="text-right font-mono">100%</td>
                         </tr>
                       </tbody>
@@ -381,11 +387,11 @@ export const BOQReport: React.FC<Props> = ({ boq, layout }) => {
                   <div className="flex justify-between items-center">
                     <div>
                       <div className="text-xs opacity-70">Base Construction Cost</div>
-                      <div className="text-2xl font-bold">{formatINR(boq.totalCost)}</div>
+                      <div className="text-2xl font-bold">{formatCostRange(boq.totalCost)}</div>
                     </div>
                     <div className="text-right">
                       <div className="text-xs opacity-70">Per Sqft</div>
-                      <div className="text-lg font-bold">{formatINR(boq.costPerSqFt)}</div>
+                      <div className="text-lg font-bold">{formatPerSqFtRange(boq.costPerSqFt)}</div>
                     </div>
                   </div>
                 </div>

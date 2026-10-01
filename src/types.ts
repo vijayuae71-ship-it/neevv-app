@@ -272,7 +272,9 @@ export interface MaterialSpec {
 export interface FurnitureItem {
   id: string;
   name: string;
-  category: 'bed' | 'sofa' | 'dining_table' | 'wardrobe' | 'tv_unit' | 'study_table' | 'dressing' | 'shoe_rack' | 'kitchen_cabinet' | 'crockery' | 'pooja_unit' | 'console' | 'side_table' | 'bookshelf' | 'bar_unit';
+  category: 'bed' | 'sofa' | 'dining_table' | 'wardrobe' | 'tv_unit' | 'study_table' | 'dressing' | 'shoe_rack' | 'kitchen_cabinet' | 'crockery' | 'pooja_unit' | 'console' | 'side_table' | 'bookshelf' | 'bar_unit' | 'bathroom_fixture' | 'chair';
+  /** Only items explicitly selected are included in the initial interior BOQ. */
+  defaultSelected?: boolean;
   widthMM: number;
   depthMM: number;
   heightMM: number;

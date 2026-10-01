@@ -188,7 +188,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               </Reveal>
               <Reveal delay={110}>
                 <p className="mt-6 max-w-xl text-base md:text-lg text-gray-700 leading-relaxed">
-                  Tell us your plot size and what you need. Today you will have it in 3D, every drawing your builder works from, and the material list to check his quote against.
+                  Tell us your plot size and what you need. Preview your home in 3D, review the preliminary drawings with a licensed professional, and use the material list to discuss your builder’s quote.
                 </p>
               </Reveal>
               <Reveal delay={160}>
@@ -218,8 +218,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             {[
               { value: '21+ drawings', label: 'Plans, structure, electrical, plumbing' },
               { value: '3D before you build', label: 'Walk it before a brick is laid' },
-              { value: 'Costed to the rupee', label: 'Know what materials should cost' },
-              { value: 'NBC 2016 & Vastu', label: 'Built to pass, placed the way you expect' },
+              { value: 'Indicative cost range', label: 'Compare assumptions with local quotes' },
+              { value: 'NBC 2016 & Vastu', label: 'Designed per NBC 2016 guidelines, with Vastu in mind' },
             ].map((item, i) => (
               <Reveal key={item.value} delay={i * 50}>
                 <div className="text-left md:text-center">
@@ -389,7 +389,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         {/* DELIVERABLES */}
         <section id="deliverables" className="py-14 md:py-18 bg-white">
           <div className="max-w-4xl mx-auto px-5 md:px-10">
-            <Reveal><div className="text-center mb-8"><h2 className="text-2xl md:text-4xl font-extrabold text-gray-900 tracking-tight">Everything you need to start building</h2><p className="mt-2 text-gray-500 text-sm md:text-base">21+ coordinated drawings from one locked layout</p></div></Reveal>
+            <Reveal><div className="text-center mb-8"><h2 className="text-2xl md:text-4xl font-extrabold text-gray-900 tracking-tight">Preliminary documents for professional review</h2><p className="mt-2 text-gray-500 text-sm md:text-base">21+ coordinated drawings from one locked layout</p></div></Reveal>
             <Reveal delay={60}>
               <div className="flex justify-center gap-2 mb-6 overflow-x-auto">
                 {tabData.map((tab, i) => (
@@ -413,11 +413,11 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         {/* WHY TRUST */}
         <section className="py-14 md:py-18" style={{ backgroundColor: '#f9faf9' }}>
           <div className="max-w-4xl mx-auto px-5 md:px-10">
-            <Reveal><div className="text-center mb-10"><h2 className="text-2xl md:text-4xl font-extrabold text-gray-900 tracking-tight">Your designs, engineered to perfection</h2><p className="mt-2 text-gray-500 text-sm md:text-base">Every number is calculated, never guessed</p></div></Reveal>
+            <Reveal><div className="text-center mb-10"><h2 className="text-2xl md:text-4xl font-extrabold text-gray-900 tracking-tight">Your designs, engineered for accuracy</h2><p className="mt-2 text-gray-500 text-sm md:text-base">Computed values for preliminary review; verify all assumptions locally</p></div></Reveal>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
               {[
                 { title: 'Engineered precision', desc: 'Programmatic overlays stamp all computed values — FSI, setbacks, areas. AI draws, code calculates.' },
-                { title: 'NBC 2016 & IS standards', desc: 'Setbacks, coverage ratios, line weights, hatching — all built into every drawing automatically.' },
+                { title: 'NBC 2016 & IS standards', desc: 'Preliminary setbacks and coverage checks follow NBC 2016 guidance; local rules and professional review still apply.' },
                 { title: 'Locked layout consistency', desc: 'Pick one plan — all 21+ drawings, elevations, and BOQ follow it exactly. No drift.' },
               ].map((item, i) => (
                 <Reveal key={item.title} delay={i * 80}>

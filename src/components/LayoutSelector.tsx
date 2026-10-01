@@ -12,6 +12,7 @@ interface Props {
   onSelect: (layout: Layout) => void;
   vastuEnabled: boolean;
   requirements: ProjectRequirements;
+  layoutLocked?: boolean;
 }
 
 function buildLayoutPrompt(layout: Layout, requirements: ProjectRequirements): string {
@@ -69,7 +70,7 @@ IMPORTANT: Use building footprint (post-setback dimensions), not raw plot size f
 The Schedule of Openings table MUST appear clearly on every layout — position it in an empty area of the drawing.`;
 }
 
-export const LayoutSelector: React.FC<Props> = ({ layouts, onSelect, vastuEnabled, requirements }) => {
+export const LayoutSelector: React.FC<Props> = ({ layouts, onSelect, vastuEnabled, requirements, layoutLocked = false }) => {
   const [planImages, setPlanImages] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState<Record<string, boolean>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -142,11 +143,32 @@ export const LayoutSelector: React.FC<Props> = ({ layouts, onSelect, vastuEnable
             <div
               key={layout.id}
               className="bg-white border-2 rounded-xl overflow-hidden transition-all hover:shadow-lg cursor-pointer group"
-              style={{ borderColor: '#e5e5e5' }}
+              style={{ borderColor: '#e5e5e5', position: 'relative' }}
               onClick={() => !loading[layout.id] && onSelect({ ...layout, designSeed: generateDesignSeed(), openingsSchedule: extractOpeningsSchedule(layout) })}
               onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = '#4f6f52'; }}
               onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = '#e5e5e5'; }}
             >
+              {!layoutLocked && (
+                <span
+                  role="status"
+                  style={{
+                    position: 'absolute',
+                    top: 8,
+                    right: 8,
+                    zIndex: 1,
+                    display: 'inline-block',
+                    padding: '4px 8px',
+                    borderRadius: 9999,
+                    border: '1px solid #fde047',
+                    backgroundColor: '#fef9c3',
+                    color: '#713f12',
+                    fontSize: 10,
+                    fontWeight: 600,
+                  }}
+                >
+                  Concept — not for construction
+                </span>
+              )}
               {/* Floor Plan Image */}
               <div className="bg-white p-2 border-b flex items-center justify-center" style={{ minHeight: '300px' }}>
                 {loading[layout.id] ? (

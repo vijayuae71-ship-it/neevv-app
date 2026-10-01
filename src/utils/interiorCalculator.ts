@@ -430,6 +430,9 @@ export function generateInteriorBOQ(
 
     /* ---------- 4. WOODWORK ---------- */
     for (const furn of room.furniture) {
+      // Only explicitly selected essentials enter the initial estimate.
+      // A user can opt into any upgrade by setting defaultSelected to true.
+      if (furn.defaultSelected !== true) continue;
       addItem('woodwork', furn.name, roomLabel, 1, 'nos', furn.estimatedCost, furn.material);
     }
 

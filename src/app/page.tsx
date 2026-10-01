@@ -24,6 +24,7 @@ import { OfficeWorkingDrawings } from '@/components/OfficeWorkingDrawings';
 import { OfficeBOQReport } from '@/components/OfficeBOQReport';
 import { RateSheet } from '@/components/RateSheet';
 import { LandingPage } from '@/components/LandingPage';
+import type { VerificationReport as VerificationResult } from '@/utils/verificationEngine';
 import { Dashboard, SavedProject } from '@/components/Dashboard';
 import { useProjectAutoSave } from '@/hooks/useProjectAutoSave';
 import { Home, Palette, Upload, ArrowRight, CheckCircle, Zap, Users, Clock, Building, Hammer, Compass, Star, FileText, Eye, Building2, ShieldCheck, ClipboardList, Layers, FileStack, Lock, Sparkles, ChevronLeft, ChevronRight, Boxes, Wrench, HardHat, CheckCircle2, Award, Briefcase, Ruler, LayoutDashboard } from 'lucide-react';
@@ -34,6 +35,17 @@ import { generateBBS, type BBSResult } from '@/utils/bbsGenerator';
 import { getDefaultCityData } from '@/utils/indianCityData';
 
 type AppMode = 'landing' | 'new_build' | 'interior_only' | 'upload_drawing' | 'office_design' | 'room_design' | 'dashboard';
+
+type DesignStatus = 'concept' | 'draft' | 'validated';
+
+function DesignStatusBadge({ status }: { status: DesignStatus }) {
+  const label = status === 'concept'
+    ? 'Concept — not for construction'
+    : status === 'validated'
+      ? 'Draft — validation passed, requires professional review'
+      : 'Draft — requires professional review';
+  return <span role="status" className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold ${status === 'concept' ? 'border-yellow-300 bg-yellow-50 text-yellow-900' : 'border-orange-300 bg-orange-50 text-orange-900'}`}>{label}</span>;
+}
 
 export default function HomePage() {
   const { user, loading: authLoading, signInWithGoogle, signOut } = useAuth();
@@ -70,6 +82,12 @@ export default function HomePage() {
   const [generatedDrawingTypes, setGeneratedDrawingTypes] = useState<string[]>([]);
   const [structuralResult, setStructuralResult] = useState<StructuralDesignResult | null>(null);
   const [bbsResult, setBBSResult] = useState<BBSResult | null>(null);
+  const [validationPassed, setValidationPassed] = useState(false);
+  const designStatus: DesignStatus = !motherLayoutLocked ? 'concept' : validationPassed ? 'validated' : 'draft';
+  const statusBadge = <DesignStatusBadge status={designStatus} />;
+  const handleValidationResult = useCallback((report: VerificationResult) => {
+    setValidationPassed(report.errorCount === 0 && report.blockedCount === 0);
+  }, []);
 
   const { projectId: autoSaveProjectId, saving: autoSaving, lastSaved } = useProjectAutoSave({
     mode,
@@ -82,6 +100,7 @@ export default function HomePage() {
   });
 
   const handleDrawingGenerated = useCallback((drawingType: string) => {
+    setValidationPassed(false);
     setGeneratedDrawingTypes(prev => {
       if (prev.includes(drawingType)) return prev;
       return [...prev, drawingType];
@@ -187,6 +206,7 @@ export default function HomePage() {
   };
 
   const handleRequirements = (req: ProjectRequirements) => {
+    setValidationPassed(false);
     setRequirements(req);
     const generated = generateLayouts(req);
     setLayouts(generated);
@@ -269,6 +289,7 @@ export default function HomePage() {
   }, []);
 
   const handleLayoutSelect = (layout: Layout) => {
+    setValidationPassed(false);
     setSelectedLayout(layout);
     setMotherLayoutLocked(true); // Lock immediately — AI already generated NBC-compliant plan
     
@@ -307,6 +328,7 @@ export default function HomePage() {
   };
 
   const handleNewProject = () => {
+    setValidationPassed(false);
     setMode('landing');
     setStep('requirements');
     setRequirements(null);
@@ -324,6 +346,7 @@ export default function HomePage() {
 
 
   const handleUploadConversion = (layout: Layout, req: ProjectRequirements) => {
+    setValidationPassed(false);
     setRequirements(req);
     setSelectedLayout(layout);
     setLayouts([layout]);
@@ -466,7 +489,7 @@ export default function HomePage() {
     }
     // App mode light navbar
     return (
-      <div className="bg-white shadow-sm border-b border-gray-200 px-4 py-3 flex items-center justify-between shrink-0">
+      <div className="bg-white shadow-sm border-b border-gray-200 px-4 py-3 flex flex-wrap items-center justify-between gap-2 shrink-0">
         <div className="flex items-center gap-3">
           <img
             src={BRAND_LOGO_BASE64}
@@ -480,6 +503,7 @@ export default function HomePage() {
           <span className="text-xs opacity-80 tracking-wide uppercase hidden sm:inline">
             {mode === 'interior_only' ? 'Interior Design Studio' : mode === 'office_design' ? 'Office Design Studio' : 'Architecture • Structure • MEP • Interiors'}
           </span>
+          {statusBadge}
           <button
             onClick={() => setMode('dashboard')}
             title="My Projects"
@@ -537,7 +561,7 @@ const BRAND_GREEN = '#4f6f52';
   /* ============ LANDING PAGE ============ */
   if (mode === 'landing') {
     const heroCards = [
-      { icon: <Home className="w-6 h-6" />, title: 'Design Your Home', subtitle: 'For homeowners & builders', desc: 'Your plot. Your layout. 21+ execution-ready drawings — plans, structure, electrical, plumbing — ready in minutes.', onClick: () => { analytics.modeSelected('new_build'); setMode('new_build'); } },
+      { icon: <Home className="w-6 h-6" />, title: 'Design Your Home', subtitle: 'For homeowners & builders', desc: 'Your plot. Your layout. 21+ drawings ready for professional review — plans, structure, electrical, plumbing — ready in minutes.', onClick: () => { analytics.modeSelected('new_build'); setMode('new_build'); } },
       { icon: <Palette className="w-6 h-6" />, title: 'Design Your Interiors', subtitle: 'For homeowners & designers', desc: 'Pick your style, materials, and finishes. See your room come to life in 3D.', onClick: () => { analytics.modeSelected('interior_only'); setMode('interior_only'); } },
       { icon: <Building2 className="w-6 h-6" />, title: 'Design Your Workspace', subtitle: 'For businesses & teams', desc: 'Plan your office layout with fire safety, MEP, and NBC compliance built in.', onClick: () => { analytics.modeSelected('office_design'); setMode('office_design'); } },
     ];
@@ -545,7 +569,7 @@ const BRAND_GREEN = '#4f6f52';
     const featureItems = [
       { icon: <FileStack className="w-5 h-5" />, value: '21+', label: 'Construction Drawings' },
       { icon: <Clock className="w-5 h-5" />, value: '< 5 min', label: 'Ready in Minutes' },
-      { icon: <ShieldCheck className="w-5 h-5" />, value: 'NBC 2016', label: 'Fully Compliant' },
+      { icon: <ShieldCheck className="w-5 h-5" />, value: 'NBC 2016', label: 'Guideline-Based Preliminary Checks' },
       { icon: <Layers className="w-5 h-5" />, value: 'IS 962', label: 'Drawing Standards' },
       { icon: <Lock className="w-5 h-5" />, value: '1 Layout', label: 'All Drawings Follow' },
     ];
@@ -564,9 +588,9 @@ const BRAND_GREEN = '#4f6f52';
 
     const howSteps = [
       { icon: <ClipboardList className="w-5 h-5" />, title: 'Enter your plot details', desc: 'Plot size, facing, floors, rooms' },
-      { icon: <Layers className="w-5 h-5" />, title: 'Pick from 3 layouts', desc: 'AI-generated, NBC-compliant, Vastu-optimized' },
+      { icon: <Layers className="w-5 h-5" />, title: 'Pick from 3 layouts', desc: 'AI-generated preliminary layouts guided by NBC 2016 and Vastu' },
       { icon: <Lock className="w-5 h-5" />, title: 'Lock your design', desc: 'This becomes your single source of truth' },
-      { icon: <FileStack className="w-5 h-5" />, title: 'Download everything', desc: '21+ drawings, renders, BOQ — execution-ready' },
+      { icon: <FileStack className="w-5 h-5" />, title: 'Download everything', desc: '21+ preliminary drawings, renders, and BOQ — ready for professional review' },
     ];
 
     const tabData = [
@@ -601,6 +625,7 @@ const BRAND_GREEN = '#4f6f52';
               handleNewProject();
             }}
             onOpenProject={(project: SavedProject) => {
+              setValidationPassed(false);
               if (project.requirements) setRequirements(project.requirements);
               // Track whether we recomputed BOQ from a freshly re-run structural design
               // below — if so, that number (consistent with the new structural/BBS
@@ -831,6 +856,7 @@ const BRAND_GREEN = '#4f6f52';
               layouts={layouts}
               onSelect={handleOfficeLayoutSelect}
               vastuEnabled={false}
+              layoutLocked={motherLayoutLocked}
               requirements={{
                 city: officeRequirements.city,
                 state: officeRequirements.state,
@@ -914,18 +940,22 @@ const BRAND_GREEN = '#4f6f52';
           <>
             {step === 'requirements' && <RequirementForm onSubmit={handleRequirements} initialValues={requirements} />}
             {step === 'layouts' && requirements && (
-              <LayoutSelector layouts={layouts} onSelect={handleLayoutSelect} vastuEnabled={requirements.vastuCompliance} requirements={requirements} />
+              <div>
+                <div className="px-4 pt-3 flex justify-center">{statusBadge}</div>
+                <LayoutSelector layouts={layouts} onSelect={handleLayoutSelect} vastuEnabled={requirements.vastuCompliance} requirements={requirements} layoutLocked={motherLayoutLocked} />
+              </div>
             )}
 
             {step === 'isometric' && selectedLayout && requirements && (
               <IsometricView layout={selectedLayout} requirements={requirements} structuralResult={structuralResult} />
             )}
             {step === 'working' && selectedLayout && requirements && (
-              <WorkingDrawings layout={selectedLayout} requirements={requirements} boq={boq} onDrawingGenerated={handleDrawingGenerated} structuralResult={structuralResult} bbsResult={bbsResult} />
+              <WorkingDrawings layout={selectedLayout} requirements={requirements} boq={boq} onDrawingGenerated={handleDrawingGenerated} structuralResult={structuralResult} bbsResult={bbsResult} statusBadge={statusBadge} />
             )}
             {step === 'rates' && selectedLayout && requirements && (
               <RateSheet
                 onSave={(rates: any) => {
+                  setValidationPassed(false);
                   setCustomRates(rates);
                   // Recalculate BOQ with new rates — keep using the already-computed
                   // structural/BBS result so steel & concrete stay consistent instead of
@@ -938,6 +968,7 @@ const BRAND_GREEN = '#4f6f52';
                   setStep('boq');
                 }}
                 onSkip={() => {
+                  setValidationPassed(false);
                   // Use default rates
                   setCustomRates(null);
                   const b = structuralResult
@@ -950,10 +981,10 @@ const BRAND_GREEN = '#4f6f52';
               />
             )}
             {step === 'boq' && boq && selectedLayout && (
-              <BOQReport boq={boq} layout={selectedLayout} />
+              <BOQReport boq={boq} layout={selectedLayout} statusBadge={statusBadge} />
             )}
             {step === 'verification' && selectedLayout && requirements && (
-              <VerificationReport layout={selectedLayout} requirements={requirements} boq={boq} generatedDrawingTypes={generatedDrawingTypes} />
+              <VerificationReport layout={selectedLayout} requirements={requirements} boq={boq} generatedDrawingTypes={generatedDrawingTypes} onValidationResult={handleValidationResult} />
             )}
             {step === 'interior' && selectedLayout && requirements && (
               <InteriorDesign layout={selectedLayout} requirements={requirements} />

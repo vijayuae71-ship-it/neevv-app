@@ -231,7 +231,7 @@ const InteriorAIDrawings: React.FC<Props> = ({ layout, interiorSelections, moodB
 
   /* ---------- handle Generate click ---------- */
   const handleGenerate = useCallback(
-    async (types?: RenderTypeKey[], modificationPrompt?: string) => {
+    async (types?: RenderTypeKey[], modificationPrompt?: string, roomId = selectedRoomId) => {
       const typesToGen = types || [selectedType];
       setLoading(true);
       setError(null);
@@ -242,13 +242,13 @@ const InteriorAIDrawings: React.FC<Props> = ({ layout, interiorSelections, moodB
       for (const t of typesToGen) {
         if (abortRef.current) break;
         const typeLabel = RENDER_TYPES.find(rt => rt.key === t)?.label || t;
-        const room = rooms.find(r => r.id === selectedRoomId);
+        const room = rooms.find(r => r.id === roomId);
         setProgress(`Generating ${typeLabel} for ${room ? roomLabel(room) : 'room'}…`);
 
         try {
-          const entry = await generateImage(selectedRoomId, t, modificationPrompt);
+          const entry = await generateImage(roomId, t, modificationPrompt);
           if (entry) {
-            const key = cacheKey(selectedRoomId, t);
+            const key = cacheKey(roomId, t);
             updatedCache = {
               ...updatedCache,
               [key]: [...(updatedCache[key] || []), entry],
@@ -347,24 +347,37 @@ const InteriorAIDrawings: React.FC<Props> = ({ layout, interiorSelections, moodB
             const count = roomRenderCount(room.id);
             const active = room.id === selectedRoomId;
             return (
-              <button
-                key={room.id}
-                onClick={() => { setSelectedRoomId(room.id); setError(null); setEditPanelOpen(false); handleResetEdit(); }}
-                className={`text-sm px-3 py-1.5 rounded-lg flex-shrink-0 md:w-full text-left flex items-center gap-2 transition-colors ${
-                  active
-                    ? 'bg-blue-600 text-white font-medium'
-                    : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200'
-                }`}
-              >
-                <span className="truncate flex-1">{roomLabel(room)}</span>
-                {count > 0 && (
-                  <span className={`text-xs px-1.5 py-0.5 rounded-full ${
-                    active ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-600'
-                  }`}>
-                    {count}
-                  </span>
-                )}
-              </button>
+              <div key={room.id} className="flex-shrink-0 md:w-full rounded-lg border border-gray-200 bg-white p-1">
+                <button
+                  onClick={() => { setSelectedRoomId(room.id); setError(null); setEditPanelOpen(false); handleResetEdit(); }}
+                  className={`text-sm px-2 py-1.5 rounded-lg w-full text-left flex items-center gap-2 transition-colors ${
+                    active ? 'bg-blue-600 text-white font-medium' : 'text-gray-700 hover:bg-gray-100'
+                  }`}
+                >
+                  <span className="truncate flex-1">{roomLabel(room)}</span>
+                  {count > 0 && (
+                    <span className={`text-xs px-1.5 py-0.5 rounded-full ${
+                      active ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-600'
+                    }`}>{count}</span>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  disabled={loading}
+                  onClick={() => {
+                    setSelectedRoomId(room.id);
+                    setSelectedType('plan');
+                    setError(null);
+                    setEditPanelOpen(false);
+                    handleResetEdit();
+                    void handleGenerate(['plan', 'elevation', 'render3d'], undefined, room.id);
+                  }}
+                  className="mt-1 w-full rounded-md px-2 py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50"
+                  aria-label={`Preview this room: ${roomLabel(room)}`}
+                >
+                  {loading && active ? 'Generating preview…' : 'Preview this room'}
+                </button>
+              </div>
             );
           })}
         </div>
@@ -405,7 +418,8 @@ const InteriorAIDrawings: React.FC<Props> = ({ layout, interiorSelections, moodB
             ))}
           </select>
 
-          {/* generate button */}
+          <span className="text-xs text-gray-500">Preview any room without configuring the whole home.</span>
+          {/* generate button */}ulluunniit functions.write_file? Wait tool name malformed? Need call.  
           <button
             className="text-sm bg-blue-600 text-white px-3 py-1 rounded-lg hover:bg-blue-700 disabled:opacity-80 flex items-center gap-1"
             disabled={loading}

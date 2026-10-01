@@ -53,6 +53,8 @@ export interface VerificationIssue {
   expectedValue: string;
   generatedValue: string;
   suggestedCorrection: string;
+  /** Actionable homeowner-facing next step (also exposed as suggestedCorrection for older consumers). */
+  suggestion: string;
   category: VerificationCategory;
 }
 
@@ -314,12 +316,15 @@ class CategoryBuilder {
       id: this.idGen(),
       title,
       severity,
-      explanation,
+      // Every issue includes its specific expected/observed values and a concrete
+      // next step. Preserve the structured values for drawings and exports.
+      explanation: `${explanation} ${affectedObject}: expected ${expectedValue}; found ${generatedValue}. ${suggestedCorrection}`,
       affectedDrawing,
       affectedObject,
       expectedValue,
       generatedValue,
       suggestedCorrection,
+      suggestion: suggestedCorrection,
       category: this.category,
     });
   }
@@ -708,7 +713,7 @@ function validateArchitectural(ctx: Ctx, idGen: () => string): CategoryResult {
     if (min !== undefined) {
       const area = r.width * r.depth;
       if (area < min - 0.05) {
-        belowMinRooms.push(`${r.name} (${area.toFixed(2)}sqm < ${min}sqm)`);
+        belowMinRooms.push(`${r.name} is ${area.toFixed(2)} m²; this preliminary NBC 2016 check uses ${min.toFixed(2)} m² as its minimum`);
         if (area < min * 0.8) severelyUndersizedRoom = true;
       }
     }
@@ -717,8 +722,8 @@ function validateArchitectural(ctx: Ctx, idGen: () => string): CategoryResult {
     b.pass();
   } else {
     b.fail(
-      severelyUndersizedRoom ? 'ERROR' : 'WARNING', 'Rooms below NBC minimum area',
-      'One or more rooms are smaller than the National Building Code minimum area for their room type.',
+      severelyUndersizedRoom ? 'ERROR' : 'WARNING', 'Some rooms need more floor space',
+      `These rooms may be too small under the preliminary NBC 2016 area check: ${belowMinRooms.join('; ')}. Local rules may differ; ask a licensed architect to confirm.`, 
       'Floor Plan', 'Room Area (NBC minimum)',
       'bedroom/hall >= 9.5 sqm, kitchen >= 5.0 sqm, toilet >= 1.8 sqm, dining >= 7.5 sqm',
       belowMinRooms.join('; '),
@@ -817,7 +822,7 @@ function validateArchitectural(ctx: Ctx, idGen: () => string): CategoryResult {
         r.x + r.width > layout.buildableWidthM + tol ||
         r.y + r.depth > layout.buildableDepthM + tol
       ) {
-        outOfBounds.push(`${f.floorLabel}: ${r.name}`);
+        outOfBounds.push(`${f.floorLabel}: ${r.name} spans x=${r.x.toFixed(2)}–${(r.x + r.width).toFixed(2)} m, y=${r.y.toFixed(2)}–${(r.y + r.depth).toFixed(2)} m; available footprint is ${layout.buildableWidthM.toFixed(2)} × ${layout.buildableDepthM.toFixed(2)} m`);
       }
     }
   }
@@ -825,8 +830,8 @@ function validateArchitectural(ctx: Ctx, idGen: () => string): CategoryResult {
     b.pass();
   } else {
     b.fail(
-      'ERROR', 'Rooms outside building footprint',
-      'One or more rooms extend beyond the buildable footprint bounds.',
+      'ERROR', 'A room extends beyond the buildable area',
+      `The selected room configuration does not fit within the area left after setbacks: ${outOfBounds.join('; ')}. This may mean the plot is too small for the chosen room sizes.`, 
       'Floor Plan', 'Room Bounds',
       `within 0..${layout.buildableWidthM.toFixed(2)}m (W) x 0..${layout.buildableDepthM.toFixed(2)}m (D)`,
       outOfBounds.join('; '),
