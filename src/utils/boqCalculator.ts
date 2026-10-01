@@ -151,11 +151,11 @@ export function calculateBOQ(
   // finiteNonNegative(..., 0) is a defensive guard against a malformed upstream value,
   // not a silent revert to the estimated formula.
   const foundationConcrete = structuralResult ? finiteNonNegative(engineeredBreakdown?.foundation, 0) : estimatedFoundationConcrete;
-  const columnConcrete = structuralResult ? finiteNonNegative(engineeredBreakdown?.columns, 0) : estimatedColumnConcrete;
-  const beamConcrete = structuralResult ? finiteNonNegative(engineeredBreakdown?.beams, 0) : estimatedBeamConcrete;
-  const slabConcrete = structuralResult ? finiteNonNegative(engineeredBreakdown?.slabs, 0) : estimatedSlabConcrete;
-  const stairConcrete = structuralResult ? finiteNonNegative(engineeredBreakdown?.staircase, 0) : estimatedStairConcrete;
-  const lintelConcrete = structuralResult ? finiteNonNegative(engineeredBreakdown?.lintels, 0) : estimatedLintelConcrete;
+  const columnConcrete = +(structuralResult ? finiteNonNegative(engineeredBreakdown?.columns, 0) : estimatedColumnConcrete).toFixed(2);
+  const beamConcrete = +(structuralResult ? finiteNonNegative(engineeredBreakdown?.beams, 0) : estimatedBeamConcrete).toFixed(2);
+  const slabConcrete = +(structuralResult ? finiteNonNegative(engineeredBreakdown?.slabs, 0) : estimatedSlabConcrete).toFixed(2);
+  const stairConcrete = +(structuralResult ? finiteNonNegative(engineeredBreakdown?.staircase, 0) : estimatedStairConcrete).toFixed(2);
+  const lintelConcrete = +(structuralResult ? finiteNonNegative(engineeredBreakdown?.lintels, 0) : estimatedLintelConcrete).toFixed(2);
   const totalConcrete = structuralResult
     ? finiteNonNegative(structuralResult.summary.totalConcreteM3, foundationConcrete + columnConcrete + beamConcrete + slabConcrete + stairConcrete + lintelConcrete)
     : estimatedTotalConcrete;
@@ -398,7 +398,7 @@ export function calculateBOQ(
     totalBuiltUpAreaSqFt: Math.round(totalBuiltUpSqFt),
     totalBuiltUpAreaSqM: +(totalBuiltUpSqM).toFixed(2),
     numFloors,
-    concreteVolumeM3: totalConcrete,
+    concreteVolumeM3: +totalConcrete.toFixed(1),
     steelWeightMT: steelMT,
     brickCount,
     cementBags: totalCement,

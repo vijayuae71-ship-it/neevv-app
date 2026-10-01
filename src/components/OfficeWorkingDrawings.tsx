@@ -19,6 +19,11 @@ import {
   Trash2,
   AlertTriangle,
   Sparkles,
+  Grid3x3,
+  LayoutGrid,
+  Network,
+  ShieldAlert,
+  SignpostBig,
 } from 'lucide-react';
 import { Layout, OfficeRequirements } from '../types';
 import {
@@ -99,6 +104,11 @@ const ICON_MAP: Record<string, IconComponent> = {
   Building,
   SplitSquareVertical,
   Type,
+  Grid3x3,
+  LayoutGrid,
+  Network,
+  ShieldAlert,
+  SignpostBig,
 };
 
 const getIcon = (name: string): IconComponent | null => {
@@ -393,7 +403,7 @@ export const OfficeWorkingDrawings: React.FC<Props> = ({ layout, officeReq }) =>
           </h2>
           <p style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>
             {generatedCount} drawing{generatedCount === 1 ? '' : 's'} generated
-            {designSeed ? ` · Design seed: ${designSeed}` : ''}
+            {designSeed ? ` · Seed: ${typeof designSeed === 'string' ? designSeed : (designSeed as any)?.seedId ?? ''}` : ''}
           </p>
         </div>
         <button

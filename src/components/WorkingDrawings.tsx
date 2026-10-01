@@ -139,6 +139,8 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq, on
             cleaned[k.replace(drawingsStorageKey + ':', '')] = v as string;
           }
           setAiImages(cleaned);
+          // Notify parent about cached drawings so verification tracks them
+          Object.keys(cleaned).forEach(key => onDrawingGenerated?.(key));
         }
       } catch (e) {
         console.warn('Failed to load drawings from cache:', e);

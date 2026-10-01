@@ -521,13 +521,13 @@ const BRAND_GREEN = '#4f6f52';
   /* ============ LANDING PAGE ============ */
   if (mode === 'landing') {
     const heroCards = [
-      { icon: <Home className="w-6 h-6" />, title: 'Design Your Home', subtitle: 'For homeowners & builders', desc: 'Your plot. Your layout. 17+ execution-ready drawings — plans, structure, electrical, plumbing — ready in minutes.', onClick: () => { analytics.modeSelected('new_build'); setMode('new_build'); } },
+      { icon: <Home className="w-6 h-6" />, title: 'Design Your Home', subtitle: 'For homeowners & builders', desc: 'Your plot. Your layout. 21+ execution-ready drawings — plans, structure, electrical, plumbing — ready in minutes.', onClick: () => { analytics.modeSelected('new_build'); setMode('new_build'); } },
       { icon: <Palette className="w-6 h-6" />, title: 'Design Your Interiors', subtitle: 'For homeowners & designers', desc: 'Pick your style, materials, and finishes. See your room come to life in 3D.', onClick: () => { analytics.modeSelected('interior_only'); setMode('interior_only'); } },
       { icon: <Building2 className="w-6 h-6" />, title: 'Design Your Workspace', subtitle: 'For businesses & teams', desc: 'Plan your office layout with fire safety, MEP, and NBC compliance built in.', onClick: () => { analytics.modeSelected('office_design'); setMode('office_design'); } },
     ];
 
     const featureItems = [
-      { icon: <FileStack className="w-5 h-5" />, value: '17+', label: 'Construction Drawings' },
+      { icon: <FileStack className="w-5 h-5" />, value: '21+', label: 'Construction Drawings' },
       { icon: <Clock className="w-5 h-5" />, value: '< 5 min', label: 'Ready in Minutes' },
       { icon: <ShieldCheck className="w-5 h-5" />, value: 'NBC 2016', label: 'Fully Compliant' },
       { icon: <Layers className="w-5 h-5" />, value: 'IS 962', label: 'Drawing Standards' },
@@ -550,7 +550,7 @@ const BRAND_GREEN = '#4f6f52';
       { icon: <ClipboardList className="w-5 h-5" />, title: 'Enter your plot details', desc: 'Plot size, facing, floors, rooms' },
       { icon: <Layers className="w-5 h-5" />, title: 'Pick from 3 layouts', desc: 'AI-generated, NBC-compliant, Vastu-optimized' },
       { icon: <Lock className="w-5 h-5" />, title: 'Lock your design', desc: 'This becomes your single source of truth' },
-      { icon: <FileStack className="w-5 h-5" />, title: 'Download everything', desc: '17+ drawings, renders, BOQ — execution-ready' },
+      { icon: <FileStack className="w-5 h-5" />, title: 'Download everything', desc: '21+ drawings, renders, BOQ — execution-ready' },
     ];
 
     const tabData = [
@@ -887,7 +887,7 @@ const BRAND_GREEN = '#4f6f52';
       {mode === 'new_build' && requirements && (
         <div className="bg-gray-50 border-b border-gray-200 px-4 py-1.5 text-center">
           <span className="text-xs text-gray-500">
-            {requirements.plotWidthFt}×{requirements.plotDepthFt} ft • {requirements.facing}-Facing • {requirements.floors.length === 1 ? 'Ground Floor' : `G+${requirements.floors.length - 1}`} • {requirements.floors[0]?.bedrooms || 2} BHK
+            {requirements.plotWidthFt}×{requirements.plotDepthFt} ft • {requirements.facing}-Facing • {requirements.floors.length === 1 ? 'Ground Floor' : `G+${requirements.floors.length - 1}`} • {requirements.floors.reduce((s: number, f: any) => s + (f.bedrooms || 0), 0) || 2} BHK
           </span>
         </div>
       )}

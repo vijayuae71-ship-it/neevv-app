@@ -87,8 +87,8 @@ export const BOQReport: React.FC<Props> = ({ boq, layout }) => {
                     <table className="table table-zebra table-sm">
                       <thead><tr><th>Item</th><th className="text-right">Qty</th><th>Unit</th></tr></thead>
                       <tbody>
-                        <tr><td>Concrete ({boq.concreteGrade ?? 'M25'})</td><td className="text-right font-mono">{boq.concreteVolumeM3}</td><td>m³</td></tr>
-                        <tr><td>Steel (Fe500D)</td><td className="text-right font-mono">{boq.steelWeightMT}</td><td>MT</td></tr>
+                        <tr><td>Concrete ({boq.concreteGrade ?? 'M25'})</td><td className="text-right font-mono">{Number(boq.concreteVolumeM3).toFixed(1)}</td><td>m³</td></tr>
+                        <tr><td>Steel (Fe500D)</td><td className="text-right font-mono">{Number(boq.steelWeightMT).toFixed(2)}</td><td>MT</td></tr>
                         <tr><td>Brick Masonry (230mm)</td><td className="text-right font-mono">{(boq.brickCount / 480).toFixed(1)}</td><td>m³</td></tr>
                         <tr><td>Cement (OPC 53)</td><td className="text-right font-mono">{boq.cementBags.toLocaleString()}</td><td>bags</td></tr>
                         <tr><td>Sand</td><td className="text-right font-mono">{boq.sandCuM}</td><td>m³</td></tr>
@@ -212,7 +212,7 @@ export const BOQReport: React.FC<Props> = ({ boq, layout }) => {
                       })}
                       <tr className="font-bold bg-gray-200">
                         <td>Total</td>
-                        <td className="text-right font-mono">{boq.concreteVolumeM3}</td>
+                        <td className="text-right font-mono">{Number(boq.concreteVolumeM3).toFixed(1)}</td>
                         <td className="text-right font-mono">100%</td>
                       </tr>
                     </tbody>
@@ -241,7 +241,7 @@ export const BOQReport: React.FC<Props> = ({ boq, layout }) => {
                 </div>
 
                 <div className="text-xs text-gray-500 font-mono mt-2">
-                  Steel requirement: {boq.steelWeightMT} MT @ {boq.steelKgPerSqFt ?? 4.5} kg/sqft • Ready-mix truck loads (6m³): {Math.ceil(boq.concreteVolumeM3 / 6)}
+                  Steel requirement: {Number(boq.steelWeightMT).toFixed(2)} MT @ {boq.steelKgPerSqFt ?? 4.5} kg/sqft • Ready-mix truck loads (6m³): {Math.ceil(boq.concreteVolumeM3 / 6)}
                 </div>
               </div>
             </div>

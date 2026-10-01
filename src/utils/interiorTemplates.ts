@@ -555,7 +555,7 @@ export function getDefaultMaterials(
    ================================================================ */
 
 export function mapRoomTypeToFinish(roomType: RoomType): RoomFinishType {
-  switch (roomType) {
+  switch (roomType as string) {
     case 'master_bedroom':
       return 'master_bedroom';
     case 'bedroom':
@@ -586,6 +586,29 @@ export function mapRoomTypeToFinish(roomType: RoomType): RoomFinishType {
       return 'study';
     case 'parking':
       return 'entrance';
+    case 'cabin':
+      return 'study';
+    case 'conference':
+    case 'meeting_room':
+      return 'living';
+    case 'reception':
+    case 'waiting_lounge':
+      return 'entrance';
+    case 'pantry':
+    case 'cafeteria':
+      return 'kitchen';
+    case 'open_office':
+    case 'break_room':
+      return 'living';
+    case 'server_room':
+    case 'electrical_room':
+    case 'ahu_room':
+      return 'entrance';
+    case 'washroom':
+    case 'washroom_male':
+    case 'washroom_female':
+    case 'washroom_accessible':
+      return 'bathroom';
     default:
       return 'bedroom';
   }
