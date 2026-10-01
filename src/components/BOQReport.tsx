@@ -24,7 +24,7 @@ const CAT_LABELS: Record<string, string> = {
 const formatINR = (n: number) => '₹' + n.toLocaleString('en-IN');
 const formatCostRange = (n: number) => `₹${(n * 0.9 / 100000).toFixed(1)} – ${(n * 1.1 / 100000).toFixed(1)} lakh`;
 const formatPerSqFtRange = (n: number) => `₹${Math.round(n * 0.9).toLocaleString('en-IN')}–${Math.round(n * 1.1).toLocaleString('en-IN')}`;
-const COST_NOTE = 'Estimate based on 2024-25 market averages. Actual costs vary by location, contractor and material choices.';
+const COST_NOTE = 'Estimate based on current market prices. Actual costs vary by location, contractor and material choices.';
 
 export const BOQReport: React.FC<Props> = ({ boq, layout, statusBadge }) => {
   const [tab, setTab] = useState<BOQTab>('summary');
@@ -62,7 +62,7 @@ export const BOQReport: React.FC<Props> = ({ boq, layout, statusBadge }) => {
       <div className="flex-1 overflow-y-auto p-4">
         <div className="max-w-3xl mx-auto space-y-4">
           <div className="text-xs text-gray-500 font-mono">
-            {layout.name} • {boq.numFloors} floor(s) • {boq.totalBuiltUpAreaSqFt.toLocaleString()} sqft total built-up • Rates: 2024-25 market average
+            {layout.name} • {boq.numFloors} floor(s) • {boq.totalBuiltUpAreaSqFt.toLocaleString()} sqft total built-up • Rates: Current market prices
           </div>
           <p className="text-xs text-amber-800 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2">{COST_NOTE} Total estimate shown as a ±10% range; itemized quantities and rates are indicative.</p>
 
@@ -409,7 +409,7 @@ export const BOQReport: React.FC<Props> = ({ boq, layout, statusBadge }) => {
                     <li>Floor-to-floor: 3.0m (clear 2.7m)</li>
                     <li>Foundation: Isolated footings, SBC 150 kN/m²</li>
                     <li>Steel ratio: {boq.steelKgPerSqFt ?? 4.5} kg/sqft ({boq.quantityBasis === 'engineered' ? 'engineered' : 'estimated, residential G+1/G+2'})</li>
-                    <li>Rates: India 2024-25 market average (±15% regional variation)</li>
+                    <li>Rates: Current market prices (±15% regional variation)</li>
                     <li>Excludes: Furniture, modular kitchen, AC, interiors</li>
                   </ul>
                 </div>
