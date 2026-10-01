@@ -1653,6 +1653,365 @@ function resolveServerRoom(areaSqft: number, interior: RoomInterior | undefined)
   };
 }
 
+
+// ── Office opening helpers ──
+const officeDoor = (material = 'Glazed Aluminium-Framed Door'): SceneOpening => ({
+  type: 'door', wall: 'north', widthMM: 900, heightMM: 2100, sillHeightMM: 0,
+  openDirection: 'inward-left', material,
+});
+
+const officeWindow = (widthMM = 1800): SceneOpening => ({
+  type: 'window', wall: 'south', widthMM, heightMM: 1500, sillHeightMM: 900,
+  material: 'Aluminium-Framed Fixed Glass',
+});
+
+function resolveWaitingLounge(
+  areaSqft: number,
+  interior: RoomInterior | undefined,
+  moodBoardStyle: InteriorStyle,
+): ResolvedRoomContent {
+  const compact = areaSqft < 100;
+  const furniture: SceneFurnitureItem[] = [
+    {
+      name: 'Waiting Sofa (3-Seater)', category: 'sofa', widthMM: compact ? 1800 : 2100, depthMM: 800, heightMM: 800,
+      material: 'Commercial Fabric Upholstery', color: '#6B7280', wall: 'west',
+      description: 'Visitor sofa along the west wall, clear of the entrance path',
+    },
+    {
+      name: compact ? 'Waiting Chair' : 'Waiting Chairs (Pair)', category: 'chair', widthMM: 600, depthMM: 600, heightMM: 850,
+      material: 'Fabric Upholstery, Powder-Coated Metal Frame', color: '#A67C52', wall: 'east',
+      description: compact ? 'Single visitor chair facing the sofa' : 'Additional visitor chairs facing the sofa',
+    },
+    {
+      name: 'Coffee Table', category: 'console', widthMM: compact ? 700 : 900, depthMM: 500, heightMM: 400,
+      material: 'Laminate Top with Metal Base', color: '#3F3F46', wall: 'center',
+      description: 'Low coffee table centered between visitor seating',
+    },
+  ];
+  if (!compact) {
+    furniture.push({
+      name: 'Side Table', category: 'side_table', widthMM: 450, depthMM: 450, heightMM: 550,
+      material: 'Engineered Wood, Veneer Finish', color: '#6B4A2F', wall: 'west',
+      description: 'Small side table beside the waiting sofa',
+    });
+  }
+  const fixtures: SceneFixture[] = [
+    {
+      name: 'Wayfinding / Company Signage', widthMM: 1200, depthMM: 30, heightMM: 500, mountHeightMM: 1500,
+      wall: 'north', material: 'Backlit Acrylic and Metal Letters', description: 'Visitor-facing company or wayfinding signage',
+    },
+    {
+      name: 'Floor Planter', widthMM: 450, depthMM: 450, heightMM: 900, mountHeightMM: 0,
+      wall: 'east', material: 'Ceramic Pot with Live Plant', description: 'Planter at the edge of the waiting zone, outside circulation',
+    },
+  ];
+  return {
+    furniture,
+    fixtures,
+    openings: [officeDoor(), officeWindow()],
+    zones: [
+      { name: 'WAITING ZONE', description: 'Sofa, visitor seating, and coffee table', color: 'warm beige tint' },
+      { name: 'ENTRY / CIRCULATION', description: 'Clear path from entrance to reception', color: 'dashed outline' },
+    ],
+    materials: {
+      flooring: { name: interior?.flooring?.name || 'Polished Vitrified Tiles', finish: 'Matt/Glossy Commercial Grade', tileSize: '600×600 mm' },
+      wallFinish: { name: interior?.wallFinish?.name || 'Premium Emulsion Paint', finish: 'Matt' },
+      accentWall: moodBoardStyle === 'industrial'
+        ? { name: 'Exposed Brick / Metal Signage Wall', description: 'Feature wall for company identity' }
+        : { name: 'Stone / Veneer Signage Wall', description: 'Feature wall for company identity' },
+    },
+    keyDimensions: {},
+    lighting: {
+      description: 'Warm-neutral recessed downlights over seating, accent light at signage, and daylight from the north window',
+      fixtures: ['Recessed downlights ×3', 'Signage accent light'],
+    },
+    specificNotes: `${compact ? 'Compact' : 'Standard'} waiting lounge (${areaSqft} sq.ft). Keep the entrance-to-reception route unobstructed and size seating to the actual room footprint.`,
+  };
+}
+
+function resolveCafeteria(areaSqft: number, interior: RoomInterior | undefined): ResolvedRoomContent {
+  const seats = Math.max(6, Math.min(40, Math.round(areaSqft / 15)));
+  const tableCount = Math.max(1, Math.ceil(seats / 4));
+  const furniture: SceneFurnitureItem[] = [
+    {
+      name: `Cafeteria Dining Tables (4-Seater ×${tableCount})`, category: 'dining_table', widthMM: 1200, depthMM: 750, heightMM: 750,
+      material: 'Compact Laminate, Rounded Edge', color: '#6B4A2F', wall: 'center',
+      description: `${tableCount} four-person dining tables distributed in the eating zone`,
+    },
+    {
+      name: `Cafeteria Chairs (×${seats})`, category: 'dining_chair', widthMM: 450, depthMM: 500, heightMM: 850,
+      material: 'Polypropylene Shell, Metal Legs', color: '#4B5563', wall: 'center',
+      description: `${seats} chairs arranged around the cafeteria dining tables`,
+    },
+    {
+      name: 'Serving Counter with Under-Counter Storage', category: 'kitchen_cabinet', widthMM: areaSqft < 250 ? 1800 : 3000, depthMM: 700, heightMM: 900,
+      material: 'Stainless Steel Counter with Laminate Front', color: '#D1D5DB', wall: 'south',
+      description: 'Staff serving and food pickup counter along the service wall',
+    },
+  ];
+  const fixtures: SceneFixture[] = [
+    {
+      name: 'SS Hand-Wash Sink', widthMM: 600, depthMM: 450, heightMM: 200, mountHeightMM: 850,
+      wall: 'south', material: 'SS 304 Satin Finish', description: 'Hand-wash sink adjacent to the serving counter',
+    },
+    {
+      name: 'Commercial Refrigerator', widthMM: 800, depthMM: 750, heightMM: 2000, mountHeightMM: 0,
+      wall: 'south', material: 'SS 304 Commercial Body', description: 'Refrigeration unit in the service zone',
+    },
+    {
+      name: 'Exhaust / Fresh-Air Unit', widthMM: 900, depthMM: 300, heightMM: 350, mountHeightMM: 2400,
+      wall: 'east', material: 'Powder-Coated Metal', description: 'Ventilation unit above the service/preparation zone',
+    },
+  ];
+  return {
+    furniture,
+    fixtures,
+    openings: [officeDoor(), officeWindow(2400)],
+    zones: [
+      { name: 'SERVICE ZONE', description: 'Serving counter, sink, and refrigeration', color: 'warm orange tint' },
+      { name: 'EATING ZONE', description: `${seats} seats at ${tableCount} dining tables`, color: 'light green tint' },
+      { name: 'CIRCULATION', description: 'Clear queue and table access routes', color: 'dashed outline' },
+    ],
+    materials: {
+      flooring: { name: interior?.flooring?.name || 'Heavy-Duty Anti-Skid Vitrified Tiles', finish: 'Matt Anti-Skid', tileSize: '600×600 mm' },
+      wallFinish: { name: interior?.wallFinish?.name || 'Washable Emulsion + Dado Tiles', finish: 'Matt above dado' },
+      countertop: { name: 'SS 304 Commercial Counter', thickness: 20, finish: 'Brushed Satin' },
+    },
+    keyDimensions: { counterHeight: 900, dadoHeight: 1200 },
+    lighting: {
+      description: 'Uniform glare-controlled lighting over dining tables, brighter task lighting at the serving counter',
+      fixtures: ['Linear LED over tables ×' + tableCount, 'Task downlights at service counter'],
+    },
+    specificNotes: `Office cafeteria (${areaSqft} sq.ft) planned for approximately ${seats} seats. Queue, service, and dining circulation must remain clear around the actual furniture footprints.`,
+  };
+}
+
+function resolveBreakRoom(areaSqft: number, interior: RoomInterior | undefined): ResolvedRoomContent {
+  const compact = areaSqft < 100;
+  const furniture: SceneFurnitureItem[] = [
+    {
+      name: 'Breakout Sofa', category: 'sofa', widthMM: compact ? 1600 : 2000, depthMM: 800, heightMM: 800,
+      material: 'Commercial Fabric Upholstery', color: '#64748B', wall: 'west', description: 'Informal staff seating',
+    },
+    {
+      name: 'Lounge Chairs (Pair)', category: 'chair', widthMM: 600, depthMM: 650, heightMM: 850,
+      material: 'Fabric Upholstery, Metal Frame', color: '#A67C52', wall: 'east', description: 'Casual chairs around the coffee table',
+    },
+    {
+      name: 'Break Table', category: 'dining_table', widthMM: compact ? 900 : 1200, depthMM: 700, heightMM: 750,
+      material: 'Laminate Top, Metal Frame', color: '#6B4A2F', wall: 'center', description: 'Small staff break/eating table',
+    },
+  ];
+  const fixtures: SceneFixture[] = [
+    {
+      name: 'Tea Point Sink', widthMM: 500, depthMM: 400, heightMM: 200, mountHeightMM: 650,
+      wall: 'south', material: 'SS 304 Satin Finish', description: 'Single-bowl sink at the refreshment counter',
+    },
+    {
+      name: 'Under-Counter Refrigerator', widthMM: 550, depthMM: 550, heightMM: 850, mountHeightMM: 0,
+      wall: 'south', material: 'Stainless Steel Body', description: 'Small refrigerator under the tea-point counter',
+    },
+    {
+      name: 'Microwave Shelf', widthMM: 500, depthMM: 450, heightMM: 350, mountHeightMM: 1100,
+      wall: 'south', material: 'Laminate Finish', description: 'Microwave shelf above the refreshment counter',
+    },
+  ];
+  return {
+    furniture,
+    fixtures,
+    openings: [officeDoor(), officeWindow(900)],
+    zones: [
+      { name: 'REFRESHMENT ZONE', description: 'Tea point, sink, microwave, and refrigerator', color: 'warm orange tint' },
+      { name: 'BREAKOUT ZONE', description: 'Informal sofa and lounge seating', color: 'warm beige tint' },
+    ],
+    materials: {
+      flooring: { name: interior?.flooring?.name || 'Anti-Skid Vitrified Tiles', finish: 'Matt Anti-Skid' },
+      wallFinish: { name: interior?.wallFinish?.name || 'Washable Emulsion Paint', finish: 'Matt' },
+      countertop: { name: 'Quartz / Solid Surface', thickness: 20, finish: 'Matt Polished' },
+    },
+    keyDimensions: { counterHeight: 850, backsplashHeight: 600 },
+    lighting: {
+      description: 'Warm-neutral ambient lighting over lounge seating and task lighting at the refreshment counter',
+      fixtures: ['Recessed downlights ×3', 'Under-cabinet LED at tea point'],
+    },
+    specificNotes: `${compact ? 'Compact' : 'Standard'} staff break room (${areaSqft} sq.ft). Separate refreshment and seating zones while preserving the actual entry clearance.`,
+  };
+}
+
+interface WashroomVariant {
+  label: string;
+  cubicles: number;
+  urinals: number;
+  accessible: boolean;
+}
+
+function resolveOfficeWashroom(
+  areaSqft: number,
+  interior: RoomInterior | undefined,
+  variant: WashroomVariant,
+): ResolvedRoomContent {
+  const fixtures: SceneFixture[] = [
+    {
+      name: `EWC Cubicles (×${variant.cubicles})`, widthMM: 900, depthMM: 1500, heightMM: 800, mountHeightMM: 0,
+      wall: 'north', material: 'Vitreous China, White', description: `${variant.cubicles} floor-mounted WC pans in privacy cubicles`,
+    },
+    {
+      name: `Wash Basins (×${Math.max(1, Math.ceil(variant.cubicles / 2))})`, widthMM: 500, depthMM: 450, heightMM: 180, mountHeightMM: 800,
+      wall: 'east', material: 'Vitreous China with Quartz Counter', description: 'Hand-wash basins with sensor or lever mixers',
+    },
+  ];
+  if (variant.urinals > 0) {
+    fixtures.push({
+      name: `Wall-Hung Urinals (×${variant.urinals})`, widthMM: 400, depthMM: 350, heightMM: 600, mountHeightMM: 650,
+      wall: 'west', material: 'Vitreous China, White', description: `${variant.urinals} privacy-screened wall-hung urinals`,
+    });
+  }
+  if (variant.accessible) {
+    fixtures.push(
+      {
+        name: 'Accessible WC with Grab Bars', widthMM: 700, depthMM: 700, heightMM: 500, mountHeightMM: 0,
+        wall: 'south', material: 'Vitreous China, Stainless Steel Grab Bars', description: 'Wheelchair-accessible WC with side and rear grab bars',
+      },
+      {
+        name: 'Accessible Wash Basin', widthMM: 600, depthMM: 500, heightMM: 180, mountHeightMM: 750,
+        wall: 'south', material: 'Vitreous China, Knee Clearance Below', description: 'Wheelchair-accessible basin with clear knee space',
+      },
+    );
+  }
+  return {
+    furniture: [],
+    fixtures,
+    openings: [officeDoor('Fire-Rated Laminate Flush Door')],
+    zones: [
+      { name: 'WC ZONE', description: `${variant.cubicles} enclosed WC cubicle(s)`, color: 'light blue tint' },
+      ...(variant.urinals > 0 ? [{ name: 'URINAL ZONE', description: `${variant.urinals} wall-hung urinal(s)`, color: 'cool grey tint' }] : []),
+      { name: 'WASH ZONE', description: 'Basins and hand-wash area', color: 'light green tint' },
+      ...(variant.accessible ? [{ name: 'ACCESSIBLE ZONE', description: 'Wheelchair turning and transfer space', color: 'dashed outline' }] : []),
+    ],
+    materials: {
+      flooring: { name: interior?.flooring?.name || 'Anti-Skid Vitrified Tiles', finish: 'Matt Anti-Skid', tileSize: '300×300 mm' },
+      wallFinish: { name: interior?.wallFinish?.name || 'Full-Height Ceramic Wall Tiles', finish: 'Glossy Washable' },
+    },
+    keyDimensions: { dadoHeight: 2100 },
+    lighting: {
+      description: 'Bright moisture-resistant ceiling lighting with sensor-controlled exhaust ventilation',
+      fixtures: ['IP-rated downlights ×2', 'Exhaust fan / mechanical ventilation'],
+    },
+    specificNotes: `${variant.label} office washroom (${areaSqft} sq.ft). Fixtures and circulation must be checked against the actual room dimensions and accessibility clearances before execution.`,
+  };
+}
+
+function resolveWashroomMale(areaSqft: number, interior: RoomInterior | undefined): ResolvedRoomContent {
+  return resolveOfficeWashroom(areaSqft, interior, { label: 'Male', cubicles: areaSqft >= 80 ? 2 : 1, urinals: areaSqft >= 60 ? 2 : 1, accessible: false });
+}
+
+function resolveWashroomFemale(areaSqft: number, interior: RoomInterior | undefined): ResolvedRoomContent {
+  return resolveOfficeWashroom(areaSqft, interior, { label: 'Female', cubicles: areaSqft >= 80 ? 3 : 2, urinals: 0, accessible: false });
+}
+
+function resolveWashroomHandicap(areaSqft: number, interior: RoomInterior | undefined): ResolvedRoomContent {
+  return resolveOfficeWashroom(areaSqft, interior, { label: 'Accessible', cubicles: 0, urinals: 0, accessible: true });
+}
+
+function resolveElectricalRoom(areaSqft: number, interior: RoomInterior | undefined): ResolvedRoomContent {
+  const panelCount = Math.max(1, Math.round(areaSqft / 25));
+  const furniture: SceneFurnitureItem[] = [
+    {
+      name: `Electrical Distribution Panels (×${panelCount})`, category: 'electrical_panel', widthMM: 800, depthMM: 400, heightMM: 2200,
+      material: 'Powder-Coated Steel Switchgear', color: '#6B7280', wall: 'east',
+      description: `${panelCount} floor-standing electrical distribution/switchgear panel(s) with front operating clearance`,
+    },
+    {
+      name: 'Cable Termination / Metering Cabinet', category: 'electrical_panel', widthMM: 1000, depthMM: 500, heightMM: 1800,
+      material: 'Powder-Coated Steel', color: '#4B5563', wall: 'west', description: 'Incoming cable termination and metering cabinet',
+    },
+  ];
+  const fixtures: SceneFixture[] = [
+    {
+      name: 'Overhead Cable Tray', widthMM: 600, depthMM: 200, heightMM: 100, mountHeightMM: 2600,
+      wall: 'ceiling', material: 'Perforated Galvanised Steel', description: 'Cable tray routing power cables above the panel line',
+    },
+    {
+      name: 'Emergency Light', widthMM: 300, depthMM: 100, heightMM: 100, mountHeightMM: 2400,
+      wall: 'south', material: 'LED Emergency Fitting', description: 'Battery-backed emergency light near the exit',
+    },
+    {
+      name: 'Fire Extinguisher', widthMM: 250, depthMM: 250, heightMM: 600, mountHeightMM: 0,
+      wall: 'south', material: 'ABC Dry Powder Extinguisher', description: 'Fire extinguisher mounted/located by the entry',
+    },
+  ];
+  return {
+    furniture,
+    fixtures,
+    openings: [officeDoor('Fire-Rated Steel Door with Panic Hardware')],
+    zones: [
+      { name: 'SWITCHGEAR ZONE', description: `${panelCount} distribution panel(s) with front service clearance`, color: 'cool grey tint' },
+      { name: 'CABLE ROUTING ZONE', description: 'Incoming and outgoing cable paths', color: 'light blue tint' },
+      { name: 'SERVICE AISLE', description: 'Clear operating and maintenance aisle', color: 'dashed outline' },
+    ],
+    materials: {
+      flooring: { name: interior?.flooring?.name || 'Heavy-Duty Anti-Static Flooring', finish: 'Matt Anti-Static' },
+      wallFinish: { name: interior?.wallFinish?.name || 'Fire-Rated Board + Emulsion Paint', finish: 'Matt' },
+    },
+    keyDimensions: {},
+    lighting: {
+      description: 'Bright uniform maintenance lighting with emergency backup and no combustible decorative finishes',
+      fixtures: ['LED batten lights ×2', 'Emergency battery light'],
+    },
+    specificNotes: `Electrical room (${areaSqft} sq.ft) with ${panelCount} panel group(s). Maintain code-required working clearance in front of all live equipment; confirm final panel dimensions with the electrical engineer.`,
+  };
+}
+
+function resolveAhuRoom(areaSqft: number, interior: RoomInterior | undefined): ResolvedRoomContent {
+  const units = Math.max(1, Math.round(areaSqft / 40));
+  const furniture: SceneFurnitureItem[] = [
+    {
+      name: `Air Handling Unit(s) (×${units})`, category: 'ahu', widthMM: 1800, depthMM: 900, heightMM: 1800,
+      material: 'Galvanised Steel Casing with Thermal Insulation', color: '#9CA3AF', wall: 'center',
+      description: `${units} AHU unit(s) on housekeeping plinths, with service access on all required sides`,
+    },
+    {
+      name: 'Maintenance Workbench', category: 'workbench', widthMM: 1200, depthMM: 600, heightMM: 850,
+      material: 'Powder-Coated Steel Worktop', color: '#4B5563', wall: 'west', description: 'Service bench for filter and maintenance work',
+    },
+  ];
+  const fixtures: SceneFixture[] = [
+    {
+      name: 'Supply / Return Duct Riser', widthMM: 800, depthMM: 600, heightMM: 2400, mountHeightMM: 0,
+      wall: 'north', material: 'GI Ductwork with Thermal Insulation', description: 'Supply and return duct connection at the AHU wall',
+    },
+    {
+      name: 'Control Panel', widthMM: 600, depthMM: 200, heightMM: 800, mountHeightMM: 1200,
+      wall: 'east', material: 'Powder-Coated Electrical Enclosure', description: 'AHU control and monitoring panel',
+    },
+    {
+      name: 'Cable Tray', widthMM: 400, depthMM: 150, heightMM: 100, mountHeightMM: 2600,
+      wall: 'ceiling', material: 'Perforated Galvanised Steel', description: 'Power and controls cable tray above the equipment',
+    },
+  ];
+  return {
+    furniture,
+    fixtures,
+    openings: [officeDoor('Fire-Rated Steel Door with Louvered Vent')],
+    zones: [
+      { name: 'AHU EQUIPMENT ZONE', description: `${units} AHU unit(s) on plinths`, color: 'cool grey tint' },
+      { name: 'DUCT CONNECTION ZONE', description: 'Supply and return duct riser wall', color: 'light blue tint' },
+      { name: 'SERVICE ACCESS', description: 'Clear maintenance route around units', color: 'dashed outline' },
+    ],
+    materials: {
+      flooring: { name: interior?.flooring?.name || 'Industrial Epoxy Flooring', finish: 'Seamless Anti-Skid' },
+      wallFinish: { name: interior?.wallFinish?.name || 'Cement Plaster + Industrial Paint', finish: 'Washable Matt' },
+    },
+    keyDimensions: {},
+    lighting: {
+      description: 'Bright maintenance lighting with emergency backup, coordinated with duct and cable tray services',
+      fixtures: ['Industrial LED battens ×2', 'Emergency battery light'],
+    },
+    specificNotes: `AHU room (${areaSqft} sq.ft) sized for ${units} unit(s). Preserve equipment service clearances, access to filters/coils, and duct/cable routes; verify final AHU schedules before construction.`,
+  };
+}
+
+
 function resolveGeneric(interior: RoomInterior | undefined): ResolvedRoomContent {
   return {
     furniture: mapGenericFurniture(interior),
@@ -1755,6 +2114,30 @@ export function buildInteriorScene(
     case 'server_room':
       resolved = resolveServerRoom(areaSqft, interior);
       break;
+    case 'waiting_lounge':
+      resolved = resolveWaitingLounge(areaSqft, interior, style);
+      break;
+    case 'cafeteria':
+      resolved = resolveCafeteria(areaSqft, interior);
+      break;
+    case 'break_room':
+      resolved = resolveBreakRoom(areaSqft, interior);
+      break;
+    case 'washroom_male':
+      resolved = resolveWashroomMale(areaSqft, interior);
+      break;
+    case 'washroom_female':
+      resolved = resolveWashroomFemale(areaSqft, interior);
+      break;
+    case 'washroom_handicap':
+      resolved = resolveWashroomHandicap(areaSqft, interior);
+      break;
+    case 'electrical_room':
+      resolved = resolveElectricalRoom(areaSqft, interior);
+      break;
+    case 'ahu_room':
+      resolved = resolveAhuRoom(areaSqft, interior);
+      break;
     default:
       resolved = resolveGeneric(interior);
       break;
@@ -1825,6 +2208,20 @@ export function buildInteriorScene(
       case 'server_room':
         return { switches: 2, sockets: 6, dataPoints: 0, lightPoints: 3, fanPoints: 0, acPoints: 2 };
         // Server room: dedicated UPS-backed sockets, precision cooling AC points, no ceiling fan
+      case 'waiting_lounge':
+        return { switches: 2, sockets: 3, dataPoints: 1, lightPoints: 3, fanPoints: 0, acPoints: 1 };
+      case 'cafeteria':
+        return { switches: 3, sockets: 8, dataPoints: 0, lightPoints: 6, fanPoints: 1, acPoints: 1 };
+      case 'break_room':
+        return { switches: 3, sockets: 6, dataPoints: 0, lightPoints: 3, fanPoints: 1, acPoints: 0 };
+      case 'washroom_male':
+      case 'washroom_female':
+      case 'washroom_handicap':
+        return { switches: 2, sockets: 1, dataPoints: 0, lightPoints: 2, fanPoints: 0, acPoints: 0 };
+      case 'electrical_room':
+        return { switches: 2, sockets: 4, dataPoints: 0, lightPoints: 2, fanPoints: 0, acPoints: 0 };
+      case 'ahu_room':
+        return { switches: 2, sockets: 4, dataPoints: 0, lightPoints: 3, fanPoints: 0, acPoints: 0 };
       default:
         return { switches: 2, sockets: 3, dataPoints: 1, lightPoints: 2, fanPoints: 1, acPoints: 0 };
     }

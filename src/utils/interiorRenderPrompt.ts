@@ -655,13 +655,11 @@ EXACT DIMENSIONS (render must be proportionally accurate):
 - Floor-to-ceiling: ${Math.round(scene.clearHeightMM / 305) / 10}'-0" (${scene.clearHeightMM}mm)
 - False ceiling: ${Math.round(scene.falseCeilingHeightMM / 305) / 10}'-0" (${scene.falseCeilingHeightMM}mm)
 
-CRITICAL SIZE CONSTRAINT:
-This room is ONLY ${scene.widthFt}'×${scene.depthFt}' (${scene.widthMM}×${scene.depthMM}mm).
-This is a COMPACT space — ${scene.areaSqft} square feet total.
-DO NOT render a spacious room. The walls should feel CLOSE together.
-A person standing in this room can touch both side walls by stretching arms.
-${scene.roomType === 'toilet' ? 'The shower area takes up approximately 1/4 of the floor space.' : 'Allocate floor area only to the configured fixtures and zones; do not invent empty spacious circulation.'}
-There is barely 2 feet of clear walking space between fixtures.
+CANONICAL SIZE AND CLEARANCE CONSTRAINT:
+This room is exactly ${scene.widthFt}'×${scene.depthFt}' (${scene.widthMM}×${scene.depthMM}mm), with ${scene.areaSqft} square feet of floor area.
+Render the room at this exact scale. Use the fixture/furniture footprints, wall assignments, opening positions, and zone boundaries in the CANONICAL FIXTURE LAYOUT below as the only source of spatial truth.
+Do not assume that any fixture occupies a fixed fraction of the floor area, and do not assume a fixed walking-clearance distance. Preserve the clearances implied by the actual coordinates and dimensions; never resize, relocate, add, or remove an item to make the composition look more spacious.
+Do not add empty circulation or invented room proportions beyond the configured layout.
 
 FURNITURE & FIXTURES (exact list — render each item, in this exact position/size/material, nothing more, nothing less):
 ${serializeFurnitureFor3D(scene)}

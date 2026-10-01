@@ -203,7 +203,7 @@ export const OfficeWorkingDrawings: React.FC<Props> = ({ layout, officeReq }) =>
         if (Object.keys(loaded).length > 0) {
           setImages(loaded);
         }
-      } catch (e) {
+      } catch (e: unknown) {
         console.warn('Failed to load cached office drawings:', e);
       }
     };
@@ -244,7 +244,7 @@ export const OfficeWorkingDrawings: React.FC<Props> = ({ layout, officeReq }) =>
           applyOfficeTextOverlay(canvas, type as OfficeDrawingType, layout, officeReq, floor);
           const overlaid = canvas.toDataURL('image/png');
           setImages(prev => ({ ...prev, [cacheKey]: overlaid }));
-          setCachedDrawing(cacheKey, overlaid).catch(e => console.warn('Failed to persist overlaid drawing:', e));
+          setCachedDrawing(cacheKey, overlaid).catch((e: unknown) => console.warn('Failed to persist overlaid drawing:', e));
         } catch (e) {
           console.warn('Text overlay failed:', e);
         }

@@ -61,7 +61,7 @@ export default function HomePage() {
   const [customRates, setCustomRates] = useState<CustomRateSheet | null>(null);
   const [motherLayoutLocked, setMotherLayoutLocked] = useState(false);
   const [officeRequirements, setOfficeRequirements] = useState<OfficeRequirements | null>(null);
-  const [officeStep, setOfficeStep] = useState<'requirements' | 'layouts' | 'drawings' | 'boq'>('requirements');
+  const [officeStep, setOfficeStep] = useState<'requirements' | 'layouts' | 'drawings' | 'interior' | 'boq'>('requirements');
   const [roomDesignType, setRoomDesignType] = useState<string>('');
   const [roomDesignWidth, setRoomDesignWidth] = useState<number>(12);
   const [roomDesignDepth, setRoomDesignDepth] = useState<number>(12);
@@ -340,7 +340,7 @@ export default function HomePage() {
     const roomTypeMap: Record<string, string> = {
       'living_room': 'hall', 'bedroom': 'bedroom', 'master_bedroom': 'master_bedroom',
       'kitchen': 'kitchen', 'bathroom': 'toilet', 'dining': 'dining',
-      'puja': 'puja', 'balcony': 'balcony', 'study': 'bedroom',
+      'puja': 'puja', 'balcony': 'balcony', 'study': 'study',
     };
     const mappedType = roomTypeMap[roomDesignType] || 'hall';
     const roomName = roomDesignType.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
@@ -753,11 +753,12 @@ const BRAND_GREEN = '#4f6f52';
 
   /* ============ OFFICE DESIGN MODE ============ */
   if (mode === 'office_design') {
-    const officeSteps = ['requirements', 'layouts', 'drawings', 'boq'] as const;
+    const officeSteps = ['requirements', 'layouts', 'drawings', 'interior', 'boq'] as const;
     const officeStepLabels: Record<string, string> = {
       requirements: '📋 Requirements',
       layouts: '🏗️ Layouts',
       drawings: '📐 Drawings',
+      interior: '🎨 Interiors',
       boq: '💰 BOQ',
     };
 
@@ -840,6 +841,31 @@ const BRAND_GREEN = '#4f6f52';
             <OfficeWorkingDrawings layout={selectedLayout} officeReq={officeRequirements} />
           )}
 
+          {officeStep === 'interior' && selectedLayout && officeRequirements && (
+            <InteriorDesign
+              layout={selectedLayout}
+              requirements={{
+                city: officeRequirements.city,
+                state: officeRequirements.state,
+                plotWidthFt: officeRequirements.plotWidthFt,
+                plotDepthFt: officeRequirements.plotDepthFt,
+                facing: officeRequirements.facing,
+                vastuCompliance: false,
+                parkingType: officeRequirements.parkingType,
+                budget: officeRequirements.budget,
+                architecturalStyle: 'modern_minimalist',
+                floors: officeRequirements.floors.map(f => ({
+                  floorLabel: f.floorLabel,
+                  bedrooms: 0,
+                  halls: 0,
+                  kitchens: 0,
+                  hasDining: false,
+                  hasPuja: false,
+                })),
+              }}
+            />
+          )}
+
           {officeStep === 'boq' && selectedLayout && officeRequirements && (
             <OfficeBOQReport layout={selectedLayout} officeReq={officeRequirements} />
           )}
@@ -883,7 +909,7 @@ const BRAND_GREEN = '#4f6f52';
             )}
             {step === 'rates' && selectedLayout && requirements && (
               <RateSheet
-                onSave={(rates) => {
+                onSave={(rates: any) => {
                   setCustomRates(rates);
                   // Recalculate BOQ with new rates — keep using the already-computed
                   // structural/BBS result so steel & concrete stay consistent instead of

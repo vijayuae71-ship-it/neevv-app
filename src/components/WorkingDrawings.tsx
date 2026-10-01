@@ -14,6 +14,7 @@ import { toOverlayData, type StructuralOverlayData } from '../utils/textOverlay'
 import { authFetch } from '@/utils/authFetch';
 import { getCachedDrawing, setCachedDrawing, getAllCachedDrawings, clearCachedDrawings, migrateFromLocalStorage } from '../utils/drawingCache';
 import { buildDrawingPrompt, DrawingType as ApiDrawingType, StructuralPromptData } from '../utils/drawingPrompts';
+import { generateProgrammaticDrawing, PROGRAMMATIC_TYPES } from '../utils/drawingEngine';
 
 interface Props {
   onDrawingGenerated?: (drawingType: string) => void;
@@ -135,7 +136,7 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq, on
           // Strip the storage prefix from keys for internal state
           const cleaned: Record<string, string> = {};
           for (const [k, v] of Object.entries(cached)) {
-            cleaned[k.replace(drawingsStorageKey + ':', '')] = v;
+            cleaned[k.replace(drawingsStorageKey + ':', '')] = v as string;
           }
           setAiImages(cleaned);
         }
@@ -163,6 +164,18 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq, on
     setAiLoading(drawingType);
     setAiError(null);
     try {
+      // Use programmatic engine for coordinated drawing types (no AI, instant, accurate)
+      const apiType = aiDrawingMap[drawingType];
+      if (apiType && (PROGRAMMATIC_TYPES as readonly string[]).includes(apiType)) {
+        const dataUri = generateProgrammaticDrawing(apiType, layout, requirements, structuralResult, boq || null, FLOOR_SPECIFIC.includes(drawingType) ? selectedFloor : undefined);
+        if (dataUri) {
+          setAiImages(prev => ({ ...prev, [cacheKey]: dataUri }));
+          saveDrawingToCache(cacheKey, dataUri);
+          onDrawingGenerated?.(cacheKey);
+          setAiLoading(null);
+          return;
+        }
+      }
       const res = await authFetch('/api/generate-drawing', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -232,6 +245,18 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq, on
       setAiLoading(dt);
       setActiveDrawing(dt);
       try {
+        // Use programmatic engine for coordinated drawing types
+        const apiTypeForGen = aiDrawingMap[dt];
+        if (apiTypeForGen && (PROGRAMMATIC_TYPES as readonly string[]).includes(apiTypeForGen)) {
+          const dataUri = generateProgrammaticDrawing(apiTypeForGen, layout, requirements, structuralResult, boq || null, FLOOR_SPECIFIC.includes(dt) ? floor : undefined);
+          if (dataUri) {
+            setAiImages(prev => ({ ...prev, [cacheKey]: dataUri }));
+            saveDrawingToCache(cacheKey, dataUri);
+            onDrawingGenerated?.(cacheKey);
+            setAiLoading(null);
+            return;
+          }
+        }
         const res = await authFetch('/api/generate-drawing', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -255,8 +280,6 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq, on
             return updated;
           });
           saveDrawingToCache(cacheKey, finalImg);
-          // Same floor-qualified cache key as generateSingle — keeps GF/FF generations
-          // distinguishable to the verification engine.
           onDrawingGenerated?.(cacheKey);
         }
       } catch {
