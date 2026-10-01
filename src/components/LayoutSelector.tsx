@@ -166,7 +166,7 @@ export const LayoutSelector: React.FC<Props> = ({ layouts, onSelect, vastuEnable
                     fontWeight: 600,
                   }}
                 >
-                  Concept — not for construction
+                  Concept Design
                 </span>
               )}
               {/* Floor Plan Image */}

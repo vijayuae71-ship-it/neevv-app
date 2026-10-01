@@ -61,6 +61,7 @@ function getEditCategories(roomType: string): EditCategory[] {
       { label: 'Shower', key: 'shower_type', options: ['Rain shower', 'Handheld', 'Both', 'Rainfall panel'] },
       { label: 'Wall Tiles', key: 'wall_tiles', options: ['Ceramic', 'Vitrified', 'Marble', 'Natural Stone', 'Subway'] },
       { label: 'Floor Tiles', key: 'floor_tiles', options: ['Ceramic', 'Vitrified', 'Marble', 'Anti-skid Stone'] },
+      { label: 'Tile Height', key: 'tile_height', options: ['Skirting (150mm)', 'Dado (900mm)', 'Half Wall (1200mm)', 'Full Height (2100mm)', 'Floor to Ceiling'] },
     );
   } else if (roomType === 'kitchen') {
     categories.push(
@@ -68,6 +69,8 @@ function getEditCategories(roomType: string): EditCategory[] {
       { label: 'Cabinet Color', key: 'cabinet_color', options: ['White', 'Wood finish', 'Dark Gray', 'Navy Blue'] },
       { label: 'Backsplash', key: 'backsplash', options: ['Subway tiles', 'Mosaic', 'Full slab', 'Patterned'] },
       { label: 'Layout', key: 'kitchen_layout', options: ['L-shape', 'U-shape', 'Parallel', 'Island'] },
+      { label: 'Splash Height', key: 'splash_height', options: ['Standard (600mm)', 'Extended (900mm)', 'Full Wall'] },
+      { label: 'Flooring', key: 'flooring', options: ['Vitrified Tiles', 'Ceramic', 'Marble', 'Anti-skid Tiles'] },
     );
   } else if (roomType === 'bedroom' || roomType === 'master_bedroom') {
     categories.push(
@@ -81,6 +84,30 @@ function getEditCategories(roomType: string): EditCategory[] {
       { label: 'Sofa Type', key: 'sofa_type', options: ['L-shape', '3-seater', '2+1 set', 'Sectional'] },
       { label: 'TV Unit', key: 'tv_unit', options: ['Wall-mounted panel', 'Floor-standing', 'Built-in unit'] },
       { label: 'Flooring', key: 'flooring', options: ['Wood Laminate', 'Vitrified Tiles', 'Marble', 'Polished Concrete'] },
+    );
+  } else if (roomType === 'dining') {
+    categories.push(
+      { label: 'Dining Table', key: 'dining_table', options: ['4-seater', '6-seater', '8-seater', 'Round table'] },
+      { label: 'Flooring', key: 'flooring', options: ['Wood Laminate', 'Vitrified Tiles', 'Marble', 'Polished Concrete'] },
+      { label: 'Lighting', key: 'lighting', options: ['Chandelier', 'Pendant lights', 'Recessed', 'Track lights'] },
+    );
+  } else if (roomType === 'puja') {
+    categories.push(
+      { label: 'Material', key: 'puja_material', options: ['Teak Wood', 'Marble', 'Corian', 'MDF with Laminate'] },
+      { label: 'Style', key: 'puja_style', options: ['Traditional', 'Contemporary', 'Minimalist', 'Ornate'] },
+      { label: 'Backpanel', key: 'backpanel', options: ['CNC Jali', 'Bell Brass', 'Marble Panel', 'Backlit Panel'] },
+    );
+  } else if (roomType === 'study') {
+    categories.push(
+      { label: 'Desk Type', key: 'desk_type', options: ['L-shape desk', 'Straight desk', 'Built-in wall desk', 'Standing desk'] },
+      { label: 'Storage', key: 'storage', options: ['Open shelves', 'Closed cabinets', 'Mix of both', 'Floor-to-ceiling bookshelf'] },
+      { label: 'Flooring', key: 'flooring', options: ['Wood Laminate', 'Carpet', 'Vitrified Tiles'] },
+    );
+  } else if (roomType === 'balcony') {
+    categories.push(
+      { label: 'Style', key: 'balcony_style', options: ['Garden seating', 'Reading nook', 'Utility/drying', 'Open air dining'] },
+      { label: 'Flooring', key: 'flooring', options: ['Deck Tiles', 'Artificial Grass', 'Ceramic Tiles', 'Natural Stone'] },
+      { label: 'Railing', key: 'railing', options: ['Glass', 'MS Railing', 'SS Railing', 'Concrete with planter'] },
     );
   }
 
@@ -419,7 +446,7 @@ const InteriorAIDrawings: React.FC<Props> = ({ layout, interiorSelections, moodB
           </select>
 
           <span className="text-xs text-gray-500">Preview any room without configuring the whole home.</span>
-          {/* generate button */}ulluunniit functions.write_file? Wait tool name malformed? Need call.  
+          {/* generate button */}
           <button
             className="text-sm bg-blue-600 text-white px-3 py-1 rounded-lg hover:bg-blue-700 disabled:opacity-80 flex items-center gap-1"
             disabled={loading}

@@ -24,6 +24,8 @@ import {
   Network,
   ShieldAlert,
   SignpostBig,
+  Pencil,
+  X,
 } from 'lucide-react';
 import { Layout, OfficeRequirements } from '../types';
 import {
@@ -186,12 +188,98 @@ function buildOffice3DPrompt(type: Office3DDrawingType, layout: Layout, officeRe
     : buildOffice3DInteriorPrompt(layout, officeReq);
 }
 
+interface EditCategory {
+  label: string;
+  key: string;
+  options: string[];
+}
+
+function getOfficeEditCategories(roomType: string): EditCategory[] {
+  const categories: EditCategory[] = [];
+
+  if (roomType === 'cabin') {
+    categories.push(
+      { label: 'Desk Type', key: 'desk_type', options: ['Executive desk', 'L-shape', 'Standing desk', 'Compact'] },
+      { label: 'Storage', key: 'storage', options: ['Built-in credenza', 'Bookshelf wall', 'Filing cabinets', 'Minimal'] },
+      { label: 'Flooring', key: 'flooring', options: ['Wood Laminate', 'Carpet Tiles', 'Vitrified Tiles', 'Vinyl'] },
+    );
+  } else if (roomType === 'conference') {
+    categories.push(
+      { label: 'Table Shape', key: 'table_shape', options: ['Rectangular', 'Oval', 'Boat-shape', 'Round'] },
+      { label: 'Seating', key: 'seating', options: ['6-seater', '8-seater', '10-seater', '12-seater'] },
+      { label: 'AV Setup', key: 'av_setup', options: ['Wall-mount screen', 'Projector', 'TV + soundbar', 'Video conferencing'] },
+    );
+  } else if (roomType === 'reception') {
+    categories.push(
+      { label: 'Style', key: 'reception_style', options: ['Corporate', 'Startup casual', 'Premium', 'Minimalist'] },
+      { label: 'Desk Type', key: 'desk_type', options: ['Curved reception desk', 'Straight counter', 'Standing pod', 'Island desk'] },
+      { label: 'Seating', key: 'seating', options: ['Sofa set', 'Individual chairs', 'Bench seating', 'Lounge pods'] },
+    );
+  } else if (roomType === 'pantry' || roomType === 'cafeteria') {
+    categories.push(
+      { label: 'Layout', key: 'pantry_layout', options: ['L-shape counter', 'Straight counter', 'Island', 'Open kitchen'] },
+      { label: 'Seating', key: 'seating', options: ['Bar stools', 'Dining tables', 'High tables', 'Casual lounge'] },
+      { label: 'Backsplash', key: 'backsplash', options: ['Subway tiles', 'Glass panel', 'Stainless steel', 'Patterned'] },
+    );
+  } else if (roomType === 'open_office') {
+    categories.push(
+      { label: 'Desk Style', key: 'desk_style', options: ['Linear workstations', 'Cluster of 4', 'Hot desking', 'Benching'] },
+      { label: 'Partition', key: 'partition', options: ['Low dividers', 'Glass partitions', 'No partition', 'Acoustic panels'] },
+      { label: 'Flooring', key: 'flooring', options: ['Carpet Tiles', 'Vinyl Planks', 'Raised Floor', 'Polished Concrete'] },
+    );
+  } else if (roomType === 'break_room' || roomType === 'waiting_lounge') {
+    categories.push(
+      { label: 'Seating', key: 'seating', options: ['Bean bags', 'Lounge chairs', 'Sofa set', 'Mixed casual'] },
+      { label: 'Activity', key: 'activity', options: ['TV area', 'Game table', 'Reading nook', 'Quiet zone'] },
+      { label: 'Flooring', key: 'flooring', options: ['Carpet', 'Wood Laminate', 'Vinyl', 'Artificial Grass patch'] },
+    );
+  } else if (roomType === 'washrooms') {
+    categories.push(
+      { label: 'Tile Height', key: 'tile_height', options: ['Dado (1200mm)', 'Full Height (2100mm)', 'Floor to Ceiling'] },
+      { label: 'Fixtures', key: 'fixtures', options: ['Standard', 'Premium', 'Touchless', 'ADA Compliant'] },
+      { label: 'Vanity', key: 'vanity', options: ['Counter-top basin', 'Under-mount', 'Wall-hung', 'Trough sink'] },
+    );
+  }
+
+  // All rooms get color theme
+  categories.push({ label: 'Color Theme', key: 'color_theme', options: ['Corporate Blue', 'Warm Neutral', 'Bold Dark', 'Fresh Green', 'Classic White'] });
+  return categories;
+}
+
+const OFFICE_EDIT_ROOM_TYPES: { value: string; label: string }[] = [
+  { value: 'open_office', label: 'Open Office' },
+  { value: 'cabin', label: 'Cabin' },
+  { value: 'conference', label: 'Conference Room' },
+  { value: 'reception', label: 'Reception' },
+  { value: 'pantry', label: 'Pantry / Cafeteria' },
+  { value: 'break_room', label: 'Break Room / Lounge' },
+  { value: 'washrooms', label: 'Washrooms' },
+];
+
+function buildOfficeModificationString(options: Record<string, string>, freeText: string): string {
+  const parts: string[] = [];
+  Object.entries(options).forEach(([key, value]) => {
+    if (value) {
+      const label = key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+      parts.push(`- ${label}: change to ${value}`);
+    }
+  });
+  if (freeText.trim()) parts.push(`- Additional changes: ${freeText.trim()}`);
+  return parts.join('\n');
+}
+
 export const OfficeWorkingDrawings: React.FC<Props> = ({ layout, officeReq }) => {
   const [images, setImages] = useState<Record<string, string>>({});
   const [generating, setGenerating] = useState<Record<string, boolean>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [floorSelection, setFloorSelection] = useState<Record<string, number>>({});
   const [activeCategory, setActiveCategory] = useState<string>('All');
+  const [editPanelOpen, setEditPanelOpen] = useState<string | null>(null); // cacheKey of card being edited
+  const [editRoomType, setEditRoomType] = useState<string>('open_office');
+  const [editOptions, setEditOptions] = useState<Record<string, string>>({});
+  const [editFreeText, setEditFreeText] = useState('');
+  const editCategories = getOfficeEditCategories(editRoomType);
+  const hasEditChanges = Object.keys(editOptions).length > 0 || editFreeText.trim().length > 0;
 
   const isMultiFloor = (officeReq?.floors?.length || 1) > 1;
 
@@ -266,11 +354,11 @@ export const OfficeWorkingDrawings: React.FC<Props> = ({ layout, officeReq }) =>
 
   /* ---------- Generate (or load cached) drawing ---------- */
   const generateDrawing = useCallback(
-    async (type: ExtendedOfficeDrawingType, floor?: number) => {
+    async (type: ExtendedOfficeDrawingType, floor?: number, modification?: string) => {
       const cacheKey = buildCacheKey(type, floor);
 
-      // Check IndexedDB cache first
-      const cached = await getCachedDrawing(cacheKey);
+      // Check IndexedDB cache first (skipped when applying edits)
+      const cached = modification ? null : await getCachedDrawing(cacheKey);
       if (cached) {
         setImages(prev => ({ ...prev, [cacheKey]: cached }));
         return;
@@ -284,9 +372,12 @@ export const OfficeWorkingDrawings: React.FC<Props> = ({ layout, officeReq }) =>
       });
 
       try {
-        const prompt = isOffice3DType(type)
+        let prompt = isOffice3DType(type)
           ? buildOffice3DPrompt(type, layout, officeReq)
           : getOfficeDrawingPrompt(type as OfficeDrawingType, layout, officeReq, floor);
+        if (modification) {
+          prompt += `\n\n--- CUSTOMER MODIFICATIONS ---\nApply the following changes to the design above. Keep everything else exactly the same unless contradicted by these changes.\n${modification}`;
+        }
         const res = await authFetch('/api/generate-drawing', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -324,6 +415,31 @@ export const OfficeWorkingDrawings: React.FC<Props> = ({ layout, officeReq }) =>
     },
     [generateDrawing]
   );
+
+  const handleEditRerender = useCallback(
+    async (type: ExtendedOfficeDrawingType, floor?: number) => {
+      const mod = buildOfficeModificationString(editOptions, editFreeText);
+      if (!mod) return;
+      await generateDrawing(type, floor, mod);
+    },
+    [editOptions, editFreeText, generateDrawing]
+  );
+
+  const handleResetEdit = useCallback(() => {
+    setEditOptions({});
+    setEditFreeText('');
+  }, []);
+
+  const toggleEditOption = useCallback((key: string, value: string) => {
+    setEditOptions(prev => {
+      if (prev[key] === value) {
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      }
+      return { ...prev, [key]: value };
+    });
+  }, []);
 
   const downloadDrawing = useCallback(async (cacheKey: string) => {
     const dataUri = images[cacheKey] || await getCachedDrawing(cacheKey) || '';
@@ -683,6 +799,33 @@ export const OfficeWorkingDrawings: React.FC<Props> = ({ layout, officeReq }) =>
                       <Download size={13} />
                       Download
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (editPanelOpen === cacheKey) { setEditPanelOpen(null); }
+                        else { setEditPanelOpen(cacheKey); handleResetEdit(); }
+                      }}
+                      disabled={isGenerating}
+                      style={{
+                        flex: 1,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 6,
+                        fontSize: 12,
+                        fontWeight: 500,
+                        color: editPanelOpen === cacheKey ? '#ffffff' : '#b45309',
+                        backgroundColor: editPanelOpen === cacheKey ? BRAND_GREEN : '#ffffff',
+                        border: editPanelOpen === cacheKey ? `1px solid ${BRAND_GREEN}` : '1px solid #fbbf24',
+                        borderRadius: 6,
+                        padding: '8px 12px',
+                        cursor: isGenerating ? 'default' : 'pointer',
+                        opacity: isGenerating ? 0.5 : 1,
+                      }}
+                    >
+                      {editPanelOpen === cacheKey ? <X size={13} /> : <Pencil size={13} />}
+                      {editPanelOpen === cacheKey ? 'Close' : 'Edit Design'}
+                    </button>
                   </>
                 ) : (
                   <button
@@ -711,6 +854,91 @@ export const OfficeWorkingDrawings: React.FC<Props> = ({ layout, officeReq }) =>
                   </button>
                 )}
               </div>
+
+              {/* Edit Design panel */}
+              {editPanelOpen === cacheKey && image && (
+                <div style={{ backgroundColor: '#fffbeb', borderTop: '1px solid #fde68a', padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <h4 style={{ fontSize: 13, fontWeight: 600, color: '#1f2937', margin: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <Pencil size={13} style={{ color: '#d97706' }} /> Edit Design — {drawingInfo.label}
+                    </h4>
+                    {hasEditChanges && (
+                      <button type="button" onClick={handleResetEdit} style={{ fontSize: 11, color: '#6b7280', textDecoration: 'underline', background: 'none', border: 'none', cursor: 'pointer' }}>
+                        Reset all
+                      </button>
+                    )}
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 11, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 4 }}>Space Type</label>
+                    <select
+                      value={editRoomType}
+                      onChange={e => { setEditRoomType(e.target.value); setEditOptions({}); }}
+                      style={{ fontSize: 12, border: '1px solid #d1d5db', borderRadius: 6, padding: '4px 8px', backgroundColor: '#fff', color: '#1f2937', width: '100%' }}
+                    >
+                      {OFFICE_EDIT_ROOM_TYPES.map(rt => (
+                        <option key={rt.value} value={rt.value}>{rt.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  {editCategories.map(cat => (
+                    <div key={cat.key}>
+                      <label style={{ fontSize: 11, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 4 }}>{cat.label}</label>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                        {cat.options.map(opt => {
+                          const isActive = editOptions[cat.key] === opt;
+                          return (
+                            <button
+                              key={opt}
+                              type="button"
+                              onClick={() => toggleEditOption(cat.key, opt)}
+                              style={{
+                                fontSize: 11,
+                                fontWeight: 500,
+                                borderRadius: 9999,
+                                padding: '4px 10px',
+                                cursor: 'pointer',
+                                backgroundColor: isActive ? BRAND_GREEN : '#ffffff',
+                                color: isActive ? '#ffffff' : '#4b5563',
+                                border: `1px solid ${isActive ? BRAND_GREEN : '#d1d5db'}`,
+                              }}
+                            >
+                              {opt}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                  <div>
+                    <label style={{ fontSize: 11, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 4 }}>Additional Changes</label>
+                    <textarea
+                      rows={2}
+                      value={editFreeText}
+                      onChange={e => setEditFreeText(e.target.value)}
+                      placeholder="e.g., Add a glass partition, use warm wood finish..."
+                      style={{ width: '100%', fontSize: 12, border: '1px solid #d1d5db', borderRadius: 6, padding: '6px 8px', backgroundColor: '#fff', color: '#1f2937', boxSizing: 'border-box' }}
+                    />
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <button
+                      type="button"
+                      disabled={isGenerating || !hasEditChanges}
+                      onClick={() => handleEditRerender(drawingInfo.id, floor)}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 500, color: '#fff',
+                        backgroundColor: BRAND_GREEN, border: 'none', borderRadius: 6, padding: '6px 12px',
+                        cursor: isGenerating || !hasEditChanges ? 'default' : 'pointer',
+                        opacity: isGenerating || !hasEditChanges ? 0.5 : 1,
+                      }}
+                    >
+                      <RefreshCw size={13} /> Re-render with changes
+                    </button>
+                    <span style={{ fontSize: 11, color: '#6b7280' }}>
+                      {Object.keys(editOptions).length} option{Object.keys(editOptions).length !== 1 ? 's' : ''} selected{editFreeText.trim() ? ' + custom text' : ''}
+                    </span>
+                  </div>
+                </div>
+              )}
             </div>
           );
         })}

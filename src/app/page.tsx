@@ -40,10 +40,10 @@ type DesignStatus = 'concept' | 'draft' | 'validated';
 
 function DesignStatusBadge({ status }: { status: DesignStatus }) {
   const label = status === 'concept'
-    ? 'Concept — not for construction'
+    ? 'Concept Design'
     : status === 'validated'
-      ? 'Draft — validation passed, requires professional review'
-      : 'Draft — requires professional review';
+      ? 'Draft Design — Validated'
+      : 'Draft Design';
   return <span role="status" className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold ${status === 'concept' ? 'border-yellow-300 bg-yellow-50 text-yellow-900' : 'border-orange-300 bg-orange-50 text-orange-900'}`}>{label}</span>;
 }
 
