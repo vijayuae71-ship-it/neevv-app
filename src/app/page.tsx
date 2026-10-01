@@ -231,6 +231,7 @@ export default function HomePage() {
       if (Number.isFinite(bbs.totalSteelKg) && bbs.totalSteelKg > 0 && result.summary.totalSteelKg > 0) {
         const steelScale = bbs.totalSteelKg / result.summary.totalSteelKg;
         result.summary.totalSteelKg = bbs.totalSteelKg;
+        (result.summary as typeof result.summary & { bbsReconciledSteelKg?: number }).bbsReconciledSteelKg = bbs.totalSteelKg;
         result.summary.steelBreakdown = {
           foundation: result.summary.steelBreakdown.foundation * steelScale,
           columns: result.summary.steelBreakdown.columns * steelScale,

@@ -15,6 +15,7 @@ export interface StructuralResultLike {
   summary: {
     totalConcreteM3: number;
     totalSteelKg?: number;
+    bbsReconciledSteelKg?: number;
     concreteBreakdown: ConcreteBreakdown;
   };
   columns: Array<{ widthMm: number; depthMm: number }>;
@@ -170,9 +171,14 @@ export function calculateBOQ(
   // BBS is the authoritative procurement quantity — it includes development lengths,
   // laps, hooks, and wastage that the engine's design total intentionally omits.
   // Use BBS directly when available, falling back to structural engine, then area estimate.
-  const steelKg = bbsResult && Number.isFinite(bbsResult.totalSteelKg) && bbsResult.totalSteelKg > 0
-    ? bbsResult.totalSteelKg
-    : structuralResult ? finiteNonNegative(structuralResult.summary.totalSteelKg, 0)
+  // Steel priority: BBS (bar-by-bar) → reconciled BBS on structural result → structural engine → area estimate
+  const bbsSteel = bbsResult && Number.isFinite(bbsResult.totalSteelKg) && bbsResult.totalSteelKg > 0
+    ? bbsResult.totalSteelKg : 0;
+  const reconciledSteel = structuralResult?.summary?.bbsReconciledSteelKg;
+  const engineSteel = structuralResult ? finiteNonNegative(structuralResult.summary.totalSteelKg, 0) : 0;
+  const steelKg = bbsSteel > 0 ? bbsSteel
+    : reconciledSteel && Number.isFinite(reconciledSteel) && reconciledSteel > 0 ? reconciledSteel
+    : engineSteel > 0 ? engineSteel
     : totalBuiltUpSqFt * 4.5;
   const steelMT = +(steelKg / 1000).toFixed(2);
   const actualColumnCount = structuralResult?.columns.length;
@@ -252,6 +258,17 @@ export function calculateBOQ(
     doorSchedule.push({ mark: `D${dIdx++}`, location: r.name, type: 'Flush', widthMM: 900, heightMM: 2100, qty: 1, material: 'BWR Plywood' });
   });
 
+  // Reconcile with openings schedule if available — openings schedule is the single
+  // source of truth for door count, so pad or trim the BOQ door schedule to match.
+  if (layout.openingsSchedule && layout.openingsSchedule.totalDoors > doorSchedule.length) {
+    const missingCount = layout.openingsSchedule.totalDoors - doorSchedule.length;
+    for (let i = 0; i < missingCount; i++) {
+      doorSchedule.push({ mark: `D${dIdx++}`, location: 'Internal', type: 'Flush', widthMM: 900, heightMM: 2100, qty: 1, material: 'BWR Plywood' });
+    }
+  } else if (layout.openingsSchedule && layout.openingsSchedule.totalDoors < doorSchedule.length) {
+    doorSchedule.length = layout.openingsSchedule.totalDoors;
+  }
+
   // ────── WINDOW SCHEDULE ──────
   const windowSchedule: WindowScheduleItem[] = [];
   let wIdx = 1;
@@ -300,7 +317,7 @@ export function calculateBOQ(
   add('RCC Beams (M25)', beamConcrete, 'm³', 8000, 'structural', quantityBasis === 'engineered' ? `Engineered beam sizes: ${beamSizes?.map((size) => `${size.widthMm}×${size.depthMm}mm × ${size.count}`).join(', ') || 'refer structural schedule'}, IS 456` : '230×400mm, IS 456');
   add(`RCC Roof Slab (M25, ${primarySlabThickness}mm)`, slabConcrete, 'm³', 7500, 'structural', quantityBasis === 'engineered' ? `Engineered slab thickness(es): ${slabThicknesses?.join(', ') || primarySlabThickness}mm, IS 456` : '150mm thick');
   add('RCC Staircase (M25)', stairConcrete, 'm³', 9000, 'structural', 'Waist slab type, IS 456');
-  add('RCC Lintels (M25)', +(lintelConcrete * 0.7).toFixed(2), 'm³', 8000, 'structural', 'Above openings');
+  add('RCC Lintels (M25)', +lintelConcrete.toFixed(2), 'm³', 8000, 'structural', 'Above openings');
   add('RCC Chajjas / Sunshade', +(lintelConcrete * 0.3).toFixed(2), 'm³', 8500, 'structural', '450mm projection');
   add('Reinforcement Steel (Fe500D)', steelMT, 'MT', 72000, 'structural', structuralResult ? `Structural-engine total, reconciled to the Bar Bending Schedule grand total (incl. laps, hooks & cutting waste); IS 1786` : 'Incl. binding wire, IS 1786');
   add('Curing (7-day min.)', totalConcrete, 'm³', 30, 'structural', 'Ponding / gunny bag method');

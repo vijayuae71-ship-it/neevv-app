@@ -126,7 +126,7 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq, on
   const [exportResult, setExportResult] = useState<string | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
 
-  const drawingsStorageKey = `neevv-drawings-${requirements.plotWidthFt}x${requirements.plotDepthFt}`;
+  const drawingsStorageKey = `neevv-drawings-${requirements.plotWidthFt}x${requirements.plotDepthFt}-${layout.designSeed?.seedId || layout.id || 'default'}-${requirements.city || 'city'}`;
 
   const saveDrawingToCache = useCallback(async (cacheKey: string, imageData: string) => {
     try {

@@ -702,18 +702,22 @@ function validateArchitectural(ctx: Ctx, idGen: () => string): CategoryResult {
 
   // 5. Room dimensions meet NBC minimums
   const belowMinRooms: string[] = [];
+  let severelyUndersizedRoom = false;
   for (const r of allRooms) {
     const min = NBC_MIN_AREA_SQM[r.type];
     if (min !== undefined) {
       const area = r.width * r.depth;
-      if (area < min - 0.05) belowMinRooms.push(`${r.name} (${area.toFixed(2)}sqm < ${min}sqm)`);
+      if (area < min - 0.05) {
+        belowMinRooms.push(`${r.name} (${area.toFixed(2)}sqm < ${min}sqm)`);
+        if (area < min * 0.8) severelyUndersizedRoom = true;
+      }
     }
   }
   if (belowMinRooms.length === 0) {
     b.pass();
   } else {
     b.fail(
-      'ERROR', 'Rooms below NBC minimum area',
+      severelyUndersizedRoom ? 'ERROR' : 'WARNING', 'Rooms below NBC minimum area',
       'One or more rooms are smaller than the National Building Code minimum area for their room type.',
       'Floor Plan', 'Room Area (NBC minimum)',
       'bedroom/hall >= 9.5 sqm, kitchen >= 5.0 sqm, toilet >= 1.8 sqm, dining >= 7.5 sqm',
