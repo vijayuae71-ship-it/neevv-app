@@ -443,8 +443,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             <Reveal delay={280}>
               <div className="rounded-xl border-2 border-dashed p-4 text-center flex items-center justify-center gap-2 max-w-2xl mx-auto" style={{ borderColor: `${ACCENT}40` }}>
                 <Clock className="w-4 h-4 flex-shrink-0" style={{ color: ACCENT }} />
-                <p className="text-xs font-bold uppercase tracking-wider" style={{ color: `${ACCENT}bb` }}>
-                  Preliminary design — verify with licensed professional before execution
+                <p className="text-xs tracking-wider" style={{ color: '#999' }}>
+                  Preliminary design for professional review
                 </p>
               </div>
             </Reveal>

@@ -212,6 +212,7 @@ export default function InteriorMoodBoard({ layout, onComplete }: Props) {
   };
 
   const allConfigured = configuredSet.size >= roomInteriors.length;
+  const anyConfigured = configuredSet.size > 0;
 
   const getFloorLabel = (room: Room): string => {
     const fl = layout.floors.find(f => f.floor === room.floor);
@@ -346,10 +347,10 @@ export default function InteriorMoodBoard({ layout, onComplete }: Props) {
 
             <button
               className="btn btn-primary btn-sm w-full mt-3"
-              disabled={!allConfigured}
+              disabled={!anyConfigured}
               onClick={() => setSubStep('preview')}
             >
-              Review Mood Board
+              Review Mood Board ({configuredSet.size}/{roomInteriors.length} rooms)
             </button>
             <button
               className="btn btn-ghost btn-xs w-full mt-1"
@@ -581,7 +582,7 @@ export default function InteriorMoodBoard({ layout, onComplete }: Props) {
                 </button>
               )}
 
-              {allConfigured && (
+              {anyConfigured && (
                 <button
                   className="btn btn-accent btn-sm ml-auto"
                   onClick={() => setSubStep('preview')}
@@ -594,8 +595,9 @@ export default function InteriorMoodBoard({ layout, onComplete }: Props) {
             {/* Progress hint */}
             {!allConfigured && (
               <div className="text-xs opacity-80 mt-1">
-                Save all {roomInteriors.length} rooms to unlock the Mood Board preview
-                ({configuredSet.size}/{roomInteriors.length} done)
+                {anyConfigured
+                  ? `${configuredSet.size}/${roomInteriors.length} rooms configured — you can preview now or continue`
+                  : `Save at least one room to unlock the Mood Board preview`}
               </div>
             )}
           </div>

@@ -180,7 +180,13 @@ export default function HomePage() {
           if (data.selectedLayout) setMotherLayoutLocked(true);
           if (data.boq) setBOQ(data.boq);
           if (data.customRates) setCustomRates(data.customRates);
-          if (data.mode && data.mode !== 'landing') setMode(data.mode);
+          if (data.mode && data.mode !== 'landing') {
+            // Only restore sub-route modes if the URL matches; at root '/', only restore 'new_build' or 'dashboard'
+            const restorable = ['new_build', 'dashboard'];
+            if (restorable.includes(data.mode) || window.location.pathname !== '/') {
+              setMode(data.mode);
+            }
+          }
           if (data.step) setStep(data.step);
           if (typeof data.drawingsGenerated === 'number') setDrawingsGenerated(data.drawingsGenerated);
           if (data.generatedDrawingTypes?.length) setGeneratedDrawingTypes(data.generatedDrawingTypes);
@@ -531,14 +537,14 @@ export default function HomePage() {
     return (
       <div className="bg-white shadow-sm border-b border-gray-200 px-4 py-3 flex flex-wrap items-center justify-between gap-2 shrink-0">
         <div className="flex items-center gap-3">
-          <img
-            src={BRAND_LOGO_BASE64}
-            alt="neevv"
-            className="h-8 hover:opacity-80 transition-opacity"
+          <button
             onClick={handleLogoClick}
-            style={{ cursor: 'pointer' }}
+            className="flex items-center gap-1.5 hover:opacity-80 transition-opacity"
             title="Back to Home"
-          />
+          >
+            <span className="text-gray-400 text-lg">←</span>
+            <img src={BRAND_LOGO_BASE64} alt="neevv" className="h-8" />
+          </button>
           <div className="h-6 w-px bg-gray-300 hidden sm:block" />
           <span className="text-xs opacity-80 tracking-wide uppercase hidden sm:inline">
             {mode === 'interior_only' ? 'Interior Design Studio' : mode === 'office_design' ? 'Office Design Studio' : 'Architecture • Structure • MEP • Interiors'}
@@ -895,9 +901,9 @@ const BRAND_GREEN = '#4f6f52';
                 onClick={() => {
                   const idx = officeSteps.indexOf(s);
                   const currentIdx = officeSteps.indexOf(officeStep);
-                  if (idx <= currentIdx) setOfficeStep(s);
+                  if (idx <= currentIdx + 1) setOfficeStep(s);
                 }}
-                disabled={officeSteps.indexOf(s) > officeSteps.indexOf(officeStep)}
+                disabled={officeSteps.indexOf(s) > officeSteps.indexOf(officeStep) + 1}
               >
                 {officeStepLabels[s]}
               </button>
@@ -952,7 +958,17 @@ const BRAND_GREEN = '#4f6f52';
           )}
 
           {officeStep === 'drawings' && selectedLayout && officeRequirements && (
-            <OfficeWorkingDrawings layout={selectedLayout} officeReq={officeRequirements} />
+            <div>
+              <OfficeWorkingDrawings layout={selectedLayout} officeReq={officeRequirements} />
+              <div className="p-4 text-center border-t border-gray-200 bg-gray-50">
+                <button
+                  className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors font-medium"
+                  onClick={() => setOfficeStep('interior')}
+                >
+                  Continue to Interiors →
+                </button>
+              </div>
+            </div>
           )}
 
           {officeStep === 'interior' && selectedLayout && officeRequirements && (

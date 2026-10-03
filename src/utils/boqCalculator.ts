@@ -162,24 +162,15 @@ export function calculateBOQ(
     : estimatedTotalConcrete;
   totalConcrete = +totalConcrete.toFixed(1);
 
-  // Steel: when a structural result is supplied, the structural engine's own total is the
-  // ONLY authoritative source for the BOQ headline figure — no area-based formula may
-  // override it. A generated BBS (bbsResult) is a detailed bar-by-bar schedule derived
-  // from the SAME structural result; its own report always displays its own total, and
-  // callers must pass the current structuralResult/bbsResult pair together so the two
-  // stay in lockstep (see page.tsx call sites).
-  // BBS is the authoritative procurement quantity — it includes development lengths,
-  // laps, hooks, and wastage that the engine's design total intentionally omits.
-  // Use BBS directly when available, falling back to structural engine, then area estimate.
-  // Steel priority: BBS (bar-by-bar) → reconciled BBS on structural result → structural engine → area estimate
+  // Steel: structuralResult.summary.totalSteelKg is ALREADY reconciled to BBS value
+  // in runStructuralDesign() (page.tsx) before it's stored in React state.
+  // So we just trust it. bbsResult is a secondary check for safety.
+  const engineSteel = structuralResult ? finiteNonNegative(structuralResult.summary.totalSteelKg, 0) : 0;
   const bbsSteel = bbsResult && Number.isFinite(bbsResult.totalSteelKg) && bbsResult.totalSteelKg > 0
     ? bbsResult.totalSteelKg : 0;
-  const reconciledSteel = structuralResult?.summary?.bbsReconciledSteelKg;
-  const engineSteel = structuralResult ? finiteNonNegative(structuralResult.summary.totalSteelKg, 0) : 0;
-  const steelKg = bbsSteel > 0 ? bbsSteel
-    : reconciledSteel && Number.isFinite(reconciledSteel) && reconciledSteel > 0 ? reconciledSteel
-    : engineSteel > 0 ? engineSteel
-    : totalBuiltUpSqFt * 4.5;
+  // Use whichever is LARGER — the reconciled engine value or BBS. They should match,
+  // but if they diverge, the larger value is safer (avoids under-ordering steel).
+  const steelKg = Math.max(engineSteel, bbsSteel) || totalBuiltUpSqFt * 4.5;
   const steelMT = +(steelKg / 1000).toFixed(2);
   const actualColumnCount = structuralResult?.columns.length;
   const beamSizes = structuralResult ? uniqueMemberSizes(structuralResult.beams) : undefined;
