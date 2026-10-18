@@ -351,6 +351,20 @@ function resolveOpenings(g: Geometry, entries: LayoutOpening[]): OpeningPlacemen
     const counts = new Map<string, number>();
     for (const entry of entries) {
       if (!entry || !['door', 'window', 'ventilator'].includes(entry.type)) continue;
+      if (typeof entry.floor === 'number' && entry.floor !== floor) continue;
+      // Planner openings carry the exact room, side and position — no distribution guesswork.
+      if (typeof entry.floor === 'number' && entry.face && typeof entry.positionMm === 'number') {
+        const room = rooms.find(r => r.source.id === entry.roomId) ?? rooms.find(r => normalizeName(r.source.name) === normalizeName(entry.room));
+        if (!room) continue;
+        const face = entry.face;
+        const axis: Axis = face === 'left' || face === 'right' ? 'vertical' : 'horizontal';
+        const fixed = face === 'rear' ? room.y + room.d : face === 'left' ? room.x : face === 'right' ? room.x + room.w : room.y;
+        const start = axis === 'horizontal' ? room.x : room.y;
+        const span = positive(entry.widthMm, entry.type === 'door' ? 900 : 1200);
+        const center = start + entry.positionMm;
+        result.push({ source: entry, floor, room, a: center - span / 2, b: center + span / 2, axis, fixed, face: entry.wall === 'internal' ? 'internal' : face, index: result.length });
+        continue;
+      }
       const key = normalizeName(entry.room);
       const room = rooms.find(r => normalizeName(r.source.name) === key || normalizeName(r.source.id) === key)
         ?? rooms.find(r => normalizeName(r.source.name).includes(key) && key.length > 1);

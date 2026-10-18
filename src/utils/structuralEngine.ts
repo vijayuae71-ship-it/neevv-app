@@ -10,6 +10,7 @@ export interface FloorLayout { floor: number; floorLabel: string; rooms: Room[];
 export interface Setbacks { front: number; rear: number; left: number; right: number; }
 export interface Layout {
   floors: FloorLayout[];
+  structuralGridM?: { xs: number[]; ys: number[] };
   builtUpAreaSqM: number;
   builtUpAreaSqFt: number;
   setbacks: Setbacks;
@@ -242,8 +243,15 @@ function generateColumns(layout: Layout, floor: number, geometry: ReturnType<typ
   // A hook for real user-authored structural columns would live on a distinct,
   // explicitly-flagged field; no such field exists in this app's data model today,
   // so the rational grid alone is the structural column layout.
-  const xs = gridCoordinates(geometry.width, geometry.originX);
-  const ys = gridCoordinates(geometry.depth, geometry.originY);
+  // The architect planner supplies column lines chosen on real wall lines (spans ≤ 5 m),
+  // so columns sit inside walls rather than in the middle of rooms. Fall back to the
+  // rational 5 m grid only when no planner grid is present (legacy saved projects).
+  const plannerGrid = layout.structuralGridM;
+  const validLines = (v: unknown, len: number): v is number[] => Array.isArray(v) && v.length >= 2 && v.every((n) => typeof n === 'number' && Number.isFinite(n))
+    && v.every((n, i, arr) => i === 0 || (n - arr[i - 1] > 0.5 && n - arr[i - 1] <= 5 + EPS)) && Math.abs(v[0]) < EPS && Math.abs(v[v.length - 1] - len) < 0.06;
+  const usePlanner = !!plannerGrid && validLines(plannerGrid.xs, geometry.width) && validLines(plannerGrid.ys, geometry.depth);
+  const xs = usePlanner ? plannerGrid!.xs.map((x) => geometry.originX + x) : gridCoordinates(geometry.width, geometry.originX);
+  const ys = usePlanner ? plannerGrid!.ys.map((y) => geometry.originY + y) : gridCoordinates(geometry.depth, geometry.originY);
   const points: Point[] = [];
   for (const x of xs) for (const y of ys) points.push({ x, y });
   return uniquePoints(points);

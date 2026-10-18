@@ -24,6 +24,8 @@
  */
 
 import { Layout, ProjectRequirements, BOQ, Room, Column, FloorLayout, DoorScheduleItem, WindowScheduleItem } from '../types';
+import { ELECTRICAL_POINT_MAP, electricalPoints as sharedElectricalPoints, plumbingPoints as sharedPlumbingPoints, isNiche, bedroomOpeningIds } from './quantityRules';
+import { computeTakeoff } from './quantityTakeoff';
 
 /* =============================================================================
  * PUBLIC TYPES
@@ -181,11 +183,7 @@ const NBC_MIN_AREA_SQM: Partial<Record<string, number>> = {
  * boqCalculator.ts exactly, so BOQ totals can be recomputed and cross-checked
  * without drift.
  */
-const ELECTRICAL_POINT_MAP: Record<string, number> = {
-  master_bedroom: 8, bedroom: 6, hall: 10, kitchen: 6,
-  toilet: 3, dining: 4, puja: 2, passage: 2,
-  balcony: 2, store: 2, utility: 3, parking: 2, entrance: 2, staircase: 2,
-};
+// ELECTRICAL_POINT_MAP is imported from quantityRules.ts (shared with the BOQ).
 
 /** Recommended minimum electrical points per room type (code/best-practice, not the app's default allocation). */
 const RECOMMENDED_MIN_ELECTRICAL: { type: string; label: string; min: number }[] = [
@@ -197,10 +195,10 @@ const RECOMMENDED_MIN_ELECTRICAL: { type: string; label: string; min: number }[]
 
 /** Typical construction cost per sqft ranges (INR), 2024-25 averages, by budget tier. */
 const BUDGET_COST_RANGE: Record<string, [number, number]> = {
-  economy: [1000, 2200],
-  standard: [1500, 3200],
-  premium: [2000, 4000],
-  luxury: [2800, 5500],
+  economy: [1200, 2300],
+  standard: [1500, 2900],
+  premium: [2100, 3900],
+  luxury: [2800, 6000],
 };
 
 /* =============================================================================
@@ -269,13 +267,11 @@ function expectedWindowCount(rooms: Room[]): number {
 }
 
 function expectedElectricalPoints(rooms: Room[]): number {
-  return rooms.reduce((sum, r) => sum + (ELECTRICAL_POINT_MAP[r.type] ?? 2), 0);
+  return sharedElectricalPoints(rooms);
 }
 
 function expectedPlumbingPoints(rooms: Room[]): number {
-  const toilets = rooms.filter(r => r.type === 'toilet').length;
-  const kitchens = rooms.filter(r => r.type === 'kitchen').length;
-  return toilets * 5 + kitchens * 3;
+  return sharedPlumbingPoints(rooms);
 }
 
 /* =============================================================================
@@ -514,7 +510,7 @@ function validateLockedDesign(ctx: Ctx, idGen: () => string): CategoryResult {
     const bedroomCount = floor.rooms.filter(r => r.type === 'bedroom' || r.type === 'master_bedroom').length;
     const hallCount = floor.rooms.filter(r => r.type === 'hall').length;
     const kitchenCount = floor.rooms.filter(r => r.type === 'kitchen').length;
-    const hasDining = floor.rooms.some(r => r.type === 'dining');
+    const hasDining = floor.rooms.some(r => r.type === 'dining' || (r.type === 'hall' && /dining/i.test(r.name)));
     const hasPuja = floor.rooms.some(r => r.type === 'puja');
 
     // 8. Bedroom count (CRITICAL — blocks export)
@@ -793,6 +789,7 @@ function validateArchitectural(ctx: Ctx, idGen: () => string): CategoryResult {
   for (const f of layout.floors) {
     for (let i = 0; i < f.rooms.length; i++) {
       for (let j = i + 1; j < f.rooms.length; j++) {
+        if (isNiche(f.rooms[i]) || isNiche(f.rooms[j])) continue;
         if (roomsOverlap(f.rooms[i], f.rooms[j])) {
           overlaps.push(`${f.floorLabel}: ${f.rooms[i].name} overlaps ${f.rooms[j].name}`);
         }
@@ -1213,9 +1210,9 @@ function validatePlumbing(ctx: Ctx, idGen: () => string): CategoryResult {
     } else {
       b.fail(
         'ERROR', 'Plumbing point total mismatch',
-        'BOQ plumbing points do not match the expected formula of (toilets x 5) + (kitchens x 3).',
+        'BOQ plumbing points do not match the shared formula (baths x 5) + (kitchens x 3) + (utility/wash x 2).',
         'Plumbing Drawing / BOQ', 'Plumbing Points',
-        `${expected} (toilets=${toilets.length}x5 + kitchens=${kitchens.length}x3)`,
+        `${expected} (baths x5 + kitchens x3 + utility/wash x2)`,
         `${boq.plumbingPoints}`,
         'Regenerate the BOQ from the current locked layout.',
       );
@@ -1488,13 +1485,15 @@ function validateBOQ(ctx: Ctx, idGen: () => string): CategoryResult {
 
   // 3b. CRITICAL: Bedroom count in BOQ must match user selection
   const totalRequestedBedroomsBOQ = requirements.floors.reduce((s, f) => s + f.bedrooms, 0);
-  const bedroomDoorsInSchedule = boq.doorSchedule.filter(d =>
-    d.location.toLowerCase().includes('bedroom') || d.location.toLowerCase().includes('master')
-  ).length;
-  const bedroomWindowsInSchedule = boq.windowSchedule.filter(w =>
-    w.location.toLowerCase().includes('bedroom') || w.location.toLowerCase().includes('master')
-  ).length;
+  const bedOps = bedroomOpeningIds(layout);
   const actualBedroomsInLayout = allRooms.filter(r => r.type === 'bedroom' || r.type === 'master_bedroom').length;
+  // With a locked openings schedule: every bedroom has its own door + window and the BOQ carries exactly those marks.
+  const bedroomDoorsInSchedule = bedOps
+    ? (bedOps.bedroomsWithoutDoor.length ? actualBedroomsInLayout - bedOps.bedroomsWithoutDoor.length : (boq.doorSchedule.filter(d => bedOps.doors.has(d.mark)).length === bedOps.doors.size ? actualBedroomsInLayout : -1))
+    : boq.doorSchedule.filter(d => d.location.toLowerCase().includes('bedroom') || d.location.toLowerCase().includes('master')).length;
+  const bedroomWindowsInSchedule = bedOps
+    ? (bedOps.bedroomsWithoutWindow.length ? actualBedroomsInLayout - bedOps.bedroomsWithoutWindow.length : (boq.windowSchedule.filter(w => bedOps.windows.has(w.mark)).length === bedOps.windows.size ? actualBedroomsInLayout : -1))
+    : boq.windowSchedule.filter(w => w.location.toLowerCase().includes('bedroom') || w.location.toLowerCase().includes('master')).length;
 
   // Check bedroom doors in BOQ match bedroom count
   if (bedroomDoorsInSchedule === actualBedroomsInLayout) {
@@ -1539,29 +1538,33 @@ function validateBOQ(ctx: Ctx, idGen: () => string): CategoryResult {
   }
 
   // 4. Door count vs expected from room types
-  const expectedDoors = expectedDoorCount(allRooms);
-  if (boq.doorSchedule.length === expectedDoors) {
+  const sched = layout.openingsSchedule;
+  const hasSched = !!sched && sched.openings.length > 0;
+  const expectedDoors = hasSched ? sched!.totalDoors : expectedDoorCount(allRooms);
+  const boqDoorQty = boq.doorSchedule.reduce((sum, d) => sum + (d.qty || 1), 0);
+  if (boqDoorQty === expectedDoors) {
     b.pass();
   } else {
     b.fail(
       'ERROR', 'Door schedule count mismatch',
       'The BOQ door schedule count does not match the count expected from the room types in the locked layout.',
       'BOQ / Door Schedule', 'Door Count',
-      `${expectedDoors}`, `${boq.doorSchedule.length}`,
+      `${expectedDoors}${hasSched ? ' (locked openings schedule)' : ''}`, `${boqDoorQty}`,
       'Regenerate the door schedule from the current locked layout.',
     );
   }
 
   // 5. Window count vs expected from room types
-  const expectedWindows = expectedWindowCount(allRooms);
-  if (boq.windowSchedule.length === expectedWindows) {
+  const expectedWindows = hasSched ? sched!.totalWindows + sched!.totalVentilators : expectedWindowCount(allRooms);
+  const boqWindowQty = boq.windowSchedule.reduce((sum, w) => sum + (w.qty || 1), 0);
+  if (boqWindowQty === expectedWindows) {
     b.pass();
   } else {
     b.fail(
       'ERROR', 'Window schedule count mismatch',
       'The BOQ window schedule count does not match the count expected from the room types in the locked layout.',
       'BOQ / Window Schedule', 'Window Count',
-      `${expectedWindows}`, `${boq.windowSchedule.length}`,
+      `${expectedWindows}${hasSched ? ' (locked openings schedule, incl. ventilators)' : ''}`, `${boqWindowQty}`,
       'Regenerate the window schedule from the current locked layout.',
     );
   }
@@ -1620,7 +1623,10 @@ function validateBOQ(ctx: Ctx, idGen: () => string): CategoryResult {
   const externalWallArea = perimeter * wallHeight * layout.floors.length;
   const internalWallArea = externalWallArea * 0.7;
   const netWallArea = (externalWallArea + internalWallArea) * 0.85;
-  const expectedBricks = Math.ceil((netWallArea / 10) * 480);
+  const geoTakeoff = layout.floors.some(f => f.rooms.length) && (boq as BOQ & { takeoff?: unknown }).takeoff ? computeTakeoff(layout) : null;
+  const expectedBricks = geoTakeoff
+    ? Math.ceil((geoTakeoff.externalMasonrySqM * 0.23 + geoTakeoff.internalMasonrySqM * 0.115 + geoTakeoff.parapetLenM * 0.115) * 500)
+    : Math.ceil((netWallArea / 10) * 480);
   if (Math.abs(boq.brickCount - expectedBricks) <= expectedBricks * 0.15) {
     b.pass();
   } else {
@@ -1634,7 +1640,7 @@ function validateBOQ(ctx: Ctx, idGen: () => string): CategoryResult {
   }
 
   // 9. Flooring area ~ builtUpArea x 0.85 (within 10%)
-  const expectedFlooring = boq.totalBuiltUpAreaSqM * 0.85;
+  const expectedFlooring = geoTakeoff ? geoTakeoff.floorFinish.vitrifiedSqM : boq.totalBuiltUpAreaSqM * 0.85;
   if (Math.abs(boq.flooringAreaSqM - expectedFlooring) <= expectedFlooring * 0.1) {
     b.pass();
   } else {
@@ -1648,7 +1654,7 @@ function validateBOQ(ctx: Ctx, idGen: () => string): CategoryResult {
   }
 
   // 10. Paint area reasonable (netWallArea x 2 + builtUpArea, within 15%)
-  const expectedPaintArea = Math.round(netWallArea * 2 + boq.totalBuiltUpAreaSqM);
+  const expectedPaintArea = geoTakeoff ? Math.round(geoTakeoff.internalPlasterSqM + geoTakeoff.ceilingSqM) : Math.round(netWallArea * 2 + boq.totalBuiltUpAreaSqM);
   if (Math.abs(boq.paintAreaSqM - expectedPaintArea) <= expectedPaintArea * 0.15) {
     b.pass();
   } else {
@@ -1668,7 +1674,7 @@ function validateBOQ(ctx: Ctx, idGen: () => string): CategoryResult {
   } else {
     b.fail(
       'ERROR', 'Plumbing points mismatch in BOQ',
-      'BOQ plumbing points do not match the (toilets x 5) + (kitchens x 3) formula applied to the locked layout.',
+      'BOQ plumbing points do not match the shared (baths x 5) + (kitchens x 3) + (utility x 2) formula applied to the locked layout.',
       'BOQ', 'Plumbing Points',
       `${expectedPlumbing}`, `${boq.plumbingPoints}`,
       'Regenerate the BOQ from the current locked layout.',
@@ -1691,15 +1697,16 @@ function validateBOQ(ctx: Ctx, idGen: () => string): CategoryResult {
 
   // 13. Cost per sqft within reasonable range for budget tier
   const range = BUDGET_COST_RANGE[requirements.budget] ?? [1300, 4800];
-  if (boq.costPerSqFt >= range[0] && boq.costPerSqFt <= range[1]) {
+  const bldgPerSqFt = (boq as BOQ & { pricing?: { buildingCostPerSqFt: number } }).pricing?.buildingCostPerSqFt ?? boq.costPerSqFt;
+  if (bldgPerSqFt >= range[0] && bldgPerSqFt <= range[1]) {
     b.pass();
   } else {
     b.fail(
       'WARNING', 'Cost per sqft outside expected budget range',
-      `The BOQ cost of Rs.${boq.costPerSqFt}/sqft falls outside the typical Rs.${range[0]}-Rs.${range[1]}/sqft range expected for a "${requirements.budget}" budget tier.`,
+      `The building cost of Rs.${bldgPerSqFt}/sqft falls outside the typical Rs.${range[0]}-Rs.${range[1]}/sqft range expected for a "${requirements.budget}" budget tier.`,
       'BOQ', 'Cost per Sqft',
       `Rs.${range[0]} - Rs.${range[1]} /sqft (${requirements.budget})`,
-      `Rs.${boq.costPerSqFt} /sqft`,
+      `Rs.${bldgPerSqFt} /sqft`,
       'Review material/labour rates and specification level against the intended budget tier.',
     );
   }
@@ -1739,9 +1746,10 @@ function validateCrossDiscipline(ctx: Ctx, idGen: () => string): CategoryResult 
 
   // Check bedroom count propagation into BOQ if available
   if (boq) {
-    const boqBedroomDoors = boq.doorSchedule.filter(d =>
-      d.location.toLowerCase().includes('bedroom') || d.location.toLowerCase().includes('master')
-    ).length;
+    const bedOpsXD = bedroomOpeningIds(layout);
+    const boqBedroomDoors = bedOpsXD
+      ? (bedOpsXD.bedroomsWithoutDoor.length ? totalLayoutBedrooms - bedOpsXD.bedroomsWithoutDoor.length : (boq.doorSchedule.filter(d => bedOpsXD.doors.has(d.mark)).length === bedOpsXD.doors.size ? totalLayoutBedrooms : -1))
+      : boq.doorSchedule.filter(d => d.location.toLowerCase().includes('bedroom') || d.location.toLowerCase().includes('master')).length;
     if (boqBedroomDoors === totalLayoutBedrooms) {
       b.pass();
     } else {

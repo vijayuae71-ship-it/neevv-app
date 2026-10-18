@@ -4,6 +4,8 @@ import React, { useState } from 'react';
 import { BOQ, BOQLineItem, Layout } from '../types';
 import { Package, Zap, Droplets, Building2, Ruler, Layers, DoorOpen, PieChart, IndianRupee } from 'lucide-react';
 
+type PricingInfo = { cityLabel: string; specLabel: string; contingencyPct: number; buildingCost: number; siteAndServicesCost: number; buildingCostPerSqFt: number };
+
 interface Props {
   boq: BOQ;
   layout: Layout;
@@ -27,6 +29,7 @@ const formatPerSqFtRange = (n: number) => `₹${Math.round(n * 0.9).toLocaleStri
 const COST_NOTE = 'Estimate based on current market prices. Actual costs vary by location, contractor and material choices.';
 
 export const BOQReport: React.FC<Props> = ({ boq, layout, statusBadge }) => {
+  const pricing = (boq as BOQ & { pricing?: PricingInfo }).pricing;
   const [tab, setTab] = useState<BOQTab>('summary');
 
   const tabs: { id: BOQTab; label: string; icon: React.ReactNode }[] = [
@@ -141,6 +144,13 @@ export const BOQReport: React.FC<Props> = ({ boq, layout, statusBadge }) => {
                       <div className="text-lg font-bold">{formatPerSqFtRange(boq.costPerSqFt)}/sqft</div>
                     </div>
                   </div>
+                  {pricing && (
+                    <div className="mt-2 pt-2 border-t border-white/20 grid grid-cols-2 gap-2 text-[11px]">
+                      <div><span className="opacity-70">Building: </span><span className="font-semibold">{formatCostRange(pricing.buildingCost)}</span><span className="opacity-70"> ({formatPerSqFtRange(pricing.buildingCostPerSqFt)}/sqft)</span></div>
+                      <div className="text-right"><span className="opacity-70">Site works &amp; services: </span><span className="font-semibold">{formatCostRange(pricing.siteAndServicesCost)}</span></div>
+                      <div className="col-span-2 opacity-70">Rates: {pricing.cityLabel} • {pricing.specLabel} • {pricing.contingencyPct}% contingency. Quantities measured from your locked plan. Enter your contractor&apos;s rates in the Rates step to refine.</div>
+                    </div>
+                  )}
                 </div>
               </div>
             </>
@@ -371,10 +381,10 @@ export const BOQReport: React.FC<Props> = ({ boq, layout, statusBadge }) => {
                       <thead><tr><th>Item</th><th className="text-right">Estimated (₹)</th><th>Remark</th></tr></thead>
                       <tbody>
                         <tr><td>Architect Fees (5%)</td><td className="text-right font-mono">{formatINR(Math.round(boq.totalCost * 0.05))}</td><td className="text-[10px] text-gray-500">Design + supervision</td></tr>
-                        <tr><td>Structural Engineer (2%)</td><td className="text-right font-mono">{formatINR(Math.round(boq.totalCost * 0.02))}</td><td className="text-[10px] text-gray-500">RCC design + certification</td></tr>
-                        <tr><td>Sanction Fees / RERA</td><td className="text-right font-mono">{formatINR(Math.round(boq.totalBuiltUpAreaSqFt * 25))}</td><td className="text-[10px] text-gray-500">Municipal approval</td></tr>
+                        {!pricing && <tr><td>Structural Engineer (2%)</td><td className="text-right font-mono">{formatINR(Math.round(boq.totalCost * 0.02))}</td><td className="text-[10px] text-gray-500">RCC design + certification</td></tr>}
+                        {!pricing && <tr><td>Sanction Fees</td><td className="text-right font-mono">{formatINR(Math.round(boq.totalBuiltUpAreaSqFt * 25))}</td><td className="text-[10px] text-gray-500">Municipal approval</td></tr>}
                         <tr><td>Lift (if applicable)</td><td className="text-right font-mono">{formatINR(boq.numFloors >= 3 ? 350000 : 0)}</td><td className="text-[10px] text-gray-500">{boq.numFloors >= 3 ? 'Recommended for G+2+' : 'N/A for G+1'}</td></tr>
-                        <tr><td>Solar + Rain Harvest</td><td className="text-right font-mono">{formatINR(Math.round(boq.totalBuiltUpAreaSqFt * 15))}</td><td className="text-[10px] text-gray-500">Green building compliance</td></tr>
+                        {!pricing && <tr><td>Solar + Rain Harvest</td><td className="text-right font-mono">{formatINR(Math.round(boq.totalBuiltUpAreaSqFt * 15))}</td><td className="text-[10px] text-gray-500">Green building compliance</td></tr>}
                       </tbody>
                     </table>
                   </div>

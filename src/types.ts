@@ -42,6 +42,16 @@ export interface ProjectRequirements {
   architecturalStyle: ArchitecturalStyle;
   fsi?: number;
   floors: FloorProgram[];
+  // ── Brief-first planning (neevv architect planner) ──
+  /** Total bedrooms incl. master. When set, the planner decides floors from the brief. */
+  bedroomsTotal?: number;
+  masterBath?: 'attached' | 'separate';
+  wantsStudy?: boolean;
+  wantsPuja?: boolean;
+  /** 'auto' = neevv recommends single storey or G+1 from the brief. */
+  floorsPreference?: 'auto' | 1 | 2;
+  /** Customer-entered setbacks in metres; omitted → assumed defaults (to be confirmed locally). */
+  setbacks?: { front: number; rear: number; left: number; right: number };
 }
 
 export interface Room {
@@ -92,6 +102,14 @@ export interface FloorLayout {
 
 export interface LayoutOpening {
   id: string;
+  /** Floor index (0 = ground). When set, the opening belongs to that floor only. */
+  floor?: number;
+  /** Stable room id on that floor (preferred over the display name for matching). */
+  roomId?: string;
+  /** Side of the room the opening is on, and its centre position along that side from the room origin (mm). */
+  face?: 'front' | 'rear' | 'left' | 'right';
+  positionMm?: number;
+  main?: boolean;
   type: 'door' | 'window' | 'ventilator';
   room: string;
   wall: 'front' | 'rear' | 'left' | 'right' | 'internal';
@@ -145,6 +163,20 @@ export interface Layout {
   plotDepthFt?: number;
   designSeed?: DesignSeed;
   openingsSchedule?: OpeningsSchedule;
+  // ── Architect planner metadata ──
+  plannerVersion?: string;
+  /** Required (assumed or customer) setbacks; `setbacks` holds the actual building offsets on the plot. */
+  requiredSetbacks?: Setbacks;
+  setbackSource?: 'assumed' | 'customer';
+  fsiSource?: 'assumed' | 'customer';
+  fsiUsed?: number;
+  parkingNote?: string;
+  plannerNotes?: string[];
+  plannerChecks?: { item: string; status: 'PASS' | 'WARNING' | 'ERROR' | 'INFEASIBLE' | 'UNVERIFIED'; detail: string }[];
+  /** Column lines (m, building-relative) chosen on wall lines; used by the structural engine. */
+  structuralGridM?: { xs: number[]; ys: number[] };
+  /** Revision of the locked design; any change creates a new revision and invalidates downstream outputs. */
+  revision?: number;
 }
 
 export interface BOQLineItem {

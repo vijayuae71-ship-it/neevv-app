@@ -5,7 +5,8 @@ import { Layout, ProjectRequirements } from '../types';
 import { buildScene } from '../utils/sceneBuilder';
 import { AIRenderView } from './AIRenderView';
 import { ModelARView } from './ModelARView';
-import { Box, Sparkles, Ruler, Smartphone } from 'lucide-react';
+import { PlanSketch } from './PlanSketch';
+import { Box, Sparkles, Ruler, Smartphone, LayoutGrid } from 'lucide-react';
 
 /** Floating dimension info panel */
 const DimensionPanel: React.FC<{ layout: Layout; requirements: ProjectRequirements; structuralResult?: any }> = ({ layout, requirements, structuralResult }) => {
@@ -62,7 +63,7 @@ export const IsometricView: React.FC<Props> = ({ layout, requirements, structura
   const [showFloor, setShowFloor] = useState<number | 'all'>('all');
   const [cutaway, setCutaway] = useState(false);
   const [showDimensions, setShowDimensions] = useState(true);
-  const [viewMode, setViewMode] = useState<'3d' | 'ai' | 'ar'>('3d');
+  const [viewMode, setViewMode] = useState<'plan' | '3d' | 'ai' | 'ar'>(layout.plannerVersion ? 'plan' : '3d');
 
   // Setup scene once on mount / layout change
   useEffect(() => {
@@ -202,7 +203,16 @@ export const IsometricView: React.FC<Props> = ({ layout, requirements, structura
   return (
     <div className="flex flex-col h-full">
       {/* Mode Toggle Tabs */}
-      <div className="flex items-center gap-1 mb-2">
+      <div className="flex items-center gap-1 mb-2 flex-wrap">
+        {layout.plannerVersion && (
+          <button
+            className={`btn btn-sm gap-1 ${viewMode === 'plan' ? 'btn-primary' : 'btn-ghost'}`}
+            onClick={() => setViewMode('plan')}
+          >
+            <LayoutGrid size={14} />
+            Floor Plan
+          </button>
+        )}
         <button
           className={`btn btn-sm gap-1 ${viewMode === '3d' ? 'btn-primary' : 'btn-ghost'}`}
           onClick={() => setViewMode('3d')}
@@ -226,7 +236,42 @@ export const IsometricView: React.FC<Props> = ({ layout, requirements, structura
         </button>
       </div>
 
-      {viewMode === '3d' ? (
+      {viewMode === 'plan' && layout.plannerVersion ? (
+        <div className="flex-1 overflow-auto space-y-3">
+          <div className="bg-white border border-gray-200 rounded-lg p-2">
+            <PlanSketch layout={layout} facing={requirements.facing} />
+          </div>
+          <div className="text-[11px] text-gray-500 px-1">
+            Locked plan — room sizes are centre-line dimensions in mm. Every drawing, the structure, BBS and BOQ are derived from this plan.
+            {layout.parkingNote ? ` ${layout.parkingNote}.` : ''}
+          </div>
+          <div className="overflow-x-auto bg-white border border-gray-200 rounded-lg">
+            <table className="table table-xs">
+              <thead><tr><th>Floor</th><th>Room</th><th className="text-right">Size (mm)</th><th className="text-right">Area (sqft)</th></tr></thead>
+              <tbody>
+                {layout.floors.flatMap(f => f.rooms.filter(r => !(r.type === 'puja' && /niche/i.test(r.name))).map(r => (
+                  <tr key={r.id}>
+                    <td>{f.floorLabel}</td>
+                    <td>{r.name}</td>
+                    <td className="text-right font-mono">{Math.round(r.width * 1000)} × {Math.round(r.depth * 1000)}</td>
+                    <td className="text-right font-mono">{Math.round(r.width * r.depth * 10.764)}</td>
+                  </tr>
+                )))}
+              </tbody>
+            </table>
+          </div>
+          {(layout.plannerChecks ?? []).some(c => c.status === 'WARNING' || c.status === 'UNVERIFIED') && (
+            <details className="text-[11px] text-gray-600 bg-gray-50 rounded-lg p-2">
+              <summary className="cursor-pointer font-medium">Architect&apos;s notes &amp; assumptions</summary>
+              <ul className="list-disc pl-4 mt-1 space-y-0.5">
+                {(layout.plannerChecks ?? []).filter(c => c.status === 'WARNING' || c.status === 'UNVERIFIED').map((c, i) => (
+                  <li key={i}><span className="font-medium">{c.status === 'UNVERIFIED' ? 'To confirm locally' : 'Note'}:</span> {c.item} — {c.detail}</li>
+                ))}
+              </ul>
+            </details>
+          )}
+        </div>
+      ) : viewMode === '3d' ? (
         <>
           {/* 3D Toolbar */}
           <div className="flex items-center gap-2 p-2 bg-gray-100 rounded-lg mb-2 flex-wrap">

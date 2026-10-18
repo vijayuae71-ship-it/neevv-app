@@ -15,7 +15,8 @@ import InteriorAIDrawings from '@/components/InteriorAIDrawings';
 import { mapRoomTypeToFinish, getDefaultFurniture, getDefaultMaterials, STYLE_TEMPLATES } from '@/utils/interiorTemplates';
 import { VerificationReport } from '@/components/VerificationReport';
 import ApartmentForm from '@/components/ApartmentForm';
-import { generateLayouts } from '@/utils/layoutGenerator';
+import { generateLayoutsDetailed, requirementsForLayout } from '@/utils/layoutGenerator';
+import type { PlannerSummary } from '@/components/LayoutSelector';
 import { calculateBOQ } from '@/utils/boqCalculator';
 import { BRAND_LOGO_BASE64 } from '@/utils/brand';
 import { useAuth } from '@/hooks/useAuth';
@@ -94,6 +95,7 @@ export default function HomePage() {
   }, []);
   const [step, setStep] = useState<AppStep>('requirements');
   const [requirements, setRequirements] = useState<ProjectRequirements | null>(null);
+  const [plannerSummary, setPlannerSummary] = useState<PlannerSummary | null>(null);
   const [layouts, setLayouts] = useState<Layout[]>([]);
   const [selectedLayout, setSelectedLayout] = useState<Layout | null>(null);
   const [boq, setBOQ] = useState<BOQ | null>(null);
@@ -201,7 +203,7 @@ export default function HomePage() {
             const br = engineResult?.bbsResult ?? undefined;
             if (sr) {
               const materialRates = data.customRates?.materials ?? [];
-              const b = calculateBOQ(data.selectedLayout, materialRates, data.requirements.floors?.length || 1, sr, br);
+              const b = calculateBOQ(data.selectedLayout, materialRates, data.requirements.floors?.length || 1, sr, br, { city: data.requirements.city, budget: data.requirements.budget });
               setBOQ(b);
             }
           }
@@ -240,7 +242,7 @@ export default function HomePage() {
     }
     switch (target) {
       case 'requirements': return true;
-      case 'layouts': return layouts.length > 0;
+      case 'layouts': return layouts.length > 0 || (plannerSummary !== null && plannerSummary.status !== 'OK');
       case 'isometric': return motherLayoutLocked && selectedLayout !== null;
       case 'working': return motherLayoutLocked && selectedLayout !== null;
       case 'rates': return motherLayoutLocked && selectedLayout !== null;
@@ -254,7 +256,8 @@ export default function HomePage() {
   const handleRequirements = (req: ProjectRequirements) => {
     setValidationPassed(false);
     setRequirements(req);
-    const generated = generateLayouts(req);
+    const { result, layouts: generated } = generateLayoutsDetailed(req);
+    setPlannerSummary({ status: result.status, verdict: result.verdict, reasons: result.reasons, alternatives: result.alternatives as PlannerSummary['alternatives'] });
     setLayouts(generated);
     setSelectedLayout(null);
     setBOQ(null);
@@ -335,25 +338,35 @@ export default function HomePage() {
   }, []);
 
   const handleLayoutSelect = (layout: Layout) => {
+    // Lock is never allowed while the plan carries an ERROR / INFEASIBLE check.
+    if (layout.plannerChecks?.some((c) => c.status === 'ERROR' || c.status === 'INFEASIBLE')) return;
     setValidationPassed(false);
     setSelectedLayout(layout);
-    setMotherLayoutLocked(true); // Lock immediately — AI already generated NBC-compliant plan
-    
-    // Run structural engine on lock
-    let engineResult = null;
-    if (requirements) {
-      engineResult = runStructuralDesign(layout, requirements);
-    }
-    
-    if (requirements) {
+    setMotherLayoutLocked(true);
+    // The chosen plan defines floors and room programme for every downstream output.
+    const req = requirements && layout.plannerVersion ? requirementsForLayout(requirements, layout) : requirements;
+    if (req && req !== requirements) setRequirements(req);
+
+    if (req) {
+      const engineResult = runStructuralDesign(layout, req);
       const materialRates = customRates?.materials ?? [];
       const sr = engineResult?.structuralResult ?? null;
       const br = engineResult?.bbsResult ?? undefined;
-      const b = sr ? calculateBOQ(layout, materialRates, requirements.floors.length, sr, br) : calculateBOQ(layout, requirements.floors.length, customRates);
+      const b = sr ? calculateBOQ(layout, materialRates, req.floors.length, sr, br, { city: req.city, budget: req.budget }) : calculateBOQ(layout, req.floors.length, customRates);
       setBOQ(b);
     }
     analytics.layoutSelected(layout.id);
-    setStep('isometric'); // Skip compliance — go straight to 3D View
+    setStep('isometric');
+  };
+
+  const handleApplyAlternative = (brief: Record<string, unknown>) => {
+    if (!requirements) return;
+    const next: ProjectRequirements = { ...requirements };
+    if (typeof brief.bedrooms === 'number') next.bedroomsTotal = brief.bedrooms;
+    if (typeof brief.study === 'boolean') next.wantsStudy = brief.study;
+    if (brief.parking === 'None' || brief.parking === 'Open' || brief.parking === 'Stilt') next.parkingType = brief.parking;
+    if (typeof brief.fsi === 'number') next.fsi = brief.fsi;
+    handleRequirements(next);
   };
 
   const handleApartmentSubmit = (layout: Layout, req: ProjectRequirements) => {
@@ -378,6 +391,7 @@ export default function HomePage() {
     setMode('landing');
     setStep('requirements');
     setRequirements(null);
+    setPlannerSummary(null);
     setLayouts([]);
     setSelectedLayout(null);
     setBOQ(null);
@@ -400,7 +414,7 @@ export default function HomePage() {
     const materialRates = customRates?.materials ?? [];
     const sr = engineResult?.structuralResult ?? null;
     const br = engineResult?.bbsResult ?? undefined;
-    const b = sr ? calculateBOQ(layout, materialRates, req.floors.length, sr, br) : calculateBOQ(layout, req.floors.length, customRates);
+    const b = sr ? calculateBOQ(layout, materialRates, req.floors.length, sr, br, { city: req.city, budget: req.budget }) : calculateBOQ(layout, req.floors.length, customRates);
     setBOQ(b);
     setMotherLayoutLocked(true);
     setMode('new_build');
@@ -693,7 +707,7 @@ const BRAND_GREEN = '#4f6f52';
                 if (project.requirements) {
                   const materialRates = customRates?.materials ?? [];
                   const b = sr
-                    ? calculateBOQ(project.selectedLayout, materialRates, project.requirements.floors?.length || 1, sr, br)
+                    ? calculateBOQ(project.selectedLayout, materialRates, project.requirements.floors?.length || 1, sr, br, { city: project.requirements.city, budget: project.requirements.budget })
                     : calculateBOQ(project.selectedLayout, project.requirements.floors?.length || 1, customRates);
                   setBOQ(b);
                   recalculatedBOQ = true;
@@ -1017,7 +1031,7 @@ const BRAND_GREEN = '#4f6f52';
       {mode === 'new_build' && requirements && (
         <div className="bg-gray-50 border-b border-gray-200 px-4 py-1.5 text-center">
           <span className="text-xs text-gray-500">
-            {requirements.plotWidthFt}×{requirements.plotDepthFt} ft • {requirements.facing}-Facing • {requirements.floors.length === 1 ? 'Ground Floor' : `G+${requirements.floors.length - 1}`} • {requirements.floors.reduce((s: number, f: any) => s + (f.bedrooms || 0), 0) || 2} BHK
+            {requirements.plotWidthFt}×{requirements.plotDepthFt} ft • {requirements.facing}-Facing • {selectedLayout || requirements.floorsPreference === undefined ? (requirements.floors.length === 1 ? 'Single storey' : `G+${requirements.floors.length - 1}`) : requirements.floorsPreference === 'auto' ? 'Floors: recommended' : requirements.floorsPreference === 1 ? 'Single storey' : 'G+1'} • {requirements.bedroomsTotal ?? (requirements.floors.reduce((s: number, f: any) => s + (f.bedrooms || 0), 0) || 2)} BHK
           </span>
         </div>
       )}
@@ -1030,7 +1044,7 @@ const BRAND_GREEN = '#4f6f52';
             {step === 'layouts' && requirements && (
               <div>
                 <div className="px-4 pt-3 flex justify-center">{statusBadge}</div>
-                <LayoutSelector layouts={layouts} onSelect={handleLayoutSelect} vastuEnabled={requirements.vastuCompliance} requirements={requirements} layoutLocked={motherLayoutLocked} />
+                <LayoutSelector layouts={layouts} onSelect={handleLayoutSelect} vastuEnabled={requirements.vastuCompliance} requirements={requirements} layoutLocked={motherLayoutLocked} planner={plannerSummary} onApplyAlternative={handleApplyAlternative} onEditRequirements={() => setStep('requirements')} />
               </div>
             )}
 
@@ -1050,7 +1064,7 @@ const BRAND_GREEN = '#4f6f52';
                   // reverting to area-based estimates.
                   const materialRates = rates?.materials ?? [];
                   const b = structuralResult
-                    ? calculateBOQ(selectedLayout, materialRates, requirements.floors.length, structuralResult, bbsResult ?? undefined)
+                    ? calculateBOQ(selectedLayout, materialRates, requirements.floors.length, structuralResult, bbsResult ?? undefined, { city: requirements.city, budget: requirements.budget })
                     : calculateBOQ(selectedLayout, requirements.floors.length, rates);
                   setBOQ(b);
                   setStep('boq');
@@ -1060,7 +1074,7 @@ const BRAND_GREEN = '#4f6f52';
                   // Use default rates
                   setCustomRates(null);
                   const b = structuralResult
-                    ? calculateBOQ(selectedLayout, [], requirements.floors.length, structuralResult, bbsResult ?? undefined)
+                    ? calculateBOQ(selectedLayout, [], requirements.floors.length, structuralResult, bbsResult ?? undefined, { city: requirements.city, budget: requirements.budget })
                     : calculateBOQ(selectedLayout, requirements.floors.length, null);
                   setBOQ(b);
                   setStep('boq');

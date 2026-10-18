@@ -6,6 +6,14 @@ import { CheckCircle, AlertTriangle, ArrowRight, Loader2 } from 'lucide-react';
 import { authFetch } from '@/utils/authFetch';
 import { generateDesignSeed } from '../utils/drawingPrompts';
 import { extractOpeningsSchedule } from '../utils/openingsExtractor';
+import { PlanSketch } from './PlanSketch';
+
+export interface PlannerSummary {
+  status: 'OK' | 'INFEASIBLE' | 'UNSUPPORTED';
+  verdict: string;
+  reasons: string[];
+  alternatives: { label: string; brief: Record<string, unknown>; verified: boolean; note: string }[];
+}
 
 interface Props {
   layouts: Layout[];
@@ -13,6 +21,9 @@ interface Props {
   vastuEnabled: boolean;
   requirements: ProjectRequirements;
   layoutLocked?: boolean;
+  planner?: PlannerSummary | null;
+  onApplyAlternative?: (brief: Record<string, unknown>) => void;
+  onEditRequirements?: () => void;
 }
 
 function buildLayoutPrompt(layout: Layout, requirements: ProjectRequirements): string {
@@ -70,7 +81,9 @@ IMPORTANT: Use building footprint (post-setback dimensions), not raw plot size f
 The Schedule of Openings table MUST appear clearly on every layout — position it in an empty area of the drawing.`;
 }
 
-export const LayoutSelector: React.FC<Props> = ({ layouts, onSelect, vastuEnabled, requirements, layoutLocked = false }) => {
+export const LayoutSelector: React.FC<Props> = ({ layouts, onSelect, vastuEnabled, requirements, layoutLocked = false, planner, onApplyAlternative, onEditRequirements }) => {
+  const isComputed = (l: Layout) => !!l.plannerVersion;
+  const lockLayout = (layout: Layout) => onSelect({ ...layout, designSeed: generateDesignSeed(), openingsSchedule: layout.openingsSchedule ?? extractOpeningsSchedule(layout) });
   const [planImages, setPlanImages] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState<Record<string, boolean>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -106,6 +119,7 @@ export const LayoutSelector: React.FC<Props> = ({ layouts, onSelect, vastuEnable
   useEffect(() => {
     // Generate AI plan images for all 3 layouts in parallel
     layouts.forEach(layout => {
+      if (isComputed(layout)) return; // computed plans are drawn from geometry — no AI call
       if (!planImages[layout.id] && !loading[layout.id]) {
         generatePlanImage(layout);
       }
@@ -113,6 +127,58 @@ export const LayoutSelector: React.FC<Props> = ({ layouts, onSelect, vastuEnable
   }, [layouts]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const numFloors = requirements.floors.length;
+  const computedMode = layouts.length > 0 && layouts.every(isComputed);
+
+  if (planner && planner.status !== 'OK' && layouts.length === 0) {
+    const unsupported = planner.status === 'UNSUPPORTED';
+    return (
+      <div className="p-4 max-w-2xl mx-auto space-y-4">
+        <div className="text-center">
+          <h2 className="text-lg font-bold text-gray-800">{unsupported ? 'Compact plot designs are coming soon' : 'Your brief needs an adjustment'}</h2>
+          <p className="text-sm text-gray-600 mt-1">{planner.verdict}</p>
+        </div>
+        {planner.reasons.length > 0 && (
+          <div className="bg-white border border-gray-200 rounded-xl p-4">
+            <div className="text-xs font-semibold text-gray-700 mb-2">Why</div>
+            <ul className="list-disc pl-5 space-y-1 text-xs text-gray-600">
+              {planner.reasons.map((r, i) => <li key={i}>{r}</li>)}
+            </ul>
+          </div>
+        )}
+        {unsupported ? (
+          <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-2">
+            <div className="text-xs font-semibold text-gray-700">Meanwhile you can</div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <a href="/interiors" className="btn btn-sm btn-outline">Design home interiors</a>
+              <a href="/room" className="btn btn-sm btn-outline">Design a single room</a>
+              <a href="/upload" className="btn btn-sm btn-outline">Upload your plan</a>
+            </div>
+          </div>
+        ) : planner.alternatives.length > 0 ? (
+          <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-2">
+            <div className="text-xs font-semibold text-gray-700">Options our architects suggest (nothing changes until you choose)</div>
+            {planner.alternatives.map((a, i) => {
+              const actionable = Object.keys(a.brief).length > 0;
+              return (
+                <div key={i} className="flex items-center justify-between gap-3 border border-gray-100 rounded-lg p-2">
+                  <div>
+                    <div className="text-sm font-medium text-gray-800">{a.label}</div>
+                    <div className="text-[11px] text-gray-500">{a.note}</div>
+                  </div>
+                  {actionable && onApplyAlternative && (
+                    <button className="btn btn-xs text-white" style={{ backgroundColor: '#4f6f52' }} onClick={() => onApplyAlternative(a.brief)}>Use this</button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        ) : null}
+        {onEditRequirements && (
+          <button className="btn btn-sm btn-outline w-full" onClick={onEditRequirements}>← Edit requirements</button>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="p-4 space-y-4 max-w-6xl mx-auto">
@@ -120,10 +186,17 @@ export const LayoutSelector: React.FC<Props> = ({ layouts, onSelect, vastuEnable
       <div className="text-center mb-4">
         <h2 className="text-lg font-bold text-gray-800">Choose Your Floor Plan</h2>
         <p className="text-sm text-gray-500 mt-1">
-          Three NBC-compliant layouts generated for your plot. Select one to lock as your Mother Layout — all drawings, elevations, and BOQ will follow it exactly.
+          {computedMode
+            ? 'Planned by neevv for your brief. Lock one as your Mother Layout — every drawing, the structure, BBS and BOQ follow it exactly.'
+            : 'Select one to lock as your Mother Layout — all drawings, elevations, and BOQ will follow it exactly.'}
         </p>
+        {computedMode && planner?.verdict && (
+          <p className="text-sm font-medium mt-2" style={{ color: '#4f6f52' }}>{planner.verdict}</p>
+        )}
         <p className="text-xs text-gray-400 mt-1">
-          AI-rendered floor plans • NBC 2016 compliant • FSI 1.0 enforced • Best Vastu placement
+          {computedMode
+            ? 'Computed plans, sizes in mm • Room sizes checked against the NBC minimums we apply • Setbacks and FSI are assumptions unless you entered them'
+            : 'AI-rendered floor plans • Best Vastu placement'}
         </p>
       </div>
 
@@ -138,13 +211,13 @@ export const LayoutSelector: React.FC<Props> = ({ layouts, onSelect, vastuEnable
       {/* Layout Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {layouts.map((layout) => {
-          const perFloorSqFt = layout.effectivePerFloorSqFt ?? Math.round(layout.builtUpAreaSqFt / numFloors);
+          const perFloorSqFt = layout.effectivePerFloorSqFt ?? Math.round(layout.builtUpAreaSqFt / (layout.numFloors || numFloors));
           return (
             <div
               key={layout.id}
               className="bg-white border-2 rounded-xl overflow-hidden transition-all hover:shadow-lg cursor-pointer group"
               style={{ borderColor: '#e5e5e5', position: 'relative' }}
-              onClick={() => !loading[layout.id] && onSelect({ ...layout, designSeed: generateDesignSeed(), openingsSchedule: extractOpeningsSchedule(layout) })}
+              onClick={() => (isComputed(layout) || !loading[layout.id]) && lockLayout(layout)}
               onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = '#4f6f52'; }}
               onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = '#e5e5e5'; }}
             >
@@ -171,7 +244,9 @@ export const LayoutSelector: React.FC<Props> = ({ layouts, onSelect, vastuEnable
               )}
               {/* Floor Plan Image */}
               <div className="bg-white p-2 border-b flex items-center justify-center" style={{ minHeight: '300px' }}>
-                {loading[layout.id] ? (
+                {isComputed(layout) ? (
+                  <PlanSketch layout={layout} facing={requirements.facing} compact />
+                ) : loading[layout.id] ? (
                   <div className="flex flex-col items-center gap-3 py-8">
                     <Loader2 size={32} className="animate-spin" style={{ color: '#4f6f52' }} />
                     <p className="text-sm text-gray-500">Generating {layout.name}...</p>
@@ -226,14 +301,22 @@ export const LayoutSelector: React.FC<Props> = ({ layouts, onSelect, vastuEnable
                       <div className="text-[9px] text-gray-500">Vastu</div>
                     </div>
                   )}
-                  <div className="bg-gray-50 rounded-lg p-1.5 text-center" title={layout.nbcCompliant ? 'All rooms meet NBC 2016 minimum sizes' : 'Some rooms below NBC minimums — auto-adjusted for small plot'}>
-                    {layout.nbcCompliant ? (
-                      <CheckCircle size={12} className="mx-auto text-green-600" />
-                    ) : (
-                      <div className="text-xs font-bold text-amber-600" title="Small plot — some rooms adjusted below NBC ideal sizes">~</div>
-                    )}
-                    <div className="text-[9px] text-gray-500">{layout.nbcCompliant ? 'NBC ✓' : 'NBC ~'}</div>
-                  </div>
+                  {isComputed(layout) ? (() => {
+                    const ch = layout.plannerChecks ?? [];
+                    const pass = ch.filter(c => c.status === 'PASS').length;
+                    const warn = ch.filter(c => c.status === 'WARNING').length;
+                    return (
+                      <div className="bg-gray-50 rounded-lg p-1.5 text-center" title="Automated checks against the plan geometry — not professional approval">
+                        <div className={`text-xs font-bold ${warn ? 'text-amber-600' : 'text-green-600'}`}>{pass}/{ch.length}</div>
+                        <div className="text-[9px] text-gray-500">Checks passed{warn ? ` · ${warn} note${warn > 1 ? 's' : ''}` : ''}</div>
+                      </div>
+                    );
+                  })() : (
+                    <div className="bg-gray-50 rounded-lg p-1.5 text-center">
+                      <div className="text-xs font-bold text-gray-700">{layout.nbcCompliant ? 'OK' : '~'}</div>
+                      <div className="text-[9px] text-gray-500">Room sizes</div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Room counts */}
@@ -246,18 +329,35 @@ export const LayoutSelector: React.FC<Props> = ({ layouts, onSelect, vastuEnable
                 </div>
 
                 {/* Area verification badge — clear total vs per-floor */}
-                <div className="text-[9px] text-green-700 bg-green-50 rounded px-2 py-1">
-                  ✓ FSI 1.0 • Total: {layout.builtUpAreaSqFt} sqft{numFloors > 1 ? ` • ${perFloorSqFt} sqft/floor` : ''}
-                </div>
+                {isComputed(layout) ? (
+                  <div className="space-y-1">
+                    <div className="text-[9px] text-gray-700 bg-gray-50 rounded px-2 py-1">
+                      {layout.numFloors === 1 ? 'Single storey' : `G+${(layout.numFloors ?? 1) - 1}`} • {perFloorSqFt} sqft/floor • FSI used {layout.fsiUsed} of {layout.fsiValue} ({layout.fsiSource === 'customer' ? 'your entry' : 'assumed'})
+                    </div>
+                    {layout.parkingNote && <div className="text-[9px] text-gray-500 px-2">{layout.parkingNote}</div>}
+                    {(layout.plannerChecks ?? []).filter(c => c.status === 'WARNING').length > 0 && (
+                      <details className="text-[10px] text-amber-700 px-2" onClick={(e) => e.stopPropagation()}>
+                        <summary className="cursor-pointer">Architect's notes</summary>
+                        <ul className="list-disc pl-4 mt-1 space-y-0.5">
+                          {(layout.plannerChecks ?? []).filter(c => c.status === 'WARNING').map((c, i) => <li key={i}>{c.item}: {c.detail}</li>)}
+                        </ul>
+                      </details>
+                    )}
+                  </div>
+                ) : (
+                  <div className="text-[9px] text-gray-700 bg-gray-50 rounded px-2 py-1">
+                    Total: {layout.builtUpAreaSqFt} sqft{numFloors > 1 ? ` • ${perFloorSqFt} sqft/floor` : ''}
+                  </div>
+                )}
 
                 {/* Select Button */}
                 <button
                   className="w-full py-2 rounded-lg text-sm font-semibold transition-all text-white disabled:opacity-50"
                   style={{ backgroundColor: '#4f6f52' }}
-                  disabled={loading[layout.id]}
-                  onClick={(e) => { e.stopPropagation(); onSelect({ ...layout, designSeed: generateDesignSeed(), openingsSchedule: extractOpeningsSchedule(layout) }); }}
+                  disabled={!isComputed(layout) && loading[layout.id]}
+                  onClick={(e) => { e.stopPropagation(); lockLayout(layout); }}
                 >
-                  {loading[layout.id] ? 'Generating...' : '🔒 Lock This Layout →'}
+                  {!isComputed(layout) && loading[layout.id] ? 'Generating...' : '🔒 Lock This Layout →'}
                 </button>
               </div>
             </div>

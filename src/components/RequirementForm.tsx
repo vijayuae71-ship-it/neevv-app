@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { ProjectRequirements, FloorProgram, Facing, ParkingType, BudgetRange, ArchitecturalStyle } from '../types';
-import { MapPin, Ruler, Home, Compass, Car, Star, Plus, Minus, IndianRupee, Palette } from 'lucide-react';
+import { MapPin, Ruler, Home, Compass, Car, Star, IndianRupee, Palette } from 'lucide-react';
 
 interface Props {
   onSubmit: (req: ProjectRequirements) => void;
@@ -20,10 +20,10 @@ const FACINGS: Facing[] = ['North', 'South', 'East', 'West'];
 const PARKING_TYPES: ParkingType[] = ['None', 'Open', 'Stilt'];
 
 const BUDGET_OPTIONS: { value: BudgetRange; label: string; desc: string }[] = [
-  { value: 'economy', label: '₹1200-1500/sqft', desc: 'Economy' },
-  { value: 'standard', label: '₹1500-2000/sqft', desc: 'Standard' },
-  { value: 'premium', label: '₹2000-2800/sqft', desc: 'Premium' },
-  { value: 'luxury', label: '₹2800+/sqft', desc: 'Luxury' },
+  { value: 'economy', label: '~₹1,600–2,000/sqft', desc: 'Economy' },
+  { value: 'standard', label: '~₹1,900–2,500/sqft', desc: 'Standard' },
+  { value: 'premium', label: '~₹2,500–3,400/sqft', desc: 'Premium' },
+  { value: 'luxury', label: '₹3,400+/sqft', desc: 'Luxury' },
 ];
 
 const STYLE_OPTIONS: { value: ArchitecturalStyle; label: string; emoji: string }[] = [
@@ -34,19 +34,13 @@ const STYLE_OPTIONS: { value: ArchitecturalStyle; label: string; emoji: string }
   { value: 'industrial', label: 'Industrial', emoji: '🏗️' },
 ];
 
-const defaultFloor = (label: string): FloorProgram => ({
-  floorLabel: label,
-  bedrooms: label === 'Ground Floor' ? 1 : 2,
-  halls: 1,
-  kitchens: 1,
-  hasDining: true,
-  hasPuja: false,
-});
+const SETBACK_DEFAULTS = { front: 1.5, rear: 1.5, left: 1.0, right: 1.0 };
+const MIN_W = 30, MIN_D = 40;
 
 export const RequirementForm: React.FC<Props> = ({ onSubmit, initialValues }) => {
   const [plotW, setPlotW] = useState(initialValues?.plotWidthFt ?? 30);
   const [plotD, setPlotD] = useState(initialValues?.plotDepthFt ?? 40);
-  const [facing, setFacing] = useState<Facing>(initialValues?.facing ?? 'North');
+  const [facing, setFacing] = useState<Facing>(initialValues?.facing ?? 'East');
   const [city, setCity] = useState(initialValues?.city ?? 'Bangalore');
   const [state, setState] = useState(initialValues?.state ?? 'Karnataka');
   const [vastu, setVastu] = useState(initialValues?.vastuCompliance ?? true);
@@ -54,29 +48,24 @@ export const RequirementForm: React.FC<Props> = ({ onSubmit, initialValues }) =>
   const [style, setStyle] = useState<ArchitecturalStyle>(initialValues?.architecturalStyle ?? 'contemporary_indian');
   const [fsi, setFsi] = useState(initialValues?.fsi ?? 1.0);
   const [parking, setParking] = useState<ParkingType>(initialValues?.parkingType ?? 'Open');
-  const [floors, setFloors] = useState<FloorProgram[]>(
-    initialValues?.floors?.length ? initialValues.floors : [
-      defaultFloor('Ground Floor'),
-      defaultFloor('First Floor'),
-    ]
-  );
+  const initialBeds = initialValues?.bedroomsTotal ?? ((initialValues?.floors ?? []).reduce((s, f) => s + (f.bedrooms || 0), 0) || 2);
+  const [bedrooms, setBedrooms] = useState<number>(Math.max(1, Math.min(4, initialBeds)));
+  const [masterBath, setMasterBath] = useState<'attached' | 'separate'>(initialValues?.masterBath ?? 'attached');
+  const [pooja, setPooja] = useState<boolean>(initialValues?.wantsPuja ?? true);
+  const [study, setStudy] = useState<boolean>(initialValues?.wantsStudy ?? false);
+  const [floorsPref, setFloorsPref] = useState<'auto' | 1 | 2>(initialValues?.floorsPreference ?? 'auto');
+  const [setbacks, setSetbacks] = useState(initialValues?.setbacks ?? SETBACK_DEFAULTS);
 
-  const updateFloor = (idx: number, partial: Partial<FloorProgram>) => {
-    setFloors((prev) => prev.map((f, i) => (i === idx ? { ...f, ...partial } : f)));
-  };
-
-  const addFloor = () => {
-    if (floors.length >= 2) return; // Cap at G+1 — G+2 not yet validated
-    const labels = ['Ground Floor', 'First Floor'];
-    setFloors((prev) => [...prev, defaultFloor(labels[prev.length] || `Floor ${prev.length}`)]);
-  };
-
-  const removeFloor = () => {
-    if (floors.length <= 1) return;
-    setFloors((prev) => prev.slice(0, -1));
-  };
+  const plotTooSmall = plotW > 0 && plotD > 0 && (plotW < MIN_W || plotD < MIN_D || plotW * plotD < MIN_W * MIN_D);
+  const fsiInvalid = !(fsi >= 0.5 && fsi <= 5);
+  const setbacksInvalid = Object.values(setbacks).some((v) => !(v >= 0 && v <= 10));
+  const plotInvalid = !(plotW > 0 && plotD > 0 && plotW <= 300 && plotD <= 300);
+  const setbacksCustom = (Object.keys(SETBACK_DEFAULTS) as (keyof typeof SETBACK_DEFAULTS)[]).some((k) => Math.abs(setbacks[k] - SETBACK_DEFAULTS[k]) > 1e-9);
 
   const handleSubmit = () => {
+    if (plotInvalid || fsiInvalid || setbacksInvalid || plotTooSmall) return;
+    // Placeholder programme until a plan is chosen; the chosen plan then defines floors and rooms.
+    const floors: FloorProgram[] = [{ floorLabel: 'Ground Floor', bedrooms, halls: 1, kitchens: 1, hasDining: true, hasPuja: pooja }];
     onSubmit({
       city,
       state,
@@ -89,6 +78,12 @@ export const RequirementForm: React.FC<Props> = ({ onSubmit, initialValues }) =>
       architecturalStyle: style,
       fsi,
       floors,
+      bedroomsTotal: bedrooms,
+      masterBath,
+      wantsPuja: pooja,
+      wantsStudy: study,
+      floorsPreference: floorsPref,
+      setbacks: setbacksCustom ? setbacks : undefined,
     });
   };
 
@@ -173,7 +168,8 @@ export const RequirementForm: React.FC<Props> = ({ onSubmit, initialValues }) =>
               max={5}
               step={0.1}
             />
-            <div className="text-[10px] text-gray-400 mt-0.5">Default 1.0 for residential. Total buildable = plot area × FSI</div>
+            <div className="text-[10px] text-gray-400 mt-0.5">Assumed 1.0 — enter your local permitted FSI if known (0.5–5). Total buildable = plot area × FSI.</div>
+            {fsiInvalid && <div className="text-[11px] text-red-600">FSI must be between 0.5 and 5.</div>}
           </div>
           <div>
             <label className="text-xs text-gray-600 mb-1 block">Plot Facing</label>
@@ -269,96 +265,90 @@ export const RequirementForm: React.FC<Props> = ({ onSubmit, initialValues }) =>
         </div>
       </section>
 
-      {/* Floor Program */}
+      {/* Home Brief */}
       <section className="card bg-gray-100">
         <div className="card-body p-4 space-y-3">
-          <div className="flex items-center justify-between">
-            <h3 className="font-semibold flex items-center gap-2 text-sm">
-              <Home size={16} className="text-blue-600" /> Floor-wise Program
-            </h3>
-            <div className="flex gap-1 items-center">
-              <button className="btn btn-ghost btn-xs" onClick={removeFloor} disabled={floors.length <= 1}>
-                <Minus size={14} />
-              </button>
-              <span className="text-xs font-medium px-2 flex items-center">
-                {floors.length === 1 ? 'Ground Only' : `G+${floors.length - 1}`}
-              </span>
-              <button className="btn btn-ghost btn-xs" onClick={addFloor} disabled={floors.length >= 2} title={floors.length >= 2 ? 'G+2 and above coming soon' : 'Add floor'}>
-                <Plus size={14} />
-              </button>
-              {floors.length >= 2 && (
-                <span className="text-[10px] text-gray-400 ml-1">G+2 coming soon</span>
-              )}
+          <h3 className="font-semibold flex items-center gap-2 text-sm">
+            <Home size={16} className="text-blue-600" /> Your Home
+          </h3>
+          <div>
+            <label className="text-xs text-gray-600 mb-1 block">Bedrooms (total, including master)</label>
+            <div className="flex gap-2">
+              {[1, 2, 3, 4].map((n) => (
+                <button key={n} className={`btn btn-sm flex-1 ${bedrooms === n ? 'btn-primary' : 'btn-outline'}`} onClick={() => setBedrooms(n)}>
+                  {n} BHK
+                </button>
+              ))}
             </div>
           </div>
-
-          {floors.map((fp, idx) => (
-            <div key={idx} className="bg-gray-200 rounded-lg p-3 space-y-2">
-              <div className="text-xs font-semibold text-blue-600">{fp.floorLabel}</div>
-              <div className="grid grid-cols-3 gap-2">
-                <div>
-                  <label className="text-xs text-gray-600 block">Bedrooms</label>
-                  <select
-                    className="select select-bordered select-xs w-full"
-                    value={fp.bedrooms}
-                    onChange={(e) => updateFloor(idx, { bedrooms: Number(e.target.value) })}
-                  >
-                    {[0, 1, 2, 3, 4].map((n) => (
-                      <option key={n} value={n}>{n}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-xs text-gray-600 block">Hall/Living</label>
-                  <select
-                    className="select select-bordered select-xs w-full"
-                    value={fp.halls}
-                    onChange={(e) => updateFloor(idx, { halls: Number(e.target.value) })}
-                  >
-                    {[0, 1, 2].map((n) => (
-                      <option key={n} value={n}>{n}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-xs text-gray-600 block">Kitchen</label>
-                  <select
-                    className="select select-bordered select-xs w-full"
-                    value={fp.kitchens}
-                    onChange={(e) => updateFloor(idx, { kitchens: Number(e.target.value) })}
-                  >
-                    {[0, 1, 2].map((n) => (
-                      <option key={n} value={n}>{n}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-              <div className="flex gap-4">
-                <label className="flex items-center gap-1.5 text-xs cursor-pointer">
-                  <input
-                    type="checkbox"
-                    className="checkbox checkbox-primary checkbox-xs"
-                    checked={fp.hasDining}
-                    onChange={(e) => updateFloor(idx, { hasDining: e.target.checked })}
-                  />
-                  Dining
-                </label>
-                <label className="flex items-center gap-1.5 text-xs cursor-pointer">
-                  <input
-                    type="checkbox"
-                    className="checkbox checkbox-primary checkbox-xs"
-                    checked={fp.hasPuja}
-                    onChange={(e) => updateFloor(idx, { hasPuja: e.target.checked })}
-                  />
-                  Puja Room
-                </label>
-              </div>
+          <div>
+            <label className="text-xs text-gray-600 mb-1 block">Master bedroom bathroom</label>
+            <div className="flex gap-2">
+              <button className={`btn btn-sm flex-1 ${masterBath === 'attached' ? 'btn-primary' : 'btn-outline'}`} onClick={() => setMasterBath('attached')}>Attached</button>
+              <button className={`btn btn-sm flex-1 ${masterBath === 'separate' ? 'btn-primary' : 'btn-outline'}`} onClick={() => setMasterBath('separate')}>Separate (common)</button>
             </div>
-          ))}
+          </div>
+          <div className="flex gap-4">
+            <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+              <input type="checkbox" className="checkbox checkbox-primary checkbox-xs" checked={pooja} onChange={(e) => setPooja(e.target.checked)} />
+              Pooja
+            </label>
+            <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+              <input type="checkbox" className="checkbox checkbox-primary checkbox-xs" checked={study} onChange={(e) => setStudy(e.target.checked)} />
+              Study / home office
+            </label>
+          </div>
+          <div>
+            <label className="text-xs text-gray-600 mb-1 block">Floors</label>
+            <div className="flex gap-2">
+              {([['auto', 'Recommend for me'], [1, 'Single storey'], [2, 'G+1']] as const).map(([v, l]) => (
+                <button key={String(v)} className={`btn btn-sm flex-1 ${floorsPref === v ? 'btn-primary' : 'btn-outline'}`} onClick={() => setFloorsPref(v)}>
+                  <span className="text-xs">{l}</span>
+                </button>
+              ))}
+            </div>
+            <div className="text-[10px] text-gray-400 mt-0.5">neevv plans the number of floors from your rooms and plot. If the brief does not fit, we explain why and suggest options — we never drop rooms without asking.</div>
+          </div>
         </div>
       </section>
 
-      <button className="btn btn-primary w-full" onClick={handleSubmit}>
+      {/* Setbacks */}
+      <section className="card bg-gray-100">
+        <div className="card-body p-4 space-y-3">
+          <h3 className="font-semibold flex items-center gap-2 text-sm">
+            <Ruler size={16} className="text-blue-600" /> Setbacks (metres)
+          </h3>
+          <div className="grid grid-cols-4 gap-2">
+            {(['front', 'rear', 'left', 'right'] as const).map((k) => (
+              <div key={k}>
+                <label className="text-[10px] text-gray-600 block capitalize">{k}</label>
+                <input
+                  type="number"
+                  className="input input-bordered input-xs w-full"
+                  value={Number.isFinite(setbacks[k]) ? setbacks[k] : ''}
+                  min={0}
+                  max={10}
+                  step={0.1}
+                  onChange={(e) => setSetbacks((p) => ({ ...p, [k]: e.target.value === '' ? NaN : Number(e.target.value) }))}
+                />
+              </div>
+            ))}
+          </div>
+          <div className="text-[10px] text-gray-500">Assumed setback — confirm with applicable local building regulations.</div>
+          {setbacksInvalid && <div className="text-[11px] text-red-600">Each setback must be between 0 and 10 m.</div>}
+        </div>
+      </section>
+
+      {plotTooSmall && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+          Compact plot designs (below {MIN_W}×{MIN_D} ft) are coming soon. Meanwhile you can{' '}
+          <a href="/interiors" className="underline font-medium">design your home interiors</a>,{' '}
+          <a href="/room" className="underline font-medium">design a single room</a> or{' '}
+          <a href="/upload" className="underline font-medium">upload your existing plan</a>.
+        </div>
+      )}
+
+      <button className="btn btn-primary w-full" onClick={handleSubmit} disabled={plotTooSmall || plotInvalid || fsiInvalid || setbacksInvalid}>
         Generate Design Options →
       </button>
     </div>

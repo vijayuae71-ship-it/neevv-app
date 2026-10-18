@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { MaterialRate, LabourRate, CustomRateSheet } from '../types';
 
 /* ════════════════════════════════════════════════════════════════
-   DEFAULT MATERIAL RATES — 2024-25 Indian market averages
+   DEFAULT MATERIAL RATES — national base rates (current market, indicative)
    ════════════════════════════════════════════════════════════════ */
 
 const DEFAULT_MATERIALS: MaterialRate[] = [
@@ -91,7 +91,7 @@ const DEFAULT_MATERIALS: MaterialRate[] = [
 ];
 
 /* ════════════════════════════════════════════════════════════════
-   DEFAULT LABOUR RATES — 2024-25 Indian averages
+   DEFAULT LABOUR RATES — national base rates (indicative)
    ════════════════════════════════════════════════════════════════ */
 
 const DEFAULT_LABOUR: LabourRate[] = [
@@ -238,7 +238,7 @@ export const RateSheet: React.FC<Props> = ({ onSave, onSkip, initialRateSheet })
           <div>
             <h2 className="text-xl font-bold text-gray-900">📋 Rate Sheet — Material & Labour</h2>
             <p className="text-sm text-gray-500 mt-1">
-              Customize rates to match your local market. Leave blank to use defaults (2024-25 averages).
+              Customize rates to match your local market. Leave blank to use national base rates — the BOQ adjusts them for your city and finish level (indicative current market prices).
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -394,7 +394,7 @@ export const RateSheet: React.FC<Props> = ({ onSave, onSkip, initialRateSheet })
         <p className="text-xs text-gray-400">
           {editedCount > 0
             ? `${editedCount} custom rate${editedCount > 1 ? 's' : ''} will be applied to BOQ`
-            : 'Using default 2024-25 market rates. Customize any rate above.'}
+            : 'Using base rates, adjusted in the BOQ for your city and finish level. Customize any rate above.'}
         </p>
         <div className="flex gap-2">
           <button onClick={onSkip} className="btn btn-sm border-gray-300 text-gray-600 bg-white hover:bg-gray-50">
