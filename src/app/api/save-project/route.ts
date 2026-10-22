@@ -77,14 +77,14 @@ export async function GET(request: NextRequest) {
     const snapshot = await db
       .collection('projects')
       .where('userId', '==', auth.userId)
-      .orderBy('updatedAt', 'desc')
-      .limit(50)
+      .limit(200)
       .get();
 
-    const projects = snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-    }));
+    // Sorted in memory (newest first) so no composite Firestore index is needed.
+    const projects = snapshot.docs
+      .map(doc => ({ id: doc.id, ...doc.data() } as { id: string; updatedAt?: string; [k: string]: unknown }))
+      .sort((a, b) => String(b.updatedAt ?? '').localeCompare(String(a.updatedAt ?? '')))
+      .slice(0, 50);
 
     return NextResponse.json({ projects });
   } catch (error: any) {

@@ -118,7 +118,7 @@ export default function HomePage() {
     setValidationPassed(report.errorCount === 0 && report.blockedCount === 0);
   }, []);
 
-  const { projectId: autoSaveProjectId, saving: autoSaving, lastSaved } = useProjectAutoSave({
+  const { projectId: autoSaveProjectId, saving: autoSaving, lastSaved, setCloudProjectId, resetCloudProject } = useProjectAutoSave({
     mode,
     step,
     requirements: requirements ?? undefined,
@@ -396,6 +396,7 @@ export default function HomePage() {
     setSelectedLayout(null);
     setBOQ(null);
     localStorage.removeItem('neevv_project_autosave');
+    resetCloudProject();
     setOfficeStep('requirements');
     setOfficeRequirements(null);
     setRoomDesignType('');
@@ -688,6 +689,7 @@ const BRAND_GREEN = '#4f6f52';
             }}
             onOpenProject={(project: SavedProject) => {
               setValidationPassed(false);
+              setCloudProjectId(project.id);
               if (project.requirements) setRequirements(project.requirements);
               // Track whether we recomputed BOQ from a freshly re-run structural design
               // below — if so, that number (consistent with the new structural/BBS

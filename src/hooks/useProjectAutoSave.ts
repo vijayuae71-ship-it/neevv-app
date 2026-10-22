@@ -21,6 +21,35 @@ interface UseProjectAutoSaveResult {
   saving: boolean;
   lastSaved: Date | null;
   saveNow: () => Promise<void>;
+  /** Point auto-save at an existing cloud project (e.g. opened from My Projects). */
+  setCloudProjectId: (id: string | null) => void;
+  /** Forget the current cloud project so the next save creates a new one. */
+  resetCloudProject: () => void;
+}
+
+const CLOUD_ID_KEY = 'neevv_cloud_project_id';
+
+interface StoredCloudId { id: string; key: string }
+
+/** Identity of the work in progress: same mode + same name (plot/floors) = same project. */
+function projectKey(a: UseProjectAutoSaveArgs): string {
+  return `${a.mode}|${generateProjectName(a)}`;
+}
+function readStoredId(): StoredCloudId | null {
+  try {
+    if (typeof window === 'undefined') return null;
+    const raw = window.localStorage.getItem(CLOUD_ID_KEY);
+    if (!raw) return null;
+    const v = JSON.parse(raw);
+    return v && typeof v.id === 'string' && typeof v.key === 'string' ? v : null;
+  } catch { return null; }
+}
+function writeStoredId(v: StoredCloudId | null) {
+  try {
+    if (typeof window === 'undefined') return;
+    if (v) window.localStorage.setItem(CLOUD_ID_KEY, JSON.stringify(v));
+    else window.localStorage.removeItem(CLOUD_ID_KEY);
+  } catch { /* storage unavailable */ }
 }
 
 /**
@@ -77,17 +106,58 @@ export function useProjectAutoSave(args: UseProjectAutoSaveArgs): UseProjectAuto
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
 
   const projectIdRef = useRef<string | null>(null);
+  const inFlightRef = useRef(false);
+  const pendingRef = useRef(false);
+  const generationRef = useRef(0);
+
+  const setCloudProjectId = useCallback((id: string | null) => {
+    generationRef.current += 1;
+    projectIdRef.current = id;
+    setProjectId(id);
+    writeStoredId(id ? { id, key: projectKey(latestArgsRef.current) } : null);
+  }, []);
+
+  const resetCloudProject = useCallback(() => {
+    if (debounceTimer.current) {
+      clearTimeout(debounceTimer.current);
+      debounceTimer.current = null;
+    }
+    pendingRef.current = false;
+    generationRef.current += 1;
+    projectIdRef.current = null;
+    setProjectId(null);
+    writeStoredId(null);
+  }, []);
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const latestArgsRef = useRef(args);
+  const performSaveRef = useRef<(() => Promise<void>) | null>(null);
   latestArgsRef.current = args;
 
   const hasMeaningfulData = useCallback((a: UseProjectAutoSaveArgs) => {
     return Boolean(a.requirements || a.selectedLayout);
   }, []);
 
-  const performSave = useCallback(async () => {
+  const performSave = useCallback(async (): Promise<void> => {
     const current = latestArgsRef.current;
     if (!hasMeaningfulData(current)) return;
+
+    // Serialize saves: a second save while the first (which may be creating the
+    // document) is in flight would otherwise create a duplicate project.
+    if (inFlightRef.current) {
+      pendingRef.current = true;
+      return;
+    }
+    inFlightRef.current = true;
+    const generation = generationRef.current;
+
+    // After a page reload, keep updating the same cloud project instead of creating a new one.
+    if (!projectIdRef.current) {
+      const stored = readStoredId();
+      if (stored && stored.key === projectKey(current)) {
+        projectIdRef.current = stored.id;
+        setProjectId(stored.id);
+      }
+    }
 
     setSaving(true);
     try {
@@ -114,9 +184,11 @@ export function useProjectAutoSave(args: UseProjectAutoSaveArgs): UseProjectAuto
       if (!res.ok) throw new Error(`Auto-save failed (${res.status})`);
 
       const data = await res.json();
-      if (data?.success && data?.projectId) {
+      // Ignore the id if the user started a new project / opened another one meanwhile.
+      if (data?.success && data?.projectId && generation === generationRef.current) {
         projectIdRef.current = data.projectId;
         setProjectId(data.projectId);
+        writeStoredId({ id: data.projectId, key: projectKey(current) });
       }
       setLastSaved(new Date());
     } catch (err) {
@@ -125,8 +197,14 @@ export function useProjectAutoSave(args: UseProjectAutoSaveArgs): UseProjectAuto
       console.error('[useProjectAutoSave] save failed:', err);
     } finally {
       setSaving(false);
+      inFlightRef.current = false;
+      if (pendingRef.current) {
+        pendingRef.current = false;
+        void performSaveRef.current?.();
+      }
     }
   }, [hasMeaningfulData]);
+  performSaveRef.current = performSave;
 
   const saveNow = useCallback(async () => {
     if (debounceTimer.current) {
@@ -180,7 +258,7 @@ export function useProjectAutoSave(args: UseProjectAutoSaveArgs): UseProjectAuto
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  return { projectId, saving, lastSaved, saveNow };
+  return { projectId, saving, lastSaved, saveNow, setCloudProjectId, resetCloudProject };
 }
 
 export default useProjectAutoSave;
