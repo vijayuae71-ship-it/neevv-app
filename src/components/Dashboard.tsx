@@ -362,7 +362,7 @@ export function Dashboard({ onNewProject, onOpenProject }: DashboardProps) {
                     </span>
                   </div>
 
-                  <h3 style={styles.cardTitle}>{project.name}</h3>
+                  <h3 style={styles.cardTitle}>{project.name && !project.name.includes('[object') ? project.name : (project.requirements?.plotWidthFt && project.requirements?.plotDepthFt ? `${project.requirements.plotWidthFt}×${project.requirements.plotDepthFt} Home` : 'Untitled Project')}</h3>
                   <p style={styles.cardSubtitle}>{getProjectTypeLabel(project.mode)}</p>
 
                   <div style={styles.cardMetaRow}>
@@ -386,7 +386,7 @@ export function Dashboard({ onNewProject, onOpenProject }: DashboardProps) {
 
                   <div style={styles.cardMetaRow}>
                     <Clock size={14} color="#888" />
-                    <span style={styles.cardMetaText}>{formatRelativeDate(project.createdAt)}</span>
+                    <span style={styles.cardMetaText}>{`Updated ${formatRelativeDate(project.updatedAt || project.createdAt)}`}</span>
                   </div>
 
                   {/* View Details toggle */}

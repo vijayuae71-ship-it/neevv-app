@@ -75,6 +75,10 @@ function generateProjectName(args: UseProjectAutoSaveArgs): string {
 
   const floorsLabel = (() => {
     if (floors === undefined || floors === null) return '';
+    if (Array.isArray(floors)) {
+      if (floors.length === 0) return '';
+      return floors.length <= 1 ? 'G' : `G+${floors.length - 1}`;
+    }
     if (typeof floors === 'number') {
       if (floors <= 1) return 'G';
       return `G+${floors - 1}`;
@@ -86,7 +90,7 @@ function generateProjectName(args: UseProjectAutoSaveArgs): string {
 
   switch (mode) {
     case 'new_build':
-      return [dimsLabel, floorsLabel, 'Home'].filter(Boolean).join(' ') || 'New Home Project';
+      return [dimsLabel, floorsLabel, requirements?.bedroomsTotal ? `${requirements.bedroomsTotal}BHK` : '', 'Home'].filter(Boolean).join(' ') || 'New Home Project';
     case 'interior_only':
       return [dimsLabel, 'Interior Design'].filter(Boolean).join(' ') || 'Interior Design Project';
     case 'office_design':
