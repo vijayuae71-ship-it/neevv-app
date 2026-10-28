@@ -8,6 +8,12 @@
 import type { Layout, Room } from '../types';
 import { isNiche } from './quantityRules';
 
+/** Bath wall tiling for one bath: perimeter × tile height, less one 750×2100 door. */
+export function bathWallTileSqM(r: Room, tileH: number): number { return Math.max(0, 2 * (r.width + r.depth) * tileH - 0.75 * 2.1); }
+/** Kitchen counter running metres for one kitchen (L-shape along the long wall and one short wall). */
+export function kitchenCounterRmt(r: Room): number { return Math.max(2.4, Math.max(r.width, r.depth) + Math.min(r.width, r.depth) - 0.6); }
+export const KITCHEN_DADO_HEIGHT_M = 0.6;
+
 export interface FloorTakeoff {
   floor: number;
   externalWallLenM: number;   // full-height external masonry (excludes balcony/open edges)
@@ -16,6 +22,7 @@ export interface FloorTakeoff {
   roomAreaSqM: number;
   doorAreaExtSqM: number; doorAreaIntSqM: number;
   windowAreaExtSqM: number; windowAreaIntSqM: number;
+  netExtMasonrySqM: number; netIntMasonrySqM: number; // after openings and columns — the BOQ masonry basis
 }
 
 export interface Takeoff {
@@ -30,6 +37,7 @@ export interface Takeoff {
   ceilingSqM: number;
   floorFinish: { vitrifiedSqM: number; antiSkidSqM: number; balconySqM: number; stairTreads: number };
   bathWallTileSqM: number;
+  bathTileHeightM: number;
   kitchenDadoSqM: number;
   kitchenCounterRmt: number;
   wetAreaSqM: { baths: number; kitchens: number; utility: number };
@@ -90,6 +98,7 @@ export function computeTakeoff(layout: Layout, opts: { floorHeightM?: number; be
       doorAreaIntSqM: +fo.filter((o) => o.type === 'door' && o.wall === 'internal').reduce((s, o) => s + a(o), 0).toFixed(2),
       windowAreaExtSqM: +fo.filter((o) => o.type !== 'door' && o.wall !== 'internal').reduce((s, o) => s + a(o), 0).toFixed(2),
       windowAreaIntSqM: +fo.filter((o) => o.type !== 'door' && o.wall === 'internal').reduce((s, o) => s + a(o), 0).toFixed(2),
+      netExtMasonrySqM: 0, netIntMasonrySqM: 0,
     });
   }
 
@@ -104,8 +113,10 @@ export function computeTakeoff(layout: Layout, opts: { floorHeightM?: number; be
     const intLen = Math.max(0, t.internalWallLenM - colLen * (t.internalWallLenM / (totalLen || 1)));
     const extOpen = t.doorAreaExtSqM + t.windowAreaExtSqM;
     const intOpen = t.doorAreaIntSqM + t.windowAreaIntSqM;
-    extMas += Math.max(0, extLen * masonryH - extOpen);
-    intMas += Math.max(0, intLen * masonryH - intOpen);
+    t.netExtMasonrySqM = +Math.max(0, extLen * masonryH - extOpen).toFixed(1);
+    t.netIntMasonrySqM = +Math.max(0, intLen * masonryH - intOpen).toFixed(1);
+    extMas += t.netExtMasonrySqM;
+    intMas += t.netIntMasonrySqM;
     const plH = floorH - 0.15;
     intPl += Math.max(0, t.externalWallLenM * plH - extOpen) + Math.max(0, 2 * (t.internalWallLenM * plH - intOpen));
     extPl += Math.max(0, t.externalWallLenM * floorH - extOpen);
@@ -118,8 +129,8 @@ export function computeTakeoff(layout: Layout, opts: { floorHeightM?: number; be
   const baths = all.filter((r) => WET.has(r.type));
   const kitchens = all.filter((r) => r.type === 'kitchen');
   const tileH = opts.bathTileHeightM ?? 2.1;
-  const bathWallTile = baths.reduce((s, r) => s + Math.max(0, 2 * (r.width + r.depth) * tileH - 0.75 * 2.1), 0);
-  const counter = kitchens.reduce((s, r) => s + Math.max(2.4, Math.max(r.width, r.depth) + Math.min(r.width, r.depth) - 0.6), 0);
+  const bathWallTile = baths.reduce((s, r) => s + bathWallTileSqM(r, tileH), 0);
+  const counter = kitchens.reduce((s, r) => s + kitchenCounterRmt(r), 0);
   const stairs = all.filter((r) => r.type === 'staircase');
   const storeys = Math.max(1, layout.numFloors ?? layout.floors.length);
   // risers per storey (3.0 m floor-to-floor at ≤190 mm) incl. the terrace flight
@@ -147,7 +158,8 @@ export function computeTakeoff(layout: Layout, opts: { floorHeightM?: number; be
       stairTreads,
     },
     bathWallTileSqM: +bathWallTile.toFixed(1),
-    kitchenDadoSqM: +(counter * 0.6).toFixed(1),
+    bathTileHeightM: tileH,
+    kitchenDadoSqM: +(counter * KITCHEN_DADO_HEIGHT_M).toFixed(1),
     kitchenCounterRmt: +counter.toFixed(1),
     wetAreaSqM: { baths: +areaOf((r) => WET.has(r.type)).toFixed(1), kitchens: +areaOf((r) => r.type === 'kitchen').toFixed(1), utility: +areaOf((r) => r.type === 'utility').toFixed(1) },
     parapetLenM: +perimeter.toFixed(2),

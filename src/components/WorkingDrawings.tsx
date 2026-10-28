@@ -127,7 +127,7 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq, on
   const [exportResult, setExportResult] = useState<string | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
 
-  const drawingsStorageKey = `neevv-drawings-${requirements.plotWidthFt}x${requirements.plotDepthFt}-${layout.designSeed?.seedId || layout.id || 'default'}-${requirements.city || 'city'}`;
+  const drawingsStorageKey = `neevv-drawings-v2-${requirements.plotWidthFt}x${requirements.plotDepthFt}-${layout.designSeed?.seedId || layout.id || 'default'}-${requirements.city || 'city'}`;
 
   const saveDrawingToCache = useCallback(async (cacheKey: string, imageData: string) => {
     try {
@@ -381,10 +381,10 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq, on
     barBending: 'Bar Bending Schedule per IS 2502. All members quantified with bar mark, diameter, shape code, cutting length, and total weight.',
     section: `Cross-section showing foundation system, RCC frame, infill masonry, and lintels. Floor-to-floor: 3000mm.`,
     elevation: `Front elevation (${requirements.facing} facing). Plinth, DPC, windows, main door, balcony, slab bands, parapet with coping.`,
-    brickwork: 'Masonry layout: 230mm external walls (stretcher bond), 115mm partitions, door/window openings, lintel positions, waterproof plaster in wet areas.',
-    electrical: 'Electrical layout: room-wise light/fan/socket/AC points, DB & MSB positions, circuit runs (power/lighting/earth), load schedule.',
-    plumbing: 'Plumbing layout: cold/hot water supply lines, drainage with slope, fixtures (WC/basin/shower/sink), OHT, sump, manholes, RWP.',
-    tiling: 'Floor finish layout: room-wise tile type/size, wall tiles in wet areas, skirting, threshold details, material schedule.',
+    brickwork: 'Masonry layout from the locked plan: 230 mm external and 115 mm internal walls, balcony railings, openings with lintels, wall lengths and masonry quantities matching the BOQ.',
+    electrical: 'Electrical layout from the locked plan: room-wise light, fan, exhaust, socket, 16A and AC points, switch boards, DB and circuit runs, with a point schedule matching the BOQ.',
+    plumbing: 'Plumbing layout from the locked plan: WC, basin, shower, sink and floor traps in each wet room, supply from the OHT, SWR drainage, stacks, inspection chambers, sump and RWPs, with a fixture schedule matching the BOQ.',
+    tiling: 'Tiling layout from the locked plan: room-wise floor tiles, bath wall tiles, kitchen counter and dado, stair granite, with areas matching the BOQ.',
     staircase: 'Dog-leg staircase detail: section and plan views with tread/riser dimensions, waist slab, handrail, landing, reinforcement per IS 456 / NBC 2016.',
     waterTank: 'Underground sump and overhead tank details: section views with reinforcement, inlet/outlet pipes, waterproof coating, capacity calculations per IS 3370.',
     waterproofing: 'Waterproofing details for roof terrace (APP membrane + brick bat coba) and bathroom (sunken floor + membrane) per IS 3067 / NBC Part 7.',
@@ -527,12 +527,12 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq, on
               <Sparkles size={16} className="absolute -top-1 -right-1 text-amber-500" />
             </div>
             <div className="text-center">
-              <p className="text-lg font-semibold text-gray-700">neevv Generation Pro</p>
+              <p className="text-lg font-semibold text-gray-700">neevv drawing engine</p>
               <p className="text-sm text-gray-500 mt-1">
                 Generating {activeTab?.label || activeDrawing}...
               </p>
               <p className="text-xs text-gray-400 mt-2">
-                Preliminary design drawing per NBC 2016 guidelines
+                Drawn from your locked plan
               </p>
             </div>
           </div>
@@ -577,7 +577,7 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq, on
               onClick={() => handleGenerate(activeDrawing)}
               disabled={isLoadingCurrent}
             >
-              <Sparkles size={16} /> Generate with neevv Generation Pro
+              <Sparkles size={16} /> Generate drawing
             </button>
           </div>
         )}

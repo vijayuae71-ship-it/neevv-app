@@ -1,6 +1,8 @@
 'use client';
 
 import type { Layout, Room, ProjectRequirements, BOQ, Column, Setbacks, LayoutOpening } from '../types';
+import { ELEC_KINDS, electricalBreakdown, electricalPoints, fixturesFor, fixtureTotals, isNiche, WALL_EXTERNAL_MM, WALL_INTERNAL_MM } from './quantityRules';
+import { computeTakeoff, bathWallTileSqM, kitchenCounterRmt, KITCHEN_DADO_HEIGHT_M, type Takeoff } from './quantityTakeoff';
 
 /**
  * Deterministic, millimetre-based construction drawings. All model coordinates are
@@ -37,7 +39,8 @@ type Data = Record<string, unknown>;
 type Level = 0 | 1;
 type DrawingType = 'excavation' | 'column_layout' | 'footing_detail' | 'beam_slab' |
   'column_detail' | 'bar_bending' | 'section_aa' | 'front_elevation' |
-  'staircase_detail' | 'water_tank' | 'waterproofing' | 'stp_detail';
+  'staircase_detail' | 'water_tank' | 'waterproofing' | 'stp_detail' |
+  'electrical' | 'plumbing' | 'tiling_layout' | 'brickwork_detail';
 
 interface Frame { x: number; y: number; s: number; width: number; height: number; }
 interface ModelRoom { source: Room; x: number; y: number; w: number; d: number; }
@@ -85,6 +88,8 @@ const titleFor: Record<DrawingType, string> = {
   section_aa: 'BUILDING SECTION A–A', front_elevation: 'FRONT ELEVATION',
   staircase_detail: 'STAIRCASE PLAN & SECTION', water_tank: 'SUMP & OVERHEAD TANK DETAILS',
   waterproofing: 'WATERPROOFING DETAILS', stp_detail: 'STP SCHEMATIC LAYOUT',
+  electrical: 'ELECTRICAL LAYOUT', plumbing: 'PLUMBING & DRAINAGE LAYOUT',
+  tiling_layout: 'FLOOR & WALL TILING LAYOUT', brickwork_detail: 'MASONRY & LINTEL LAYOUT',
 };
 
 /** Thin, dimensioned CAD-like primitives. Coordinates are canvas pixels. */
@@ -480,17 +485,17 @@ function planOpening(c: CanvasRenderingContext2D, k: Context, o: OpeningPlacemen
   const length = o.axis === 'horizontal' ? b.x - a.x : b.y - a.y;
   if (length <= 4) return;
   // Only erase the small host wall segment; framing remains visible either side.
-  c.save(); c.strokeStyle = '#fff'; c.lineWidth = Math.max(5, (o.face === 'internal' ? 150 : 230) * k.scale + 3);
+  c.save(); c.strokeStyle = '#fff'; c.lineWidth = Math.max(5, (o.face === 'internal' ? WALL_INTERNAL_MM : WALL_EXTERNAL_MM) * k.scale + 3);
   c.beginPath(); c.moveTo(a.x, a.y); c.lineTo(b.x, b.y); c.stroke(); c.restore();
   if (o.source.type === 'door') drawDoor(c, a.x, a.y, length, o.axis,
     o.face === 'rear' || o.face === 'right' ? -1 : 1);
   else drawWindow(c, a.x, a.y, length, o.axis);
 }
-function drawPlanRooms(k: Context, light = false): void {
+function drawPlanRooms(k: Context, light = false, cornerLabels = false): void {
   const c = k.c;
   const b = box(k, k.g.building);
   c.save(); if (light) c.globalAlpha = 0.55;
-  const t = Math.max(4, 230 * k.scale);
+  const t = Math.max(4, WALL_EXTERNAL_MM * k.scale);
   drawDoubleLineWall(c, b.x, b.y, b.x + b.w, b.y, t, 2);
   drawDoubleLineWall(c, b.x, b.y + b.h, b.x + b.w, b.y + b.h, t, 2);
   drawDoubleLineWall(c, b.x, b.y, b.x, b.y + b.h, t, 2);
@@ -504,7 +509,11 @@ function drawPlanRooms(k: Context, light = false): void {
     ]) {
       const key = [x1, y1, x2, y2].map(v => Math.round(v)).join(',');
       if (seen.has(key)) continue; seen.add(key);
-      drawDoubleLineWall(c, x1, y1, x2, y2, Math.max(3, 150 * k.scale), 1.2);
+      drawDoubleLineWall(c, x1, y1, x2, y2, Math.max(3, WALL_INTERNAL_MM * k.scale), 1.2);
+    }
+    if (cornerLabels) {
+      if (!isNiche(r.source)) label(c, r.source.name, q.x + 10, q.y + 20, 11, 'left', COLORS.dim, true);
+      continue;
     }
     const cx = q.x + q.w / 2, cy = q.y + q.h / 2;
     if (q.w > 65 && q.h > 45) {
@@ -1464,6 +1473,443 @@ function stpDetail(k: Context): void {
   ]);
 }
 
+
+/* =====================================================================================
+ * 13–16. Floor-specific services & finishes drawings (Electrical, Plumbing, Tiling,
+ * Brickwork). Drawn from the locked plan's rooms and openings for the selected floor; every
+ * count and quantity comes from the shared rules (quantityRules / quantityTakeoff) that
+ * also drive the BOQ, so drawing schedules and BOQ lines cannot disagree.
+ * ===================================================================================== */
+type Side = 'front' | 'rear' | 'left' | 'right';
+const SVC = { power: '#b5651d', light: '#2f5d8a', water: '#1f78b4', hot: '#c0392b', drain: '#7a5230', brick: '#e7c4ae', tileA: '#e9eef2', tileB: '#dfe9df', wetTile: '#cfe3ea' };
+function svcRooms(k: Context): ModelRoom[] { return selected(k).filter(r => !isNiche(r.source)); }
+function svcFrame(k: Context, withPlot = false): void {
+  const b = k.g.building, m = 700;
+  setFrame(k, withPlot ? k.g.footprint : { x: b.x - m, y: b.y - m, w: b.w + 2 * m, h: b.h + 2 * m }, { x: 80, y: 120, w: 1300, h: 1060 }, 40);
+}
+function externalSides(k: Context, r: ModelRoom): Side[] {
+  const b = k.g.building, e = 40, out: Side[] = [];
+  if (Math.abs(r.y + r.d - (b.y + b.h)) < e) out.push('rear');
+  if (Math.abs(r.x - b.x) < e) out.push('left');
+  if (Math.abs(r.x + r.w - (b.x + b.w)) < e) out.push('right');
+  if (Math.abs(r.y - b.y) < e) out.push('front');
+  return out;
+}
+function doorOf(k: Context, r: ModelRoom): OpeningPlacement | undefined {
+  return k.g.openings.find(o => o.floor === k.level && o.room === r && o.source.type === 'door');
+}
+function doorSide(r: ModelRoom, o?: OpeningPlacement): Side | null {
+  if (!o) return null;
+  if (o.axis === 'horizontal') return Math.abs(o.fixed - r.y) < Math.abs(o.fixed - (r.y + r.d)) ? 'front' : 'rear';
+  return Math.abs(o.fixed - r.x) < Math.abs(o.fixed - (r.x + r.w)) ? 'left' : 'right';
+}
+const opposite: Record<Side, Side> = { front: 'rear', rear: 'front', left: 'right', right: 'left' };
+/** Point on a room side at fraction t along it, `inset` mm into the room. */
+function onSide(r: ModelRoom, side: Side, t: number, inset: number): Point {
+  if (side === 'front') return { x: r.x + r.w * t, y: r.y + inset };
+  if (side === 'rear') return { x: r.x + r.w * t, y: r.y + r.d - inset };
+  if (side === 'left') return { x: r.x + inset, y: r.y + r.d * t };
+  return { x: r.x + r.w - inset, y: r.y + r.d * t };
+}
+function sideLen(r: ModelRoom, s: Side): number { return s === 'front' || s === 'rear' ? r.w : r.d; }
+/** Fraction along `side` that is farthest from the room's door (so fixtures cluster away from it). */
+function awayFromDoor(r: ModelRoom, side: Side, door?: OpeningPlacement): number {
+  if (!door) return 0.2;
+  const c = (door.a + door.b) / 2;
+  const along = side === 'front' || side === 'rear' ? (door.axis === 'horizontal' ? c : door.fixed) : (door.axis === 'vertical' ? c : door.fixed);
+  const start = side === 'front' || side === 'rear' ? r.x : r.y;
+  return (along - start) / Math.max(1, sideLen(r, side)) > 0.5 ? 0.2 : 0.8;
+}
+/** Base plan for services sheets: walls, openings and small corner room names (centre kept free for symbols). */
+function servicesBase(k: Context): void {
+  drawPlanRooms(k, true, true);
+}
+function sym(c: CanvasRenderingContext2D, p: Point, code: string, color: string, shape: 'circle' | 'square' = 'circle', r = 12): void {
+  if (shape === 'circle') circle(c, p.x, p.y, r, '#fff', color, 1.6);
+  else drawRect(c, p.x - r, p.y - r, 2 * r, 2 * r, { fill: '#fff', stroke: color, weight: 1.6 });
+  label(c, code, p.x, p.y + 0.5, code.length > 1 ? 10 : 12, 'center', color, true);
+}
+function ortho(c: CanvasRenderingContext2D, a: Point, b: Point, color: string, weight: number, dash?: number[]): void {
+  c.save(); if (dash) c.setLineDash(dash); c.strokeStyle = color; c.lineWidth = weight;
+  c.beginPath(); c.moveTo(a.x, a.y); c.lineTo(b.x, a.y); c.lineTo(b.x, b.y); c.stroke(); c.restore();
+}
+function table(c: CanvasRenderingContext2D, x: number, y: number, cols: { h: string; w: number }[], rows: string[][], title: string, rowH = 22): number {
+  label(c, title, x, y, 17, 'left', COLORS.green, true);
+  let yy = y + 18; let xx = x;
+  const totalW = cols.reduce((s, col) => s + col.w, 0);
+  drawRect(c, x, yy, totalW, rowH, { fill: '#f1f3f1', stroke: COLORS.grid, weight: 1 });
+  for (const col of cols) { label(c, col.h, xx + 5, yy + rowH / 2 + 1, 11, 'left', COLORS.text, true); xx += col.w; }
+  yy += rowH;
+  for (const row of rows) {
+    const bold = row[0].startsWith('TOTAL') || row[0].startsWith('WHOLE');
+    drawRect(c, x, yy, totalW, rowH, { fill: bold ? '#f7f7f2' : '#fff', stroke: COLORS.grid, weight: 0.8 });
+    xx = x;
+    row.forEach((v, i) => { label(c, v.length > Math.floor(cols[i].w / 6.3) ? v.slice(0, Math.floor(cols[i].w / 6.3) - 1) + '…' : v, xx + 5, yy + rowH / 2 + 1, 11, 'left', COLORS.text, bold); xx += cols[i].w; });
+    yy += rowH;
+  }
+  return yy;
+}
+function floorName(k: Context): string { return k.level === 0 ? 'GROUND FLOOR' : 'FIRST FLOOR'; }
+/** Kitchen counter: long leg on the best non-door wall (external preferred), short leg on an adjacent non-door wall. */
+function kitchenCounter(k: Context, r: ModelRoom): { long: Side; short: Side } {
+  const dSide = doorSide(r, doorOf(k, r)), ext = externalSides(k, r);
+  const all: Side[] = ['rear', 'front', 'left', 'right'];
+  const longSides = all.filter(s => s !== dSide && sideLen(r, s) >= Math.max(r.w, r.d) - 1);
+  const long = longSides.find(s => ext.includes(s)) ?? longSides[0] ?? all.filter(s => s !== dSide).sort((a, b) => sideLen(r, b) - sideLen(r, a))[0];
+  const perp: Side[] = long === 'front' || long === 'rear' ? ['left', 'right'] : ['front', 'rear'];
+  const short = perp.find(s => s !== dSide && ext.includes(s)) ?? perp.find(s => s !== dSide) ?? perp[0];
+  return { long, short };
+}
+/** Wet-room service wall: a long, non-door wall (external preferred), anchored at the end nearest an external wall. */
+function wetLayout(k: Context, r: ModelRoom): { service: Side; tEnd: 0 | 1; ext: Side[]; outSide: Side | null } {
+  const door = doorOf(k, r), dSide = doorSide(r, door), ext = externalSides(k, r);
+  const cands = (['rear', 'left', 'right', 'front'] as Side[]).filter(s => s !== dSide);
+  const score = (s: Side) => (sideLen(r, s) >= 2000 ? 10 : 0) + (ext.includes(s) ? 5 : 0) + sideLen(r, s) / 10000;
+  const service = cands.sort((a, b) => score(b) - score(a))[0] ?? 'rear';
+  const horizontal = service === 'front' || service === 'rear';
+  const endSides: [Side, Side] = horizontal ? ['left', 'right'] : ['front', 'rear'];
+  let tEnd: 0 | 1;
+  if (ext.includes(endSides[0]) && !ext.includes(endSides[1])) tEnd = 0;
+  else if (ext.includes(endSides[1]) && !ext.includes(endSides[0])) tEnd = 1;
+  else tEnd = awayFromDoor(r, service, door) < 0.5 ? 0 : 1;
+  const outSide = ext.includes(service) ? service : ext.includes(endSides[tEnd]) ? endSides[tEnd] : ext[0] ?? null;
+  return { service, tEnd, ext, outSide };
+}
+
+/* 13. Electrical layout. */
+function electrical(k: Context): void {
+  const c = k.c; svcFrame(k); servicesBase(k);
+  const rooms = svcRooms(k);
+  // Main DB beside the main entrance door on GF; sub-DB at the stair landing on upper floors.
+  const mainDoor = k.g.openings.find(o => o.floor === k.level && o.source.type === 'door' && (o.source as LayoutOpening & { main?: boolean }).main)
+    ?? k.g.openings.find(o => o.floor === k.level && o.source.type === 'door' && o.face === 'front');
+  const stairRoom = rooms.find(r => r.source.type === 'staircase');
+  let dbModel: Point;
+  if (k.level === 0 && mainDoor) {
+    dbModel = mainDoor.axis === 'horizontal' ? { x: mainDoor.b + 250, y: mainDoor.fixed + (mainDoor.room.y + mainDoor.room.d / 2 > mainDoor.fixed ? 250 : -250) } : { x: mainDoor.fixed + (mainDoor.room.x + mainDoor.room.w / 2 > mainDoor.fixed ? 250 : -250), y: mainDoor.b + 250 };
+  } else if (stairRoom) dbModel = onSide(stairRoom, 'front', 0.15, 250);
+  else dbModel = { x: k.g.building.x + 400, y: k.g.building.y + 400 };
+  const db = at(k, dbModel.x, dbModel.y);
+  const rowsOut: string[][] = [];
+  const tot = { light: 0, fan: 0, exhaust: 0, socket: 0, power: 0, ac: 0 };
+  for (const r of rooms) {
+    const b = electricalBreakdown(r.source.type);
+    for (const kind of ELEC_KINDS) tot[kind] += b[kind];
+    const n = ELEC_KINDS.reduce((s, kind) => s + b[kind], 0);
+    rowsOut.push([r.source.name, `${b.light}`, `${b.fan}`, `${b.exhaust}`, `${b.socket}`, `${b.power}`, `${b.ac}`, `${n}`]);
+    const door = doorOf(k, r), dSide = doorSide(r, door);
+    // Ceiling points along the long axis of the room.
+    const ceiling: { code: string; color: string }[] = [];
+    for (let i = 0; i < b.fan; i++) ceiling.push({ code: 'F', color: SVC.light });
+    for (let i = 0; i < b.light; i++) ceiling.push({ code: 'L', color: SVC.light });
+    const longX = r.w >= r.d;
+    ceiling.forEach((item, i) => {
+      const t = (i + 0.5) / ceiling.length;
+      const off = ceiling.length > 2 ? ((i % 2) ? 0.62 : 0.38) : 0.5;
+      const p = longX ? { x: r.x + r.w * t, y: r.y + r.d * off } : { x: r.x + r.w * off, y: r.y + r.d * t };
+      const q = at(k, p.x, p.y);
+      if (item.code === 'F') { circle(c, q.x, q.y, 13, '#fff', item.color, 1.6); for (let a = 0; a < 3; a++) { const ang = a * 2.094; drawLine(c, q.x, q.y, q.x + 11 * Math.cos(ang), q.y + 11 * Math.sin(ang), 1.4, item.color); } }
+      else sym(c, q, 'L', item.color, 'circle', 10);
+    });
+    // Wall points: sockets/power/AC/exhaust around the walls, skipping the door position.
+    const ext = externalSides(k, r);
+    const sides: Side[] = (['rear', 'left', 'right', 'front'] as Side[]).filter(s => s !== dSide).concat(dSide ? [dSide] : []);
+    const slots: { side: Side; t: number }[] = [];
+    for (const s of sides) for (const t of [0.3, 0.7, 0.5]) if (!(s === dSide && door)) slots.push({ side: s, t });
+    if (!slots.length) for (const t of [0.15, 0.85]) slots.push({ side: dSide ?? 'rear', t });
+    const wallItems: { code: string; color: string; prefer?: Side[] }[] = [];
+    for (let i = 0; i < b.exhaust; i++) wallItems.push({ code: 'EF', color: SVC.light, prefer: ext });
+    for (let i = 0; i < b.ac; i++) wallItems.push({ code: 'AC', color: SVC.power, prefer: ext.filter(s => s !== 'front') });
+    for (let i = 0; i < b.power; i++) wallItems.push({ code: 'P', color: SVC.power });
+    for (let i = 0; i < b.socket; i++) wallItems.push({ code: 'S', color: SVC.power });
+    const used = new Set<number>();
+    for (const item of wallItems) {
+      let idx = slots.findIndex((s, i) => !used.has(i) && (item.prefer?.length ? item.prefer.includes(s.side) : true));
+      if (idx < 0) idx = slots.findIndex((_, i) => !used.has(i));
+      const slot = idx >= 0 ? slots[idx] : slots[0];
+      if (idx >= 0) used.add(idx);
+      const extra = idx < 0 ? 0 : Math.floor(idx / Math.max(1, slots.length)) * 0.08;
+      const p = at(k, onSide(r, slot.side, Math.min(0.9, slot.t + extra), 170).x, onSide(r, slot.side, Math.min(0.9, slot.t + extra), 170).y);
+      sym(c, p, item.code, item.color, item.code === 'S' ? 'circle' : 'square', item.code.length > 1 ? 12 : 9);
+    }
+    // Switch board beside the door, with the home run to the DB.
+    let sb: Point;
+    if (door) {
+      const inward = door.axis === 'horizontal' ? (r.y + r.d / 2 > door.fixed ? 1 : -1) : (r.x + r.w / 2 > door.fixed ? 1 : -1);
+      const along = Math.min(door.b + 200, (door.axis === 'horizontal' ? r.x + r.w : r.y + r.d) - 150);
+      sb = door.axis === 'horizontal' ? { x: along, y: door.fixed + inward * 180 } : { x: door.fixed + inward * 180, y: along };
+    } else sb = { x: r.x + 250, y: r.y + 250 };
+    const sp = at(k, sb.x, sb.y);
+    ortho(c, sp, db, SVC.power, 1, [6, 4]);
+    drawRect(c, sp.x - 7, sp.y - 5, 14, 10, { fill: COLORS.wall, stroke: COLORS.wall, weight: 1 });
+  }
+  drawRect(c, db.x - 18, db.y - 12, 36, 24, { fill: '#fff', stroke: SVC.power, weight: 2.2 });
+  label(c, k.level === 0 ? 'DB' : 'SDB', db.x, db.y + 1, 11, 'center', SVC.power, true);
+  // Schedule + legend.
+  const floorTotal = ELEC_KINDS.reduce((s, kind) => s + tot[kind], 0);
+  rowsOut.push(['TOTAL ' + (k.level === 0 ? 'GF' : 'FF'), `${tot.light}`, `${tot.fan}`, `${tot.exhaust}`, `${tot.socket}`, `${tot.power}`, `${tot.ac}`, `${floorTotal}`]);
+  const allRooms = k.layout.floors.flatMap(f => f.rooms);
+  const whole = electricalPoints(allRooms);
+  rowsOut.push(['WHOLE HOUSE (= BOQ)', '', '', '', '', '', '', `${whole}`]);
+  const y = table(c, 1420, 150, [{ h: 'ROOM', w: 230 }, { h: 'L', w: 38 }, { h: 'F', w: 38 }, { h: 'EF', w: 38 }, { h: 'S', w: 38 }, { h: 'P', w: 38 }, { h: 'AC', w: 38 }, { h: 'PTS', w: 50 }], rowsOut, `ELECTRICAL POINT SCHEDULE — ${floorName(k)}`);
+  legend(c, 1420, y + 40, 'LEGEND', [
+    'L  ceiling light point        F  ceiling fan point',
+    'EF exhaust fan                 S  6A socket (modular)',
+    'P  16A power point             AC split-AC 16A point + drain',
+    '▬  switch board at door, 1200 mm FFL',
+    `${k.level === 0 ? 'DB  main distribution board' : 'SDB sub-distribution board'} — RCCB 30 mA + MCBs`,
+    '- - - circuit run, FR/FRLS Cu in concealed PVC conduit',
+    'Lighting 1.5 mm², 6A sockets 2.5 mm², 16A/AC 4 mm² (prelim.)',
+    'Earthing per IS 3043; final load to be designed by electrician.',
+  ]);
+  label(c, `${floorName(k)} ELECTRICAL LAYOUT — points as per locked plan`, 100, 140, 16, 'left', COLORS.dim);
+}
+
+/* 14. Plumbing & drainage layout. */
+function plumbing(k: Context): void {
+  const c = k.c; svcFrame(k, k.level === 0); if (k.level === 0) drawPlot(k); servicesBase(k);
+  const rooms = svcRooms(k);
+  const b = k.g.building;
+  const stairRoom = rooms.find(r => r.source.type === 'staircase');
+  const downModel = stairRoom ? onSide(stairRoom, 'rear', 0.85, 200) : { x: b.x + 300, y: b.y + b.h - 300 };
+  const down = at(k, downModel.x, downModel.y);
+  const wet = rooms.filter(r => fixturesFor(r.source.type).points > 0);
+  const rowsOut: string[][] = [];
+  const tot = fixtureTotals([]);
+  const exits: Point[] = [];
+  const outPt = (p: Point, side: Side, dist: number): Point => side === 'front' ? { x: p.x, y: b.y - dist } : side === 'rear' ? { x: p.x, y: b.y + b.h + dist } : side === 'left' ? { x: b.x - dist, y: p.y } : { x: b.x + b.w + dist, y: p.y };
+  for (const r of wet) {
+    const f = fixturesFor(r.source.type);
+    for (const key of Object.keys(tot) as (keyof typeof tot)[]) tot[key] += f[key];
+    rowsOut.push([r.source.name, `${f.ewc}`, `${f.basin}`, `${f.shower}`, `${f.sink + f.purifier + f.washer}`, `${f.floorTrap}`, `${f.points}`]);
+    const b0 = k.g.building;
+    const pts: Point[] = [];
+    const put = (side: Side, t: number, inset: number, code: string, color = SVC.water, shape: 'circle' | 'square' = 'square'): Point => {
+      const m = onSide(r, side, Math.max(0.06, Math.min(0.94, t)), inset); pts.push(m); sym(c, at(k, m.x, m.y), code, color, shape, code.length > 1 ? 13 : 10); return m;
+    };
+    let stackModel: Point; let outSide: Side | null;
+    if (r.source.type === 'toilet') {
+      const w = wetLayout(k, r); outSide = w.outSide;
+      const L = sideLen(r, w.service);
+      const tAt = (mm: number) => w.tEnd === 0 ? mm / L : 1 - mm / L;
+      const sh = put(w.service, tAt(450), 450, 'SH');
+      ring(c, box(k, { x: sh.x - 450, y: sh.y - 450, w: 900, h: 900 }), SVC.water);
+      put(w.service, tAt(1250), 330, 'WC');
+      put(w.service, tAt(1650), 130, 'HF', SVC.water, 'circle');
+      if (L >= 2500) put(w.service, tAt(2150), 260, 'WB'); else put(opposite[w.service], 0.5, 260, 'WB');
+      put(w.service, tAt(450), 950, 'FT', SVC.drain, 'circle');
+      put(w.service, tAt(Math.min(L - 300, 2000)), Math.min(sideLen(r, w.service === 'front' || w.service === 'rear' ? 'left' : 'front') - 300, 800), 'FT', SVC.drain, 'circle');
+      const g = onSide(r, w.service, tAt(450), 110);
+      const gp = at(k, g.x, g.y); sym(c, gp, 'GY', SVC.hot, 'square', 11);
+      const sp = at(k, sh.x, sh.y); drawLine(c, gp.x, gp.y + 11, sp.x, sp.y - 13, 1.5, SVC.hot);
+      // Stack at the anchored end, outside the external wall where there is one.
+      const corner = onSide(r, w.service, w.tEnd, 0);
+      const inner = onSide(r, w.service, tAt(1250), 0);
+      stackModel = !outSide ? onSide(r, w.service, tAt(1250), 120)
+        : outSide === w.service ? onSide(r, w.service, tAt(1250), -130)
+        : { x: outSide === 'left' ? r.x - 130 : outSide === 'right' ? r.x + r.w + 130 : (corner.x + inner.x) / 2 || inner.x,
+            y: outSide === 'front' ? r.y - 130 : outSide === 'rear' ? r.y + r.d + 130 : (corner.y + inner.y) / 2 || inner.y };
+      if (outSide && outSide !== w.service) { if (outSide === 'left' || outSide === 'right') stackModel.y = onSide(r, w.service, tAt(300), 300).y; else stackModel.x = onSide(r, w.service, tAt(300), 300).x; }
+    } else {
+      const ext = externalSides(k, r);
+      const side = r.source.type === 'kitchen' ? kitchenCounter(k, r).long : (ext[0] ?? wetLayout(k, r).service);
+      outSide = ext.includes(side) ? side : ext[0] ?? null;
+      if (r.source.type === 'kitchen') { put(side, 0.5, 300, 'SK'); put(side, 0.5 + Math.min(0.3, 900 / sideLen(r, side)), 150, 'RO', SVC.water, 'circle'); }
+      else put(side, 0.5, 350, 'WM');
+      put(side, 0.5, 850, 'FT', SVC.drain, 'circle');
+      stackModel = outSide === side ? onSide(r, side, 0.5 - Math.min(0.3, 700 / sideLen(r, side)), -130) : onSide(r, side, 0.2, 150);
+    }
+    // Supply: from the OHT down-take to the room's service wall.
+    const first = pts[0];
+    ortho(c, down, at(k, first.x, first.y), SVC.water, 2);
+    // Drainage: fixtures to the soil/waste stack, then out of the building.
+    const stack = at(k, stackModel.x, stackModel.y);
+    for (const m of pts) { const p = at(k, m.x, m.y); ortho(c, p, stack, SVC.drain, 1.4, [7, 4]); }
+    circle(c, stack.x, stack.y, 9, SVC.drain, SVC.drain);
+    label(c, k.level === 0 ? 'SWR' : 'SVP ↓', stack.x + 12, stack.y - 14, 11, 'left', SVC.drain, true);
+    if (k.level === 0) {
+      const o = outSide ?? ((['front', 'rear', 'left', 'right'] as Side[]).map(sd => ({ sd, d: sd === 'front' ? stackModel.y - b0.y : sd === 'rear' ? b0.y + b0.h - stackModel.y : sd === 'left' ? stackModel.x - b0.x : b0.x + b0.w - stackModel.x })).sort((p, q) => p.d - q.d)[0].sd);
+      const ic = outPt(stackModel, o, 700);
+      const icp = at(k, ic.x, ic.y);
+      ortho(c, stack, icp, SVC.drain, 2, [9, 4]);
+      drawRect(c, icp.x - 12, icp.y - 12, 24, 24, { fill: '#fff', stroke: SVC.drain, weight: 2 });
+      label(c, 'IC', icp.x, icp.y + 1, 10, 'center', SVC.drain, true);
+      exits.push(ic);
+    }
+  }
+  if (k.level === 0 && exits.length) {
+    // Inspection chambers are linked around the setback to the front boundary (septic tank / sewer).
+    const front = { x: b.x + b.w + 600, y: b.y - Math.max(600, k.g.setbacks.front * 0.6) };
+    const sorted = [...exits].sort((p, q) => q.y - p.y);
+    let prev = sorted[0];
+    for (const e of sorted.slice(1)) { ortho(c, at(k, prev.x, prev.y), at(k, e.x, e.y), SVC.drain, 2, [9, 4]); prev = e; }
+    ortho(c, at(k, prev.x, prev.y), at(k, front.x, front.y), SVC.drain, 2, [9, 4]);
+    const fp = at(k, front.x, front.y);
+    drawRect(c, fp.x - 16, fp.y - 12, 32, 24, { fill: '#fff', stroke: SVC.drain, weight: 2 });
+    label(c, 'MH', fp.x, fp.y + 1, 10, 'center', SVC.drain, true);
+    label(c, 'TO SEPTIC TANK / MUNICIPAL SEWER', fp.x - 20, fp.y - 26, 12, 'right', SVC.drain, true);
+    const sump = at(k, b.x - 200, b.y - Math.max(500, k.g.setbacks.front * 0.5));
+    drawRect(c, sump.x - 40, sump.y - 14, 80, 28, { fill: '#e8f3f8', stroke: SVC.water, weight: 2 });
+    label(c, 'UG SUMP', sump.x, sump.y + 1, 11, 'center', SVC.water, true);
+    ortho(c, sump, down, SVC.water, 1.5, [3, 3]);
+  }
+  // Rainwater pipes at the four building corners.
+  for (const [x, y] of [[b.x + 150, b.y + 150], [b.x + b.w - 150, b.y + 150], [b.x + 150, b.y + b.h - 150], [b.x + b.w - 150, b.y + b.h - 150]]) {
+    const p = at(k, x, y); circle(c, p.x, p.y, 7, '#fff', SVC.water, 1.5); label(c, 'RWP', p.x + 10, p.y - 10, 10, 'left', SVC.water);
+  }
+  circle(c, down.x, down.y, 10, SVC.water, SVC.water);
+  label(c, 'DOWN-TAKE FROM OHT', down.x + 14, down.y - 12, 11, 'left', SVC.water, true);
+  rowsOut.push(['TOTAL ' + (k.level === 0 ? 'GF' : 'FF'), `${tot.ewc}`, `${tot.basin}`, `${tot.shower}`, `${tot.sink + tot.purifier + tot.washer}`, `${tot.floorTrap}`, `${tot.points}`]);
+  const whole = fixtureTotals(k.layout.floors.flatMap(f => f.rooms));
+  rowsOut.push(['WHOLE HOUSE (= BOQ)', `${whole.ewc}`, `${whole.basin}`, `${whole.shower}`, `${whole.sink + whole.purifier + whole.washer}`, `${whole.floorTrap}`, `${whole.points}`]);
+  const y = table(c, 1420, 150, [{ h: 'ROOM', w: 230 }, { h: 'WC', w: 40 }, { h: 'WB', w: 40 }, { h: 'SH', w: 40 }, { h: 'SK/RO/WM', w: 76 }, { h: 'FT', w: 40 }, { h: 'PTS', w: 50 }], rowsOut, `SANITARY FIXTURE SCHEDULE — ${floorName(k)}`);
+  legend(c, 1420, y + 40, 'LEGEND', [
+    'WC EWC + health faucet (HF)    WB wash basin',
+    'SH shower (900×900 zone)       GY geyser 15–25 L',
+    'SK sink  RO purifier inlet     WM washing machine',
+    'FT floor trap   IC inspection chamber   MH manhole',
+    '━ cold supply CPVC 20–25 mm     ━ hot supply (red)',
+    '- - - waste/soil SWR 75/110 mm, fall ≥ 1:40 (waste), 1:60 (soil)',
+    k.level === 0 ? 'Upper-floor stacks drop to the ICs shown here.' : 'SVP ↓ stacks drop to ground-floor inspection chambers.',
+    'Sizes preliminary; plumber to confirm levels on site.',
+  ]);
+}
+
+/* 15. Floor & wall tiling layout. */
+function tiling(k: Context): void {
+  const c = k.c; svcFrame(k);
+  const rooms = svcRooms(k);
+  const takeoff = (k.boq as (BOQ & { takeoff?: Takeoff }) | null)?.takeoff;
+  const tileH = takeoff?.bathTileHeightM ?? 2.1;
+  const rowsOut: string[][] = [];
+  const t = { vit: 0, anti: 0, balc: 0, wall: 0, dado: 0 };
+  for (const r of rooms) {
+    const type = r.source.type;
+    const area = (r.w / 1000) * (r.d / 1000);
+    const q = box(k, { x: r.x, y: r.y, w: r.w, h: r.d });
+    const wetFloor = type === 'toilet' || type === 'utility';
+    let finish = 'Vitrified 600×600', tile = 600, fill = SVC.tileA, cat: keyof typeof t | null = 'vit';
+    if (wetFloor) { finish = 'Anti-skid matt 300×300'; tile = 300; fill = SVC.wetTile; cat = 'anti'; }
+    else if (type === 'balcony') { finish = 'Rustic anti-skid 300×300'; tile = 300; fill = SVC.tileB; cat = 'balc'; }
+    else if (type === 'staircase') { finish = 'Granite treads & risers'; tile = 0; fill = '#ece8e1'; cat = null; }
+    else if (type === 'parking') { finish = 'Paver / IPS (site works)'; tile = 0; fill = '#eeeeee'; cat = null; }
+    if (cat) t[cat] += area;
+    drawRect(c, q.x, q.y, q.w, q.h, { fill, stroke: COLORS.wall, weight: 1 });
+    if (tile) {
+      c.save(); c.beginPath(); c.rect(q.x, q.y, q.w, q.h); c.clip(); c.strokeStyle = '#9aa7ad'; c.lineWidth = 0.6;
+      const s = tile * k.scale;
+      for (let x = q.x + s; x < q.x + q.w; x += s) { c.beginPath(); c.moveTo(x, q.y); c.lineTo(x, q.y + q.h); c.stroke(); }
+      for (let y = q.y + s; y < q.y + q.h; y += s) { c.beginPath(); c.moveTo(q.x, y); c.lineTo(q.x + q.w, y); c.stroke(); }
+      c.restore();
+    } else if (type === 'staircase') {
+      for (let i = 1; i < 10; i++) drawLine(c, q.x + q.w * i / 10, q.y, q.x + q.w * i / 10, q.y + q.h, 0.8, COLORS.grid);
+    }
+    let wall = 0, dado = 0;
+    if (type === 'toilet') {
+      wall = bathWallTileSqM(r.source, tileH); t.wall += wall;
+      c.save(); c.strokeStyle = '#2b7a99'; c.lineWidth = 6; c.globalAlpha = 0.55; c.strokeRect(q.x + 4, q.y + 4, q.w - 8, q.h - 8); c.restore();
+    }
+    if (type === 'kitchen') {
+      const rmt = kitchenCounterRmt(r.source); dado = rmt * KITCHEN_DADO_HEIGHT_M; t.dado += dado;
+      const { long, short } = kitchenCounter(k, r);
+      const cd = 600 * k.scale;
+      const strip = (sd: Side) => { if (sd === 'front') c.fillRect(q.x, q.y, q.w, cd); else if (sd === 'rear') c.fillRect(q.x, q.y + q.h - cd, q.w, cd); else if (sd === 'left') c.fillRect(q.x, q.y, cd, q.h); else c.fillRect(q.x + q.w - cd, q.y, cd, q.h); };
+      c.save(); c.fillStyle = '#c9c2b6'; c.globalAlpha = 0.85; strip(long); strip(short); c.restore();
+      label(c, 'GRANITE COUNTER + DADO 600', q.x + q.w / 2, q.y + q.h / 2 + 22, 10, 'center', COLORS.dim, true);
+    }
+    label(c, r.source.name, q.x + q.w / 2, q.y + q.h / 2 - 8, clamp(q.w / 14, 10, 15), 'center', COLORS.text, true);
+    label(c, finish, q.x + q.w / 2, q.y + q.h / 2 + 8, 10, 'center', COLORS.dim);
+    rowsOut.push([r.source.name, finish, area.toFixed(2), wall ? wall.toFixed(2) : dado ? dado.toFixed(2) : '–']);
+  }
+  for (const o of k.g.openings.filter(v => v.floor === k.level)) planOpening(c, k, o);
+  rowsOut.push([`TOTAL ${k.level === 0 ? 'GF' : 'FF'}`, `Vit ${t.vit.toFixed(1)} • Anti ${t.anti.toFixed(1)} • Balc ${t.balc.toFixed(1)}`, '', `${(t.wall + t.dado).toFixed(1)}`]);
+  const y = table(c, 1420, 150, [{ h: 'ROOM', w: 175 }, { h: 'FLOOR FINISH', w: 215 }, { h: 'FLOOR m²', w: 75 }, { h: 'WALL m²', w: 75 }], rowsOut, `FINISH SCHEDULE — ${floorName(k)}`);
+  const lines = takeoff ? [
+    `Vitrified 600×600: ${takeoff.floorFinish.vitrifiedSqM} m²`,
+    `Anti-skid bath/utility: ${takeoff.floorFinish.antiSkidSqM} m²`,
+    `Bath wall tiles to ${tileH} m: ${takeoff.bathWallTileSqM} m²`,
+    `Kitchen dado 600 mm: ${takeoff.kitchenDadoSqM} m² • Counter ${takeoff.kitchenCounterRmt} Rmt`,
+    `Balcony rustic: ${takeoff.floorFinish.balconySqM} m² • Stair treads: ${takeoff.floorFinish.stairTreads} nos`,
+  ] : ['BOQ not yet generated — totals shown per floor only.'];
+  legend(c, 1420, y + 40, 'WHOLE HOUSE (= BOQ)', lines);
+  legend(c, 1420, y + 230, 'NOTES', [
+    `Bath walls tiled to ${tileH} m (blue band); floors laid to fall towards floor traps.`,
+    'Skirting 100 mm in dry rooms; granite thresholds at all doors.',
+    'Start tiling from room centre lines; cut tiles ≥ half size at walls.',
+    'Floor areas are net room areas from the locked plan.',
+  ]);
+  label(c, `${floorName(k)} TILING LAYOUT`, 100, 140, 16, 'left', COLORS.dim);
+}
+
+/* 16. Brickwork / masonry layout. */
+function brickwork(k: Context): void {
+  const c = k.c; svcFrame(k);
+  const rooms = svcRooms(k);
+  const b = box(k, k.g.building);
+  const tE = WALL_EXTERNAL_MM * k.scale, tI = WALL_INTERNAL_MM * k.scale;
+  const wall = (x1: number, y1: number, x2: number, y2: number, t: number) => {
+    c.save(); c.lineCap = 'square'; c.strokeStyle = COLORS.wall; c.lineWidth = t + 2; c.beginPath(); c.moveTo(x1, y1); c.lineTo(x2, y2); c.stroke();
+    c.strokeStyle = SVC.brick; c.lineWidth = Math.max(1, t - 1); c.stroke(); c.restore();
+  };
+  const seen = new Set<string>();
+  const outer: { s: Side; a: number; b: number; balcony: boolean }[] = [];
+  for (const r of rooms) {
+    const q = box(k, { x: r.x, y: r.y, w: r.w, h: r.d });
+    const ext = externalSides(k, r);
+    const edges: [Side, number, number, number, number][] = [['front', q.x, q.y, q.x + q.w, q.y], ['rear', q.x, q.y + q.h, q.x + q.w, q.y + q.h], ['left', q.x, q.y, q.x, q.y + q.h], ['right', q.x + q.w, q.y, q.x + q.w, q.y + q.h]];
+    for (const [sd, x1, y1, x2, y2] of edges) {
+      if (ext.includes(sd)) { outer.push({ s: sd, a: sd === 'front' || sd === 'rear' ? x1 : y1, b: sd === 'front' || sd === 'rear' ? x2 : y2, balcony: r.source.type === 'balcony' }); continue; }
+      const key = [x1, y1, x2, y2].map(v => Math.round(v)).join(',');
+      if (seen.has(key)) continue; seen.add(key);
+      wall(x1, y1, x2, y2, tI);
+    }
+    label(c, r.source.name, q.x + q.w / 2, q.y + q.h / 2, clamp(q.w / 14, 10, 15), 'center', COLORS.text, true);
+  }
+  // External walls along the building edge; balcony edges get a railing, not masonry (same as the BOQ take-off).
+  for (const e of outer) {
+    const fixed = e.s === 'front' ? b.y : e.s === 'rear' ? b.y + b.h : e.s === 'left' ? b.x : b.x + b.w;
+    const [x1, y1, x2, y2] = e.s === 'front' || e.s === 'rear' ? [e.a, fixed, e.b, fixed] : [fixed, e.a, fixed, e.b];
+    if (e.balcony) { drawDoubleLineWall(c, x1, y1, x2, y2, 5, 1); label(c, 'MS RAILING 1000 H', (x1 + x2) / 2, (y1 + y2) / 2 + (e.s === 'front' ? -12 : 14), 10, 'center', COLORS.dim); }
+    else wall(x1, y1, x2, y2, tE);
+  }
+  drawColumns(k);
+  // Openings with lintels (150 mm bearing each side).
+  const ops = k.g.openings.filter(v => v.floor === k.level);
+  const lintels = new Map<number, number>();
+  for (const o of ops) {
+    planOpening(c, k, o);
+    const span = Math.round(o.b - o.a);
+    lintels.set(span, (lintels.get(span) ?? 0) + 1);
+    const a = o.axis === 'horizontal' ? at(k, o.a - 150, o.fixed) : at(k, o.fixed, o.a - 150);
+    const e = o.axis === 'horizontal' ? at(k, o.b + 150, o.fixed) : at(k, o.fixed, o.b + 150);
+    const off = 10;
+    if (o.axis === 'horizontal') dashed(c, { x: a.x, y: a.y - off }, { x: e.x, y: e.y - off }, '#8e44ad', 1.6, [5, 3]);
+    else dashed(c, { x: a.x - off, y: a.y }, { x: e.x - off, y: e.y }, '#8e44ad', 1.6, [5, 3]);
+  }
+  gridDimensions(k);
+  const tf = (k.boq as (BOQ & { takeoff?: Takeoff }) | null)?.takeoff ?? computeTakeoff(k.layout);
+  const fl = tf.floors[k.level] ?? tf.floors[0];
+  const rowsOut: string[][] = [
+    ['External wall length', `${fl?.externalWallLenM ?? 0} m`, `${WALL_EXTERNAL_MM} mm`],
+    ['Internal wall length', `${fl?.internalWallLenM ?? 0} m`, `${WALL_INTERNAL_MM} mm`],
+    ['Masonry height (floor − beam)', `${tf.masonryHeightM} m`, ''],
+    ['Net ext. masonry (less openings)', `${fl?.netExtMasonrySqM ?? 0} m²`, `${((fl?.netExtMasonrySqM ?? 0) * WALL_EXTERNAL_MM / 1000).toFixed(2)} m³`],
+    ['Net int. masonry (less openings)', `${fl?.netIntMasonrySqM ?? 0} m²`, `${((fl?.netIntMasonrySqM ?? 0) * WALL_INTERNAL_MM / 1000).toFixed(2)} m³`],
+    ['WHOLE HOUSE ext. (= BOQ)', `${tf.externalMasonrySqM} m²`, `${(tf.externalMasonrySqM * WALL_EXTERNAL_MM / 1000).toFixed(2)} m³`],
+    ['WHOLE HOUSE int. (= BOQ)', `${tf.internalMasonrySqM} m²`, `${(tf.internalMasonrySqM * WALL_INTERNAL_MM / 1000).toFixed(2)} m³`],
+  ];
+  let y = table(c, 1420, 150, [{ h: 'ITEM', w: 285 }, { h: 'QTY', w: 110 }, { h: 'VOL / THK', w: 115 }], rowsOut, `MASONRY QUANTITIES — ${floorName(k)}`);
+  const lrows = [...lintels.entries()].sort((p, q) => p[0] - q[0]).map(([span, n]) => [`Opening ${span} mm`, `${span + 300} mm long`, `${n} nos`]);
+  y = table(c, 1420, y + 40, [{ h: 'LINTEL (230 × 150, M25)', w: 285 }, { h: 'LENGTH', w: 110 }, { h: 'QTY', w: 115 }], lrows.length ? lrows : [['No openings on this floor', '', '']], 'LINTEL SCHEDULE');
+  legend(c, 1420, y + 40, 'NOTES', [
+    `External ${WALL_EXTERNAL_MM} mm brick, CM 1:6, English bond; internal ${WALL_INTERNAL_MM} mm, CM 1:4.`,
+    'Lintels bear 150 mm each side (purple dashes); chajja over external windows.',
+    'Wet-area walls: waterproof plaster to 300 mm above floor.',
+    'Bricks soaked before use; max 1.0 m lift per day.',
+  ]);
+  label(c, `${floorName(k)} MASONRY LAYOUT`, 100, 140, 16, 'left', COLORS.dim);
+}
+
 function header(c: CanvasRenderingContext2D, title: string, floor: Level): void {
   drawRect(c, 24, 24, SHEET_W - 48, SHEET_H - 48, { stroke: COLORS.wall, weight: 2 });
   label(c, title, MARGIN + 12, 65, 27, 'left', COLORS.green, true);
@@ -1499,6 +1945,7 @@ export const PROGRAMMATIC_TYPES = [
   'excavation', 'column_layout', 'footing_detail', 'beam_slab',
   'column_detail', 'bar_bending', 'section_aa', 'front_elevation',
   'staircase_detail', 'water_tank', 'waterproofing', 'stp_detail',
+  'electrical', 'plumbing', 'tiling_layout', 'brickwork_detail',
 ] as const;
 
 /** Render a coordinated A3 landscape construction drawing and return a PNG data URL. */
@@ -1535,6 +1982,10 @@ export function generateProgrammaticDrawing(
     case 'water_tank': waterTank(k); break;
     case 'waterproofing': waterproofing(k); break;
     case 'stp_detail': stpDetail(k); break;
+    case 'electrical': electrical(k); break;
+    case 'plumbing': plumbing(k); break;
+    case 'tiling_layout': tiling(k); break;
+    case 'brickwork_detail': brickwork(k); break;
   }
   c.restore();
   titleBlock(k);

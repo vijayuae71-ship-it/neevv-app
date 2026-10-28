@@ -1,7 +1,7 @@
 import type { BOQ, BOQLineItem, DoorScheduleItem, WindowScheduleItem, Layout, MaterialRate, CustomRateSheet, BudgetRange } from '../types';
 import { computeTakeoff, type Takeoff } from './quantityTakeoff';
 import { cityRateFactor, specFactor } from './marketRates';
-import { electricalPoints as electricalPointsFor, plumbingPoints as plumbingPointsFor, isNiche } from './quantityRules';
+import { electricalPoints as electricalPointsFor, plumbingPoints as plumbingPointsFor, electricalTotals, fixtureTotals, isNiche, WALL_EXTERNAL_MM, WALL_INTERNAL_MM } from './quantityRules';
 
 /** Pricing context: city and specification level. Custom rates entered by the customer always win. */
 export interface BOQContext { city?: string; budget?: BudgetRange; bathTileHeightM?: number }
@@ -202,8 +202,8 @@ export function calculateBOQ(
   const spec = specFactor(ctx?.budget);
 
   // ────── MASONRY (net of openings and columns) ──────
-  const extMasonryM3 = +(takeoff.externalMasonrySqM * 0.23).toFixed(2);
-  const intMasonryM3 = +(takeoff.internalMasonrySqM * 0.115).toFixed(2);
+  const extMasonryM3 = +(takeoff.externalMasonrySqM * WALL_EXTERNAL_MM / 1000).toFixed(2);
+  const intMasonryM3 = +(takeoff.internalMasonrySqM * WALL_INTERNAL_MM / 1000).toFixed(2);
   const parapetM3 = +(takeoff.parapetLenM * 1.0 * 0.115).toFixed(2);
   const masonryM3 = extMasonryM3 + intMasonryM3 + parapetM3;
   const brickCount = Math.ceil(masonryM3 * 500);
@@ -322,7 +322,7 @@ export function calculateBOQ(
   add('PCC (1:4:8) – Footing Bed', +pccM3.toFixed(2), 'm³', 6000, 'structural', footings.length ? 'Under designed footings' : '75mm allowance');
   add('RCC Foundation / Footings (M25)', foundationConcrete, 'm³', 8000, 'structural', quantityBasis === 'engineered' ? `Engineered: ${actualColumnCount ?? 0} designed footing(s), IS 456` : 'Isolated footings, IS 456');
   add('RCC Plinth Beam (M25)', +((gfExternalLen + gfInternalLen) * 0.23 * 0.30).toFixed(2), 'm³', 9500, 'structural', '230×300mm under ground-floor wall lines');
-  add('DPC (40mm CC 1:2:4 + waterproofing compound)', +(gfExternalLen * 0.23 + gfInternalLen * 0.115).toFixed(2), 'm²', 450, 'structural', 'At plinth level');
+  add('DPC (40mm CC 1:2:4 + waterproofing compound)', +(gfExternalLen * WALL_EXTERNAL_MM / 1000 + gfInternalLen * WALL_INTERNAL_MM / 1000).toFixed(2), 'm²', 450, 'structural', 'At plinth level');
   add('RCC Columns (M25)', columnConcrete, 'm³', 11000, 'structural', quantityBasis === 'engineered' ? `Engineered: ${actualColumnCount ?? 0} actual column member(s), IS 456` : '230×300mm, IS 456');
   add('RCC Beams (M25)', beamConcrete, 'm³', 10500, 'structural', quantityBasis === 'engineered' ? `Engineered beam sizes: ${beamSizes?.map((size) => `${size.widthMm}×${size.depthMm}mm × ${size.count}`).join(', ') || 'refer structural schedule'}, IS 456` : '230×400mm, IS 456');
   add(`RCC Roof Slab (M25, ${primarySlabThickness}mm)`, slabConcrete, 'm³', 9500, 'structural', quantityBasis === 'engineered' ? `Engineered slab thickness(es): ${slabThicknesses?.join(', ') || primarySlabThickness}mm, IS 456` : '150mm thick');
@@ -333,8 +333,8 @@ export function calculateBOQ(
   add('Curing (7-day min.)', totalConcrete, 'm³', 60, 'structural', 'Ponding / wet hessian');
 
   // C. MASONRY — measured from wall lines of the locked plan
-  add('Brick Masonry – External (230mm, CM 1:6)', extMasonryM3, 'm³', 6500, 'masonry', `${takeoff.floors.reduce((s, f) => s + f.externalWallLenM, 0).toFixed(1)} m of external wall × ${takeoff.masonryHeightM} m, less openings & columns`);
-  add('Brick Masonry – Internal (115mm, CM 1:4)', intMasonryM3, 'm³', 7200, 'masonry', `${takeoff.floors.reduce((s, f) => s + f.internalWallLenM, 0).toFixed(1)} m of partitions × ${takeoff.masonryHeightM} m, less openings`);
+  add(`Brick Masonry – External (${WALL_EXTERNAL_MM}mm, CM 1:6)`, extMasonryM3, 'm³', 6500, 'masonry', `${takeoff.floors.reduce((s, f) => s + f.externalWallLenM, 0).toFixed(1)} m of external wall × ${takeoff.masonryHeightM} m, less openings & columns`);
+  add(`Brick Masonry – Internal (${WALL_INTERNAL_MM}mm, CM 1:4)`, intMasonryM3, 'm³', 7200, 'masonry', `${takeoff.floors.reduce((s, f) => s + f.internalWallLenM, 0).toFixed(1)} m of partitions × ${takeoff.masonryHeightM} m, less openings`);
   add('Parapet Wall (115mm, 1.0m height)', parapetM3, 'm³', 7200, 'masonry', 'Terrace level');
 
   // D. PLASTERING
@@ -392,12 +392,13 @@ export function calculateBOQ(
   const ohtL = Math.max(1000, Math.ceil((persons * 135) / 500) * 500);
   add('Plumbing – Supply Lines (CPVC)', plumbingPoints, 'points', 2400, 'mep', 'CPVC concealed');
   add('Plumbing – Drainage Lines (SWR)', plumbingPoints, 'points', 1800, 'mep', '110mm & 75mm SWR');
-  add('EWC (with seat cover & cistern)', toilets.length, 'nos', 12000, 'mep', 'Incl. installation');
-  add('Wash Basin', toilets.length, 'nos', 7000, 'mep', 'Ceramic, with fittings');
-  add('Shower Mixer + Overhead Shower', toilets.length, 'nos', 9000, 'mep', 'Chrome finish');
-  add('CP Fittings (Taps, Bib-cock, etc.)', toilets.length * 3 + kitchens.length * 2 + utilities.length, 'nos', 2500, 'mep', 'Mid-range brand');
-  add('Kitchen Sink – SS', kitchens.length, 'nos', 9000, 'mep', 'With waste coupling');
-  add('Floor Drain / Trap', toilets.length * 2 + kitchens.length + utilities.length, 'nos', 600, 'mep', 'SS grating');
+  const fx = fixtureTotals(allRooms);
+  add('EWC (with seat cover & cistern)', fx.ewc, 'nos', 12000, 'mep', 'Incl. installation');
+  add('Wash Basin', fx.basin, 'nos', 7000, 'mep', 'Ceramic, with fittings');
+  add('Shower Mixer + Overhead Shower', fx.shower, 'nos', 9000, 'mep', 'Chrome finish');
+  add('CP Fittings (Taps, Bib-cock, etc.)', fx.cpFittings, 'nos', 2500, 'mep', 'Mid-range brand');
+  add('Kitchen Sink – SS', fx.sink, 'nos', 9000, 'mep', 'With waste coupling');
+  add('Floor Drain / Trap', fx.floorTrap, 'nos', 600, 'mep', 'SS grating');
   add('Solar Water Heater (100 LPD)', 1, 'nos', 28000, 'mep', 'Roof-mounted');
   add(`Overhead Water Tank (${ohtL} L)`, 1, 'nos', Math.round(ohtL * 12), 'mep', `1 day for ~${persons} persons @ 135 lpcd`);
   add(`Underground Sump (RCC, ${sumpL} L)`, 1, 'nos', Math.round(sumpL * 17), 'mep', '1.5 days storage');
@@ -407,9 +408,11 @@ export function calculateBOQ(
   // J. ELECTRICAL
   add('Electrical Wiring (Conduit + Wire)', electricalPoints, 'points', 1250, 'mep', 'Concealed PVC conduit, FR wires');
   add('Electrical Switches & Sockets', electricalPoints, 'points', 550, 'mep', 'Modular');
-  add('LED Ceiling Lights', allRooms.length, 'nos', 1500, 'mep', '15W downlight');
-  add('Fan Points (Ceiling Fan)', bedrooms.length + halls.length + dinings.length + allRooms.filter(r => r.type === 'study').length, 'nos', 3500, 'mep', 'Incl. fan');
-  add('AC Points (Power + Drain)', bedrooms.length + halls.length, 'nos', 4500, 'mep', '16A socket with drain pipe');
+  const el = electricalTotals(allRooms);
+  add('LED Ceiling Lights', el.light, 'nos', 1500, 'mep', '15W downlight — light points on the electrical layout');
+  add('Fan Points (Ceiling Fan)', el.fan, 'nos', 3500, 'mep', 'Incl. fan');
+  add('Exhaust Fans (Kitchen & Baths)', el.exhaust, 'nos', 2200, 'mep', '150–200 mm, incl. fixing');
+  add('AC Points (Power + Drain)', el.ac, 'nos', 4500, 'mep', '16A socket with drain pipe');
   add('Geyser Point (15A)', toilets.length, 'nos', 2000, 'mep', '15A socket + MCB');
   add('MCB Distribution Board', numFloors, 'nos', 12000, 'mep', 'Per floor');
   add('RCCB (Earth Leakage)', numFloors, 'nos', 4500, 'mep', '63A/30mA');
