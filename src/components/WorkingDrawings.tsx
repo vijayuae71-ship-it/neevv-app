@@ -447,7 +447,10 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq, on
         </div>
 
         {/* Floor toggle - only relevant for multi-floor (G+1) projects */}
-        {isMultiFloor && (
+        {isMultiFloor && !FLOOR_SPECIFIC.includes(activeDrawing) && (
+          <span className="text-[10px] text-gray-500 ml-2 px-2 py-0.5 border border-gray-200 rounded" title="This sheet is common to all floors">All floors</span>
+        )}
+        {isMultiFloor && FLOOR_SPECIFIC.includes(activeDrawing) && (
           <div className="flex items-center gap-0.5 ml-2 border border-gray-300 rounded overflow-hidden">
             <button
               className={`btn btn-xs rounded-none ${selectedFloor === 'GF' ? 'btn-primary' : 'btn-ghost'}`}

@@ -20,7 +20,6 @@ import type { PlannerSummary } from '@/components/LayoutSelector';
 import { calculateBOQ } from '@/utils/boqCalculator';
 import { BRAND_LOGO_BASE64 } from '@/utils/brand';
 import { useAuth } from '@/hooks/useAuth';
-import { useProject } from '@/hooks/useProject';
 import DrawingUpload from '@/components/DrawingUpload';
 import { OfficeRequirementForm } from '@/components/OfficeRequirementForm';
 import { computeOfficeLayout } from '@/utils/computeOfficeLayout';
@@ -53,7 +52,6 @@ function DesignStatusBadge({ status }: { status: DesignStatus }) {
 
 export default function HomePage() {
   const { user, loading: authLoading, signInWithGoogle, signOut } = useAuth();
-  const { saveProject, saving } = useProject();
 
   const [mode, setModeRaw] = useState<AppMode>('landing');
 
@@ -118,7 +116,7 @@ export default function HomePage() {
     setValidationPassed(report.errorCount === 0 && report.blockedCount === 0);
   }, []);
 
-  const { projectId: autoSaveProjectId, saving: autoSaving, lastSaved, setCloudProjectId, resetCloudProject } = useProjectAutoSave({
+  const { projectId: autoSaveProjectId, saving: autoSaving, lastSaved, saveNow, setCloudProjectId, resetCloudProject } = useProjectAutoSave({
     mode,
     step,
     requirements: requirements ?? undefined,
@@ -134,8 +132,8 @@ export default function HomePage() {
       if (prev.includes(drawingType)) return prev;
       return [...prev, drawingType];
     });
-    setDrawingsGenerated(prev => prev + 1);
   }, []);
+  useEffect(() => { setDrawingsGenerated(generatedDrawingTypes.length); }, [generatedDrawingTypes]);
 
 
   // Auto-save to localStorage
@@ -397,6 +395,8 @@ export default function HomePage() {
     setBOQ(null);
     localStorage.removeItem('neevv_project_autosave');
     resetCloudProject();
+    setGeneratedDrawingTypes([]);
+    setDrawingsGenerated(0);
     setOfficeStep('requirements');
     setOfficeRequirements(null);
     setRoomDesignType('');
@@ -509,19 +509,10 @@ export default function HomePage() {
     setOfficeStep('drawings');
   };
 
+  // One save path only: the same cloud record the auto-save keeps (no duplicate projects,
+  // no forced Google sign-in).
   const handleSave = async () => {
-    if (!user) {
-      await signInWithGoogle();
-    }
-    if (requirements || selectedLayout) {
-      await saveProject({
-        name: requirements ? `${requirements.plotWidthFt}x${requirements.plotDepthFt} ${requirements.facing}-Facing` : 'Interior Project',
-        requirements,
-        selectedLayout,
-        interiorConfig: null,
-        renders: [],
-      });
-    }
+    await saveNow();
   };
 
   /* ============ NAVBAR (shared) ============ */
@@ -600,10 +591,10 @@ export default function HomePage() {
           {user && (
             <button
               onClick={handleSave}
-              disabled={saving}
+              disabled={autoSaving}
               className="text-xs sm:text-sm bg-blue-100 text-blue-600 px-3 py-1.5 rounded-lg hover:bg-blue-200 transition-colors disabled:opacity-80"
             >
-              {saving || autoSaving ? 'Saving...' : (<>💾 <span className="hidden sm:inline">Save</span></>)}
+              {autoSaving ? 'Saving...' : (<>💾 <span className="hidden sm:inline">Save</span></>)}
             </button>
           )}
           {authLoading ? null : user ? (
@@ -624,7 +615,7 @@ const BRAND_GREEN = '#4f6f52';
     const heroCards = [
       { icon: <Home className="w-6 h-6" />, title: 'Design My Home', subtitle: 'For homeowners & builders', desc: 'Your plot. Your layout. 21+ preliminary drawings — plans, structure, electrical, plumbing — ready for professional review in minutes.', onClick: () => { analytics.modeSelected('new_build'); setMode('new_build'); } },
       { icon: <Palette className="w-6 h-6" />, title: 'Home Interiors', subtitle: 'For homeowners & designers', desc: 'Pick your style, materials, and finishes. See every room come to life in 3D with coordinated plan, elevation, and renders.', onClick: () => { analytics.modeSelected('interior_only'); setMode('interior_only'); } },
-      { icon: <Building2 className="w-6 h-6" />, title: 'Office Interiors', subtitle: 'For businesses & teams', desc: 'Plan your office layout with MEP and NBC compliance built in.', onClick: () => { analytics.modeSelected('office_design'); setMode('office_design'); } },
+      { icon: <Building2 className="w-6 h-6" />, title: 'Office Interiors', subtitle: 'For businesses & teams', desc: 'Plan your office layout with MEP points and NBC-guided checks, ready for professional review.', onClick: () => { analytics.modeSelected('office_design'); setMode('office_design'); } },
       { icon: <Sparkles className="w-6 h-6" />, title: 'Design a Room', subtitle: 'Quick start — most shareable', desc: 'Design any single room in minutes. Perfect for trying ideas fast.', onClick: () => { analytics.modeSelected('room_design'); setMode('room_design'); } },
       { icon: <Upload className="w-6 h-6" />, title: 'Upload Your Plan', subtitle: 'For professionals', desc: 'Have an existing drawing? Upload it and get 3D renders, BOQ, and analysis.', onClick: () => { analytics.modeSelected('upload_drawing'); setMode('upload_drawing'); } },
     ];
@@ -754,7 +745,7 @@ const BRAND_GREEN = '#4f6f52';
               if (!room) return null;
               const styleKey = (roomDesignStyle in STYLE_TEMPLATES ? roomDesignStyle : 'modern_minimalist') as keyof typeof STYLE_TEMPLATES;
               const finishType = mapRoomTypeToFinish(room.type);
-              const furniture = getDefaultFurniture(finishType, styleKey);
+              const furniture = getDefaultFurniture(finishType, styleKey, room.type as string);
               const materials = getDefaultMaterials(finishType, styleKey);
               const selectionsMap: Record<string, RoomInterior> = {
                 [room.id]: {

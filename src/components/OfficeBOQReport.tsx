@@ -106,7 +106,8 @@ export function OfficeBOQReport({ layout, officeReq }: Props) {
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
             <div className="rounded-lg bg-white p-4 shadow-sm lg:col-span-2">
               <p className="text-sm font-medium text-gray-500">Total fitout cost</p>
-              <p className="mt-1 flex items-center gap-1 text-2xl font-bold text-gray-900"><IndianRupee size={23} />{formatINR(boq.totalCost).replace('₹', '')}</p>
+              <p className="mt-1 flex items-center gap-1 text-2xl font-bold text-gray-900"><IndianRupee size={23} />{formatINR(Math.round(boq.totalCost * 0.9)).replace('₹', '')} – {formatINR(Math.round(boq.totalCost * 1.1)).replace('₹', '')}</p>
+              <p className="text-[10px] text-gray-400">±10% • current market prices</p>
               <p className="mt-1 text-xs text-gray-500">Complete office fitout estimate</p>
             </div>
             <SummaryStat label="Cost per sq. ft." value={formatINR(boq.costPerSqFt)} />

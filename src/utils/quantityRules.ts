@@ -94,3 +94,5 @@ export function bedroomOpeningIds(layout: Layout): { doors: Set<string>; windows
 
 /** Assumed founding depth below natural ground level (m) — used by BOQ earthwork AND drawn on sections. Verify with a soil report. */
 export const ASSUMED_FOUNDING_DEPTH_M = 1.5;
+/** Terrace parapet height (mm) used by sections, elevations, BOQ masonry and validation. Assumption — confirm locally. */
+export const PARAPET_HEIGHT_MM = 1000;

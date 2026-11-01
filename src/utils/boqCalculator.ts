@@ -1,7 +1,7 @@
 import type { BOQ, BOQLineItem, DoorScheduleItem, WindowScheduleItem, Layout, MaterialRate, CustomRateSheet, BudgetRange } from '../types';
 import { computeTakeoff, type Takeoff } from './quantityTakeoff';
 import { cityRateFactor, specFactor } from './marketRates';
-import { electricalPoints as electricalPointsFor, plumbingPoints as plumbingPointsFor, electricalTotals, fixtureTotals, isNiche, ASSUMED_FOUNDING_DEPTH_M, WALL_EXTERNAL_MM, WALL_INTERNAL_MM } from './quantityRules';
+import { electricalPoints as electricalPointsFor, plumbingPoints as plumbingPointsFor, electricalTotals, fixtureTotals, isNiche, ASSUMED_FOUNDING_DEPTH_M, PARAPET_HEIGHT_MM, WALL_EXTERNAL_MM, WALL_INTERNAL_MM } from './quantityRules';
 
 /** Pricing context: city and specification level. Custom rates entered by the customer always win. */
 export interface BOQContext { city?: string; budget?: BudgetRange; bathTileHeightM?: number }
@@ -204,7 +204,7 @@ export function calculateBOQ(
   // ────── MASONRY (net of openings and columns) ──────
   const extMasonryM3 = +(takeoff.externalMasonrySqM * WALL_EXTERNAL_MM / 1000).toFixed(2);
   const intMasonryM3 = +(takeoff.internalMasonrySqM * WALL_INTERNAL_MM / 1000).toFixed(2);
-  const parapetM3 = +(takeoff.parapetLenM * 1.0 * 0.115).toFixed(2);
+  const parapetM3 = +(takeoff.parapetLenM * (PARAPET_HEIGHT_MM / 1000) * 0.115).toFixed(2);
   const masonryM3 = extMasonryM3 + intMasonryM3 + parapetM3;
   const brickCount = Math.ceil(masonryM3 * 500);
   const externalWallArea = takeoff.externalPlasterSqM;
@@ -335,7 +335,7 @@ export function calculateBOQ(
   // C. MASONRY — measured from wall lines of the locked plan
   add(`Brick Masonry – External (${WALL_EXTERNAL_MM}mm, CM 1:6)`, extMasonryM3, 'm³', 6500, 'masonry', `${takeoff.floors.reduce((s, f) => s + f.externalWallLenM, 0).toFixed(1)} m of external wall × ${takeoff.masonryHeightM} m, less openings & columns`);
   add(`Brick Masonry – Internal (${WALL_INTERNAL_MM}mm, CM 1:4)`, intMasonryM3, 'm³', 7200, 'masonry', `${takeoff.floors.reduce((s, f) => s + f.internalWallLenM, 0).toFixed(1)} m of partitions × ${takeoff.masonryHeightM} m, less openings`);
-  add('Parapet Wall (115mm, 1.0m height)', parapetM3, 'm³', 7200, 'masonry', 'Terrace level');
+  add(`Parapet Wall (115mm, ${(PARAPET_HEIGHT_MM / 1000).toFixed(1)}m height)`, parapetM3, 'm³', 7200, 'masonry', 'Terrace level');
 
   // D. PLASTERING
   add('Internal Plastering (CM 1:4, 12mm)', Math.round(takeoff.internalPlasterSqM), 'm²', 280, 'masonry', 'Both faces of partitions + inner face of external walls, less openings');

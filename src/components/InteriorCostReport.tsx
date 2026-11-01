@@ -109,12 +109,13 @@ function CostSummaryTab({ data }: { data: InteriorDesignData }) {
       {/* Key metrics */}
       <div className="stats stats-vertical lg:stats-horizontal shadow w-full">
         <div className="stat">
-          <div className="stat-title">Total Project Cost</div>
-          <div className="stat-value text-blue-600 text-2xl">{formatCurrency(total)}</div>
+          <div className="stat-title">Estimated Project Cost</div>
+          <div className="stat-value text-blue-600 text-2xl">{formatCurrency(Math.round(total * 0.9))} – {formatCurrency(Math.round(total * 1.1))}</div>
+          <div className="stat-desc">±10% • current market prices • compare with local quotes</div>
         </div>
         <div className="stat">
           <div className="stat-title">Cost / sqft</div>
-          <div className="stat-value text-lg">{costPerSqft > 0 ? formatCurrency(Math.round(costPerSqft)) : 'N/A'}</div>
+          <div className="stat-value text-lg">{costPerSqft > 0 ? `${formatCurrency(Math.round(costPerSqft * 0.9))} – ${formatCurrency(Math.round(costPerSqft * 1.1))}` : 'N/A'}</div>
         </div>
         <div className="stat">
           <div className="stat-title">Project Duration</div>
@@ -188,7 +189,7 @@ function CostSummaryTab({ data }: { data: InteriorDesignData }) {
               })}
               <circle cx={110} cy={110} r={58} fill="white" />
               <text x={110} y={106} textAnchor="middle" fontSize={11} fill="#6B7280">
-                Total
+                Est. total (±10%)
               </text>
               <text x={110} y={124} textAnchor="middle" fontSize={14} fontWeight="bold" fill="#1F2937">
                 {formatCurrency(total)}

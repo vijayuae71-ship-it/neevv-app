@@ -38,7 +38,7 @@ export const InteriorDesign: React.FC<Props> = ({ layout, requirements }) => {
   const tabs: { id: InteriorTab; label: string; shortLabel: string; icon: string }[] = [
     { id: 'moodboard', label: 'Mood Board', shortLabel: 'Mood', icon: '🎨' },
     { id: 'drawings', label: 'Interior Drawings', shortLabel: 'Drawings', icon: '📐' },
-    { id: 'ai_renders', label: 'AI Renders', shortLabel: 'Renders', icon: '✨' },
+    { id: 'ai_renders', label: 'neevv Generation Pro Renders', shortLabel: 'Renders', icon: '✨' },
     { id: 'timeline', label: 'Execution Plan', shortLabel: 'Plan', icon: '📅' },
     { id: 'cost', label: 'Cost Estimation', shortLabel: 'Cost', icon: '💰' },
   ];
@@ -53,7 +53,7 @@ export const InteriorDesign: React.FC<Props> = ({ layout, requirements }) => {
         <div className="bg-gray-100 px-4 py-2 flex flex-wrap items-center gap-4 text-sm border-b border-gray-200 shrink-0">
           <span className="font-semibold text-blue-600">{rooms.length} Rooms Configured</span>
           <span className="text-gray-700">|</span>
-          <span>Estimated Cost: <span className="font-bold text-green-600">{fmt(interiorData.totalCost)}</span></span>
+          <span>Estimated Cost: <span className="font-bold text-green-600">{fmt(Math.round(interiorData.totalCost * 0.9))} – {fmt(Math.round(interiorData.totalCost * 1.1))}</span> <span className="text-[10px] text-gray-400">(±10%, current market prices)</span></span>
           <span className="text-gray-700">|</span>
           <span>Duration: <span className="font-bold">{interiorData.totalDurationDays} Days</span></span>
           <div className="ml-auto">

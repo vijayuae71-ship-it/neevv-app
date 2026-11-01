@@ -62,7 +62,7 @@ function extractDesignableRooms(layout: Layout): Room[] {
 
 function buildRoomInterior(room: Room, style: InteriorStyle): RoomInterior {
   const finishType = mapRoomTypeToFinish(room.type);
-  const furniture = getDefaultFurniture(finishType, style);
+  const furniture = getDefaultFurniture(finishType, style, room.type as string, room.width * room.depth > 2000 ? room.width * room.depth / 1e6 : room.width * room.depth);
   const materials = getDefaultMaterials(finishType, style);
   const palette = { ...STYLE_TEMPLATES[style].palette };
 

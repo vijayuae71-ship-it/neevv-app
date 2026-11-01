@@ -66,6 +66,8 @@ function stripLayoutForSave(layout: Layout | undefined | null): Layout | undefin
  * Build a human-friendly project name from the current project data, e.g.
  * "30×40 G+1 Home" for a new build, or "Living Room 15×12" for a room design.
  */
+const WORK_MODES = ['new_build', 'interior_only', 'office_design', 'room_design'];
+
 function generateProjectName(args: UseProjectAutoSaveArgs): string {
   const { mode, requirements, selectedLayout } = args;
 
@@ -137,8 +139,10 @@ export function useProjectAutoSave(args: UseProjectAutoSaveArgs): UseProjectAuto
   const performSaveRef = useRef<(() => Promise<void>) | null>(null);
   latestArgsRef.current = args;
 
+  // Only save while the user is inside a design flow. Landing/dashboard/upload screens must never
+  // overwrite the saved project's mode or name ("Untitled Project" bug).
   const hasMeaningfulData = useCallback((a: UseProjectAutoSaveArgs) => {
-    return Boolean(a.requirements || a.selectedLayout);
+    return WORK_MODES.includes(String(a.mode)) && Boolean(a.requirements || a.selectedLayout);
   }, []);
 
   const performSave = useCallback(async (): Promise<void> => {
@@ -172,7 +176,8 @@ export function useProjectAutoSave(args: UseProjectAutoSaveArgs): UseProjectAuto
         requirements: current.requirements,
         selectedLayout: stripLayoutForSave(current.selectedLayout),
         boq: current.boq,
-        drawingsGenerated: current.drawingsGenerated ?? 0,
+        // Count distinct sheets, not generation events (was accumulating to 76+).
+        drawingsGenerated: (current.generatedDrawingTypes ?? []).length,
         generatedDrawingTypes: current.generatedDrawingTypes ?? [],
       };
 

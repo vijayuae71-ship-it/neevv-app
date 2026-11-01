@@ -267,7 +267,6 @@ export function Dashboard({ onNewProject, onOpenProject }: DashboardProps) {
 
   const totalProjects = projects.length;
   const totalDrawings = projects.reduce((sum, p) => sum + (p.drawingsGenerated || 0), 0);
-  const totalCost = projects.reduce((sum, p) => sum + (p.boq?.totalCost || 0), 0);
   const lastUpdated = projects.reduce<string | null>((latest, p) => {
     if (!p.updatedAt) return latest;
     if (!latest) return p.updatedAt;
@@ -294,10 +293,9 @@ export function Dashboard({ onNewProject, onOpenProject }: DashboardProps) {
       <div style={styles.content}>
         {/* Overview stats */}
         <div style={styles.statsRow}>
-          <StatCard icon={<FolderOpen size={20} color={BRAND_GREEN} />} label="Total Projects" value={String(totalProjects)} />
-          <StatCard icon={<Layers size={20} color={BRAND_GREEN} />} label="Total Drawings Generated" value={String(totalDrawings)} />
-          <StatCard icon={<span style={{ fontWeight: 700, color: BRAND_GREEN, fontSize: 18 }}>₹</span>} label="Total Est. Cost" value={formatINRShort(totalCost)} />
-          <StatCard icon={<Clock size={20} color={BRAND_GREEN} />} label="Last Updated" value={lastUpdated ? formatRelativeDate(lastUpdated) : '—'} />
+          <StatCard icon={<FolderOpen size={20} color={BRAND_GREEN} />} label="Total Projects" value={loading ? '…' : String(totalProjects)} />
+          <StatCard icon={<Layers size={20} color={BRAND_GREEN} />} label="Total Drawings Generated" value={loading ? '…' : String(totalDrawings)} />
+          <StatCard icon={<Clock size={20} color={BRAND_GREEN} />} label="Last Updated" value={loading ? '…' : lastUpdated ? formatRelativeDate(lastUpdated) : '—'} />
         </div>
 
         {/* Error state */}
@@ -380,7 +378,7 @@ export function Dashboard({ onNewProject, onOpenProject }: DashboardProps) {
                   {boqTotal !== undefined && boqTotal !== null && (
                     <div style={styles.cardMetaRow}>
                       <span style={{ fontWeight: 700, color: BRAND_GREEN, fontSize: 13, width: 14, textAlign: 'center' }}>₹</span>
-                      <span style={styles.cardMetaText}>Est. cost: {formatINRShort(boqTotal)}</span>
+                      <span style={styles.cardMetaText}>Est. cost: {formatINRShort(boqTotal * 0.9)}–{formatINRShort(boqTotal * 1.1)}</span>
                     </div>
                   )}
 
@@ -487,7 +485,7 @@ export function Dashboard({ onNewProject, onOpenProject }: DashboardProps) {
                           <h4 style={styles.detailsBlockTitle}>BOQ Summary</h4>
                           <div style={styles.detailsRow}>
                             <span style={styles.detailsLabel}>Total:</span>
-                            <span style={styles.detailsValue}>{formatINR(project.boq.totalCost)}</span>
+                            <span style={styles.detailsValue}>{formatINR(Math.round(project.boq.totalCost * 0.9))} – {formatINR(Math.round(project.boq.totalCost * 1.1))} (±10%, current market prices)</span>
                           </div>
                         </div>
                       )}

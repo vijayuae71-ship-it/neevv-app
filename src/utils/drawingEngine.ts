@@ -1,7 +1,7 @@
 'use client';
 
 import type { Layout, Room, ProjectRequirements, BOQ, Column, Setbacks, LayoutOpening } from '../types';
-import { ASSUMED_FOUNDING_DEPTH_M, ELEC_KINDS, electricalBreakdown, electricalPoints, fixturesFor, fixtureTotals, isNiche, WALL_EXTERNAL_MM, WALL_INTERNAL_MM } from './quantityRules';
+import { ASSUMED_FOUNDING_DEPTH_M, PARAPET_HEIGHT_MM, ELEC_KINDS, electricalBreakdown, electricalPoints, fixturesFor, fixtureTotals, isNiche, WALL_EXTERNAL_MM, WALL_INTERNAL_MM } from './quantityRules';
 import { computeTakeoff, bathWallTileSqM, kitchenCounterRmt, KITCHEN_DADO_HEIGHT_M, type Takeoff } from './quantityTakeoff';
 
 /**
@@ -1283,7 +1283,7 @@ function beamSlab(k: Context): void {
   ]);
   openingLegend(k, 1670, 540);
   beamCrossSection(k, 1850, 770);
-  label(c, `BUILDING FOOTPRINT ${round(k.g.building.w)} × ${round(k.g.building.h)} mm • FLOOR ${k.level === 0 ? 'GF' : 'FF'}`,
+  label(c, `BUILDING FOOTPRINT ${round(k.g.building.w)} × ${round(k.g.building.h)} mm • ${k.g.floors > 1 ? 'TYPICAL SLAB — ALL FLOORS (GF room names shown)' : 'ROOF SLAB'}`,
     b.x, 1154, 15);
   drawScaleBar(c, 200, 1180, k.scale);
 }
@@ -1362,9 +1362,38 @@ function barBending(k: Context): void {
   const headers = ['S.No', 'Bar Mark', 'Member', 'Dia', 'Shape', 'No.Bars', 'Cut Length', 'Total Length', 'Weight'];
   label(c, 'BAR BENDING SCHEDULE — ALL LENGTHS IN mm', 120, 150, 28, 'left', COLORS.green, true);
   label(c, `STEEL: ${steel(k)}  •  CONCRETE: ${concrete(k)}`, 120, 194, 16);
-  const top = 270;
+  // Summary by member type × bar diameter: every bar mark is counted here, so the grand total
+  // is the complete schedule weight (the same steel figure the BOQ uses).
+  const src = list(k.data.bbsEntries).map(obj);
+  const wOf = (r: Record<string, unknown>, n: ReturnType<typeof normalizeBBSRow>) => {
+    const d = positive(n.diameter ?? n.diaMm, 0), nb = positive(n.noOfBars, 0);
+    return positive(r.totalWeightKg ?? n.weight, positive(n.totalLength, nb * positive(n.cuttingLength, 0)) * d * d / 162000);
+  };
+  const dias = [...new Set(raw.map(n => Math.round(positive(n.diameter ?? n.diaMm, 0))))].filter(d => d > 0).sort((a, b) => a - b);
+  const groups = new Map<string, Map<number, number>>();
+  src.forEach((r, i) => {
+    const g = String(r.memberType ?? sval(raw[i], 'member', 'other').split(' ')[0]).toUpperCase();
+    const d = Math.round(positive(raw[i].diameter ?? raw[i].diaMm, 0));
+    const m = groups.get(g) ?? new Map<number, number>(); m.set(d, (m.get(d) ?? 0) + wOf(r, raw[i])); groups.set(g, m);
+  });
+  const grand = [...groups.values()].reduce((s2, m) => s2 + [...m.values()].reduce((a, b) => a + b, 0), 0);
+  const boqSteel = k.boq ? { quantity: k.boq.steelWeightMT } : null;
+  let top = 270;
+  if (raw.length > 20) {
+    const sumRows = [...groups.entries()].map(([g, m]) => [g, ...dias.map(d => m.get(d) ? (m.get(d) as number).toFixed(1) : '—'), [...m.values()].reduce((a, b) => a + b, 0).toFixed(1)]);
+    sumRows.push(['GRAND TOTAL (all ' + raw.length + ' bar marks)', ...dias.map(d => [...groups.values()].reduce((a, m) => a + (m.get(d) ?? 0), 0).toFixed(1)), grand.toFixed(1)]);
+    const yEnd = table(c, 110, 240, [{ h: 'MEMBER', w: 330 }, ...dias.map(d => ({ h: `Ø${d} kg`, w: 120 })), { h: 'TOTAL kg', w: 150 }], sumRows, 'STEEL SUMMARY BY MEMBER AND DIAMETER', 26);
+    // BBS procurement total = net bar weight + 5% cutting waste (bbsGenerator WASTE_FACTOR); the BOQ uses it.
+    const withWaste = grand * 1.05, boqKg = boqSteel ? Number(boqSteel.quantity) * 1000 : NaN;
+    const agrees = Number.isFinite(boqKg) && Math.abs(boqKg - withWaste) <= 10 + 0.005 * withWaste;
+    label(c, `Net bar weight ${(grand / 1000).toFixed(2)} t + 5% cutting waste = ${(withWaste / 1000).toFixed(2)} t` +
+      (Number.isFinite(boqKg) ? (agrees ? ` = BOQ reinforcement ${(boqKg / 1000).toFixed(2)} MT.` : `  •  CHECK: BOQ shows ${(boqKg / 1000).toFixed(2)} MT.`) : '.'),
+      110, yEnd + 30, 15, 'left', agrees ? COLORS.green : COLORS.wall, true);
+    if (AUDIT) AUDIT.checks.push({ item: 'BBS total = BOQ steel', status: agrees || !Number.isFinite(boqKg) ? 'PASS' : 'ERROR', detail: `${withWaste.toFixed(0)} kg vs BOQ ${boqKg.toFixed(0)} kg` });
+    top = yEnd + 70;
+  }
   const rowHeight = raw.length <= 20 ? 36 : raw.length <= 28 ? 28 : 23;
-  const maxRows = Math.floor(820 / rowHeight) - 2;
+  const maxRows = Math.max(4, Math.floor((1110 - top) / rowHeight) - 2);
   drawRect(c, columns[0], top, columns[9] - columns[0], rowHeight,
     { fill: '#e5eae5', stroke: COLORS.wall, weight: 1.3 });
   for (let i = 0; i < 9; i++) label(c, headers[i], columns[i] + 8, top + rowHeight / 2, 15, 'left', COLORS.text, true);
@@ -1395,7 +1424,7 @@ function barBending(k: Context): void {
     const summaryY = top + rowHeight * (shown.length + 1);
     drawRect(c, columns[0], summaryY, columns[9] - columns[0], rowHeight,
       { fill: '#e5eae5', stroke: COLORS.wall, weight: 1 });
-    label(c, raw.length > maxRows ? `VISIBLE SUBTOTAL (${maxRows} OF ${raw.length})` : 'TOTAL WEIGHT',
+    label(c, raw.length > maxRows ? `EXTRACT SUBTOTAL (${maxRows} OF ${raw.length} BAR MARKS)` : 'TOTAL WEIGHT',
       columns[0] + 10, summaryY + rowHeight / 2, 15, 'left', COLORS.text, true);
     const allWeight = raw.reduce((sum, r) => {
       const diameter = positive(r.diameter ?? r.diaMm, 0);
@@ -1405,7 +1434,7 @@ function barBending(k: Context): void {
     }, 0);
     label(c, `${(raw.length > maxRows ? summed : allWeight).toFixed(2)} kg`,
       columns[8] + 8, summaryY + rowHeight / 2, 15, 'left', COLORS.text, true);
-    if (raw.length > maxRows) label(c, `CONTINUED: ${raw.length - maxRows} entries omitted — export approved full BBS separately.`,
+    if (raw.length > maxRows) label(c, `Extract only: the other ${raw.length - maxRows} bar marks are included in the steel summary and grand total above.`,
       120, summaryY + rowHeight + 26, 15, 'left', COLORS.dim);
   }
   for (const x of columns) drawLine(c, x, top, x, Math.min(1150, top + rowHeight * (Math.min(raw.length, maxRows) + 2)), 0.5, COLORS.dim);
@@ -1474,8 +1503,8 @@ function sectionAA(k: Context): void {
   const stairRooms = Array.from({ length: floors }, (_, f) => (k.g.rooms[f] ?? []).find(r => r.source.type === 'staircase' && cutY >= r.y && cutY <= r.y + r.d));
   const st0 = stairRooms[0];
   const roofZ = PL + floors * H, mumtyZ = roofZ + 2700;
-  const top = (st0 ? mumtyZ + 150 : roofZ + 900) + 400, bottom = -FD - found.pcc - 500;
-  setFrame(k, { x: b.x - 600, y: bottom, w: b.w + 1200, h: top - bottom }, { x: 110, y: 120, w: 1500, h: 1120 }, 60);
+  const top = (st0 ? mumtyZ + 150 : roofZ + PARAPET_HEIGHT_MM) + 400, bottom = -FD - found.pcc - 500;
+  setFrame(k, { x: b.x - 600, y: bottom, w: b.w + 1200, h: top - bottom }, { x: 110, y: 120, w: 1220, h: 1120 }, 60);
   const project = (x: number, z: number): Point => at(k, x, top - z + bottom);
   const s = k.scale, wallE = WALL_EXTERNAL_MM * s;
   const left = project(b.x, 0).x, right = project(b.x + b.w, 0).x, ngl = project(b.x, 0).y, botY = project(0, bottom).y;
@@ -1543,11 +1572,11 @@ function sectionAA(k: Context): void {
     }
   }
   // roof: parapet (and stair-head room when the stair continues to the terrace)
-  const roofY = project(0, roofZ).y, parapetY = project(0, roofZ + 900).y;
+  const roofY = project(0, roofZ).y, parapetY = project(0, roofZ + PARAPET_HEIGHT_MM).y;
   for (const x of [left, right - wallE]) hatchBox(c, { x, y: parapetY, w: wallE, h: roofY - parapetY }, '#eeeae4', -45, 9, PEN.cut);
   drawRect(c, left - 4, parapetY - 6, right - left + 8, 6, { fill: '#d6d6d3', stroke: COLORS.wall, weight: PEN.thin });
   levelMark(c, right + 70, roofY, `TOS ROOF ${fmtLvl(roofZ)}`);
-  levelMark(c, right + 70, parapetY - 6, `TOP OF PARAPET ${fmtLvl(roofZ + 900)}`);
+  levelMark(c, right + 70, parapetY - 6, `TOP OF PARAPET ${fmtLvl(roofZ + PARAPET_HEIGHT_MM)}`);
   const stTop = (k.g.rooms[floors - 1] ?? []).find(r => r.source.type === 'staircase' && cutY >= r.y && cutY <= r.y + r.d);
   if (stTop) {
     const mx0 = project(stTop.x, 0).x, mx1 = project(stTop.x + stTop.w, 0).x, my = project(0, mumtyZ).y;
@@ -1559,19 +1588,19 @@ function sectionAA(k: Context): void {
   levelMark(c, right + 70, ngl, 'NGL ±0.000');
   levelMark(c, right + 70, project(0, -FD).y, `FOUNDING LEVEL ${fmtLvl(-FD)} (ASSUMED — VERIFY BY SOIL REPORT)`);
   // vertical dimension string on the left, horizontal string below ground
-  const vz = [-FD, 0, ...Array.from({ length: floors + 1 }, (_, i) => PL + i * H), roofZ + 900];
+  const vz = [-FD, 0, ...Array.from({ length: floors + 1 }, (_, i) => PL + i * H), roofZ + PARAPET_HEIGHT_MM];
   const ys = vz.map(z => project(0, z).y);
   drawDimensionChain(c, ys, left - 40, -50, 'vertical', s);
   const outer = unique([b.x, ...sectionRooms(k, 0, cutY).flatMap(r => [r.x, r.x + r.w]), b.x + b.w]);
   dimMm(k, outer, 'x', botY - 40, -0.0001, 'section widths');
   viewTitle(k, 'SECTION 1–1 (THROUGH STAIR)', 130, 150);
-  legend(c, 1640, 330, 'SECTION NOTES', [
-    `Floor-to-floor ${H} mm; plinth ${PL} mm above NGL.`,
+  legend(c, 1660, 330, 'SECTION NOTES', [
+    `Floor-to-floor ${H} mm; plinth ${PL} mm.`,
     `Slab ${round(storyThickness(k, floors - 1))} mm; beams ${round(positive(firstBeam(k).widthMm, 230))} × ${round(beamD)} mm.`,
     `Footing ${round(found.w)} × ${round(found.d)} × ${round(found.depth)} mm on ${round(found.pcc)} mm PCC.`,
-    `Founding depth ${FD} mm is an ASSUMPTION (same as BOQ);`,
-    '  confirm with a soil investigation.',
-    `Walls: ${WALL_EXTERNAL_MM} mm external, 150 mm finished partitions.`,
+    `Founding depth ${FD} mm: ASSUMED`,
+    '  (same as BOQ) — confirm by soil test.',
+    `Walls ${WALL_EXTERNAL_MM} mm ext.; 150 mm partitions.`,
     'Lintel level +2100 above each floor.',
     `Cut shown on plans ${sheetNumber('working_plan', 0)}${k.g.floors > 1 ? '/' + sheetNumber('working_plan', 1) : ''}.`,
   ]);
@@ -1604,13 +1633,13 @@ function frontElevation(k: Context): void {
     levelMark(c, right + 74, baseY, `FFL ${story === 0 ? 'GF' : `F${story}`} ${fmtLvl(z)}`);
   }
   const roofZ = 450 + floors * 3000;
-  const ry = project(0, roofZ).y, py = project(0, roofZ + 900).y;
+  const ry = project(0, roofZ).y, py = project(0, roofZ + PARAPET_HEIGHT_MM).y;
   hatchBox(c, { x: left, y: py, w: right - left, h: ry - py }, '#f0eee9', 45, 17);
   drawRect(c, left - 5, py - 10, right - left + 10, 10,
     { fill: '#d6d6d3', stroke: COLORS.wall, weight: 1 });
   levelMark(c, right + 74, ngl, 'NGL ±0.000');
   levelMark(c, right + 74, ry, `TOS ROOF ${fmtLvl(roofZ)}`);
-  levelMark(c, right + 74, py, `TOP OF COPING ${fmtLvl(roofZ + 900)}`);
+  levelMark(c, right + 74, py, `TOP OF COPING ${fmtLvl(roofZ + PARAPET_HEIGHT_MM)}`);
   drawDimensionChain(c, [left, right], ngl, 56, 'horizontal', s);
   const frontX = unique([b.x, ...k.g.openings.filter(o => o.face === 'front' && o.floor === 0)
     .flatMap(o => [o.a, o.b]), b.x + b.w]).map(x => project(x, 0).x);
@@ -1622,7 +1651,7 @@ function frontElevation(k: Context): void {
     `Front setback ${round(k.g.setbacks.front)} mm`,
     `Sill: per opening schedule`,
     `Plinth: +450 mm; storeys: 3000 mm`,
-    `Parapet: 900 mm; coping shown`,
+    `Parapet: ${PARAPET_HEIGHT_MM} mm; coping shown`,
     'Opening positions from the locked plan;',
     `marks as per ${sheetNumber('door_window_schedule', 0)}. Chajja over windows.`,
   ]);

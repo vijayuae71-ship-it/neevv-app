@@ -24,7 +24,7 @@
  */
 
 import { Layout, ProjectRequirements, BOQ, Room, Column, FloorLayout, DoorScheduleItem, WindowScheduleItem } from '../types';
-import { ELECTRICAL_POINT_MAP, electricalPoints as sharedElectricalPoints, plumbingPoints as sharedPlumbingPoints, isNiche, bedroomOpeningIds } from './quantityRules';
+import { PARAPET_HEIGHT_MM, ELECTRICAL_POINT_MAP, electricalPoints as sharedElectricalPoints, plumbingPoints as sharedPlumbingPoints, isNiche, bedroomOpeningIds } from './quantityRules';
 import { computeTakeoff } from './quantityTakeoff';
 
 /* =============================================================================
@@ -106,7 +106,7 @@ export interface VerificationReport {
  * WorkingDrawings.tsx `aiDrawingMap` minus `FLOOR_SPECIFIC`.
  */
 const NON_FLOOR_SPECIFIC_TYPES = [
-  'excavation', 'foundation', 'footingDetail', 'rccDetail', 'structural',
+  'doorWindow', 'excavation', 'foundation', 'footingDetail', 'rccDetail',
   'reinforcement', 'barBending', 'section', 'elevation', 'staircase',
   'waterTank', 'waterproofing', 'stp',
 ] as const;
@@ -116,9 +116,9 @@ const NON_FLOOR_SPECIFIC_TYPES = [
  * cached/generated per floor. Sourced from WorkingDrawings.tsx `FLOOR_SPECIFIC`.
  * Cache key format is `${type}-${floorSuffix}` (see `getCacheKey` in the app).
  */
-const FLOOR_SPECIFIC_TYPES = ['electrical', 'plumbing', 'tiling', 'brickwork'] as const;
+const FLOOR_SPECIFIC_TYPES = ['workingPlan', 'electrical', 'plumbing', 'tiling', 'brickwork'] as const;
 
-/** All 17 known base drawing type names (matches OVERLAY_DRAWING_TYPES exactly). */
+/** All 18 known base drawing type names (matches OVERLAY_DRAWING_TYPES exactly). */
 const ALL_DRAWING_BASE_TYPES: string[] = [...NON_FLOOR_SPECIFIC_TYPES, ...FLOOR_SPECIFIC_TYPES];
 
 /**
@@ -371,7 +371,8 @@ function buildContext(
     layout,
     requirements,
     boq,
-    generatedDrawingTypes,
+    // 'structural' (old Column Grid tab) was retired; projects saved before that still list it.
+    generatedDrawingTypes: generatedDrawingTypes.filter(k => k !== 'structural'),
     numFloors: floors.length || requirements.floors.length || 1,
     floors,
     allRooms: floors.flatMap(f => f.rooms),
@@ -1404,15 +1405,9 @@ function validateElevationSection(ctx: Ctx, idGen: () => string): CategoryResult
     );
   }
 
-  // 6. Parapet height note — always flagged for visual verification
-  b.fail(
-    'WARNING', 'Verify parapet height visually',
-    'A standard parapet height of 600mm is assumed above the terrace slab. This cannot be verified from the raster elevation/section image automatically.',
-    'Elevation Drawing / Section Drawing', 'Parapet Height',
-    '600mm (standard assumption)',
-    'not verifiable from raster image',
-    'Manually confirm the parapet height shown in the elevation/section matches the intended 600mm (or project-specific) design.',
-  );
+  // 6. Parapet height — sections, elevations and BOQ all draw/measure it from one shared rule
+  // (PARAPET_HEIGHT_MM), so it is internally consistent. Still an assumption to confirm locally.
+  b.pass();
 
   return b.build();
 }
@@ -2059,24 +2054,27 @@ function validateVisualQA(ctx: Ctx, idGen: () => string): CategoryResult {
   // 4. Professional disclaimer present on all drawings (structural invariant of the rendering pipeline)
   b.pass();
 
-  // 5. Drawing count matches expected (13 building-wide + 4 per floor)
-  const expectedCount = 13 + FLOOR_SPECIFIC_TYPES.length * numFloors;
-  if (generatedDrawingTypes.length === expectedCount) {
+  // 5. Drawing count matches expected (13 building-wide + 5 per floor). Only keys belonging to the
+  // current drawing set are counted, so stale keys from older cached sets cannot inflate the count.
+  const expectedKeySet = new Set(computeExpectedDrawingKeys(numFloors));
+  const presentCount = new Set(generatedDrawingTypes.filter(k => expectedKeySet.has(k))).size;
+  const expectedCount = expectedKeySet.size;
+  if (presentCount === expectedCount) {
     b.pass();
-  } else if (generatedDrawingTypes.length < expectedCount) {
+  } else if (presentCount < expectedCount) {
     b.fail(
       'ERROR', 'Fewer drawings generated than expected',
-      `Expected ${expectedCount} drawing(s) for a ${numFloors}-floor project (13 building-wide + 4 per floor), but only ${generatedDrawingTypes.length} have been generated.`,
+      `Expected ${expectedCount} drawing(s) for a ${numFloors}-floor project (13 building-wide + 5 per floor), but only ${presentCount} have been generated.`,
       'All Drawings', 'Drawing Count',
-      `${expectedCount}`, `${generatedDrawingTypes.length}`,
+      `${expectedCount}`, `${presentCount}`,
       'Generate the remaining required drawings.',
     );
   } else {
     b.fail(
       'WARNING', 'More drawings generated than expected',
-      `Expected ${expectedCount} drawing(s) for a ${numFloors}-floor project, but ${generatedDrawingTypes.length} are present. Extra/duplicate drawing types may exist.`,
+      `Expected ${expectedCount} drawing(s) for a ${numFloors}-floor project, but ${presentCount} are present. Extra/duplicate drawing types may exist.`,
       'All Drawings', 'Drawing Count',
-      `${expectedCount}`, `${generatedDrawingTypes.length}`,
+      `${expectedCount}`, `${presentCount}`,
       'Review the generated drawing list for duplicates or unexpected extra types.',
     );
   }

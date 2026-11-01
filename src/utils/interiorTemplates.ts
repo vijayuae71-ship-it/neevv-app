@@ -240,6 +240,10 @@ function scaleCost(base: number, style: InteriorStyle): number {
 export function getDefaultFurniture(
   roomType: RoomFinishType,
   style: InteriorStyle,
+  /** Original layout room type — office rooms get office furniture, not the home template they map to. */
+  layoutRoomType?: string,
+  /** Room floor area in m², used to size workstation and seating counts. */
+  areaSqM?: number,
 ): FurnitureItem[] {
   const mat = furnitureMaterial(style);
   const col = furnitureColor(style);
@@ -266,6 +270,43 @@ export function getDefaultFurniture(
     defaultSelected,
   });
 
+  const area = Math.max(0, areaSqM ?? 0);
+  switch (layoutRoomType) {
+    case 'workstation_open': {
+      const seats = Math.max(4, Math.floor(area / 4.5) || 8);
+      const clusters = Math.max(1, Math.ceil(seats / 4));
+      return [
+        item(`Bench Desk Cluster (4-seat) ×${clusters}`, 'study_table', 2400, 1200, 750, 48000 * clusters, true),
+        item(`Ergonomic Task Chair ×${clusters * 4}`, 'chair', 600, 600, 1000, 9500 * clusters * 4, true),
+        item(`Mobile Pedestal ×${clusters * 4}`, 'side_table', 400, 500, 600, 6500 * clusters * 4, true),
+        item(`Desk Acoustic Screen ×${clusters * 2}`, 'console', 1200, 30, 450, 5500 * clusters * 2, false),
+        item('Storage Lockers', 'wardrobe', 1800, 450, 1800, 42000, false),
+      ];
+    }
+    case 'conference_small':
+    case 'conference_large':
+    case 'board_room': {
+      const seats = layoutRoomType === 'conference_small' ? 6 : layoutRoomType === 'board_room' ? 12 : Math.max(8, Math.min(16, Math.floor(area / 2.2)));
+      return [
+        item(`Conference Table (${seats}-seat)`, 'dining_table', Math.max(1800, seats * 300), 1200, 750, 9000 * seats, true),
+        item(`Meeting Chair ×${seats}`, 'chair', 550, 550, 950, 8000 * seats, true),
+        item('Display / VC Screen Unit', 'tv_unit', 1800, 400, 450, 45000, true),
+        item('Credenza', 'console', 1500, 450, 750, 28000, false),
+      ];
+    }
+    case 'cabin_manager':
+    case 'cabin_director':
+    case 'cabin_md':
+      return [
+        item('Executive Desk', 'study_table', layoutRoomType === 'cabin_manager' ? 1500 : 1800, 800, 750, layoutRoomType === 'cabin_manager' ? 38000 : 65000, true),
+        item('Executive Chair', 'chair', 650, 650, 1150, 22000, true),
+        item('Visitor Chair ×2', 'chair', 550, 550, 900, 16000, true),
+        item('Storage Credenza', 'console', 1500, 450, 750, 28000, true),
+        item('Two-seater Sofa', 'sofa', 1500, 800, 800, 45000, false),
+      ];
+    default:
+      break;
+  }
   switch (roomType) {
     case 'master_bedroom':
       return [

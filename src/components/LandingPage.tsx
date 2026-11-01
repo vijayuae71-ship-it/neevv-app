@@ -219,7 +219,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               { value: '21+ drawings', label: 'Plans, structure, electrical, plumbing' },
               { value: '3D before you build', label: 'Walk it before a brick is laid' },
               { value: 'Indicative cost range', label: 'Compare assumptions with local quotes' },
-              { value: 'NBC 2016 & Vastu', label: 'Designed per NBC 2016 guidelines, with Vastu in mind' },
+              { value: 'NBC-guided & Vastu', label: 'Checked against NBC 2016 guidance, with Vastu in mind — for professional review' },
             ].map((item, i) => (
               <Reveal key={item.value} delay={i * 50}>
                 <div className="text-left md:text-center">
