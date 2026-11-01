@@ -27,12 +27,13 @@ interface Props {
 }
 
 type DrawingType =
+  | 'workingPlan'
+  | 'doorWindow'
   | 'excavation'
   | 'foundation'
   | 'rccDetail'
   | 'section'
   | 'elevation'
-  | 'structural'
   | 'reinforcement'
   | 'barBending'
   | 'brickwork'
@@ -47,11 +48,12 @@ type DrawingType =
 
 /* Map internal drawing types to API drawing types */
 const aiDrawingMap: Record<DrawingType, string> = {
+  workingPlan: 'working_plan',
+  doorWindow: 'door_window_schedule',
   excavation: 'excavation',
   foundation: 'column_layout',
   footingDetail: 'footing_detail',
   rccDetail: 'beam_slab',
-  structural: 'column_detail',
   reinforcement: 'column_detail',
   barBending: 'bar_bending',
   section: 'section_aa',
@@ -67,7 +69,7 @@ const aiDrawingMap: Record<DrawingType, string> = {
 };
 
 /* Drawing types that differ between Ground Floor and First Floor and need separate generation/caching */
-const FLOOR_SPECIFIC: DrawingType[] = ['electrical', 'plumbing', 'tiling', 'brickwork'];
+const FLOOR_SPECIFIC: DrawingType[] = ['workingPlan', 'electrical', 'plumbing', 'tiling', 'brickwork'];
 
 export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq, onDrawingGenerated, structuralResult, bbsResult, statusBadge }) => {
   const structuralOverlay = useMemo(() => {
@@ -115,7 +117,7 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq, on
     return merged;
   }, [structuralResult, bbsResult]);
 
-  const [activeDrawing, setActiveDrawing] = useState<DrawingType>('excavation');
+  const [activeDrawing, setActiveDrawing] = useState<DrawingType>('workingPlan');
   const [zoom, setZoom] = useState(100);
   const [selectedFloor, setSelectedFloor] = useState<'GF' | 'FF'>('GF');
   const [aiImages, setAiImages] = useState<Record<string, string>>({});
@@ -127,7 +129,7 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq, on
   const [exportResult, setExportResult] = useState<string | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
 
-  const drawingsStorageKey = `neevv-drawings-v2-${requirements.plotWidthFt}x${requirements.plotDepthFt}-${layout.designSeed?.seedId || layout.id || 'default'}-${requirements.city || 'city'}`;
+  const drawingsStorageKey = `neevv-drawings-v3-${requirements.plotWidthFt}x${requirements.plotDepthFt}-${layout.designSeed?.seedId || layout.id || 'default'}-${requirements.city || 'city'}`;
 
   const saveDrawingToCache = useCallback(async (cacheKey: string, imageData: string) => {
     try {
@@ -350,15 +352,16 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq, on
   const totalDrawings = Object.keys(aiDrawingMap).length + (isMultiFloor ? FLOOR_SPECIFIC.length : 0);
 
   const tabs: { id: DrawingType; label: string; icon: React.ReactNode; group: string }[] = [
+    { id: 'workingPlan', label: 'Working Plan', icon: <Ruler size={12} />, group: 'Architecture' },
+    { id: 'doorWindow', label: 'Door & Window Schedule', icon: <Columns3 size={12} />, group: 'Architecture' },
     { id: 'excavation', label: 'Excavation', icon: <Shovel size={12} />, group: 'Site' },
     { id: 'foundation', label: 'Foundation Plan', icon: <Grid3x3 size={12} />, group: 'Structure' },
     { id: 'footingDetail', label: 'Footing Detail', icon: <Layers size={12} />, group: 'Structure' },
     { id: 'rccDetail', label: 'RCC Slab/Beam', icon: <Layers size={12} />, group: 'Structure' },
-    { id: 'structural', label: 'Column Grid', icon: <Columns3 size={12} />, group: 'Structure' },
     { id: 'reinforcement', label: 'Rebar Details', icon: <Ruler size={12} />, group: 'Structure' },
     { id: 'barBending', label: 'BBS', icon: <BarChart3 size={12} />, group: 'Structure' },
-    { id: 'section', label: 'Section A-A', icon: <ArrowUpDown size={12} />, group: 'Views' },
-    { id: 'elevation', label: 'Elevation', icon: <Building size={12} />, group: 'Views' },
+    { id: 'section', label: 'Section 1-1', icon: <ArrowUpDown size={12} />, group: 'Architecture' },
+    { id: 'elevation', label: 'Elevation', icon: <Building size={12} />, group: 'Architecture' },
     { id: 'brickwork', label: 'Brickwork', icon: <BrickWall size={12} />, group: 'Finishes' },
     { id: 'electrical', label: 'Electrical', icon: <Zap size={12} />, group: 'MEP' },
     { id: 'plumbing', label: 'Plumbing', icon: <Droplets size={12} />, group: 'MEP' },
@@ -369,14 +372,15 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq, on
     { id: 'stp', label: 'STP', icon: <Pipette size={12} />, group: 'MEP' },
   ];
 
-  const groups = ['Site', 'Structure', 'Views', 'Finishes', 'MEP'];
+  const groups = ['Architecture', 'Site', 'Structure', 'Finishes', 'MEP'];
 
   const descriptions: Record<DrawingType, string> = {
     excavation: 'Trench excavation layout with depths, bench mark, center line pegs, and earth removal volume. Trench width: 1800mm (1200mm footing + 300mm working space each side).',
     foundation: 'Foundation layout with isolated footings, column pedestals, and plinth beam grid. Designed per IS 456 with city-specific SBC.',
     footingDetail: 'Detailed footing cross-section and plan with reinforcement, PCC bed, pedestal starter bars, and soil bearing details per IS 456.',
     rccDetail: 'RCC slab & beam layout showing slab panels (one-way/two-way), beam grid, reinforcement directions, staircase opening, and cantilever balcony slabs.',
-    structural: 'Column-beam grid with centerline references. Member sizes from structural engine. Max clear span \u2264 4500mm.',
+    workingPlan: 'Dimensioned working plan from the locked plan: wall-face, opening and overall dimension strings, column grid, door/window marks, room sizes and areas, floor levels and section marker.',
+    doorWindow: 'Door, window and ventilator schedule: marks, sizes, sills, lintel levels, materials and counts per floor (matching the BOQ), with type elevations at 1:50.',
     reinforcement: 'Detailed reinforcement sections for footing, column, beam, slab, and lintel with bar sizes, spacing, cover, and stirrup details.',
     barBending: 'Bar Bending Schedule per IS 2502. All members quantified with bar mark, diameter, shape code, cutting length, and total weight.',
     section: `Cross-section showing foundation system, RCC frame, infill masonry, and lintels. Floor-to-floor: 3000mm.`,

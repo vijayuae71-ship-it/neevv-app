@@ -63,6 +63,8 @@ export interface Room {
   width: number;
   depth: number;
   floor: number;
+  /** Sides of the room left open (no wall) to the neighbouring room, e.g. living open to dining. */
+  openTo?: ('front' | 'rear' | 'left' | 'right')[];
 }
 
 export interface Column {

@@ -1,7 +1,7 @@
 'use client';
 
 import type { Layout, Room, ProjectRequirements, BOQ, Column, Setbacks, LayoutOpening } from '../types';
-import { ELEC_KINDS, electricalBreakdown, electricalPoints, fixturesFor, fixtureTotals, isNiche, WALL_EXTERNAL_MM, WALL_INTERNAL_MM } from './quantityRules';
+import { ASSUMED_FOUNDING_DEPTH_M, ELEC_KINDS, electricalBreakdown, electricalPoints, fixturesFor, fixtureTotals, isNiche, WALL_EXTERNAL_MM, WALL_INTERNAL_MM } from './quantityRules';
 import { computeTakeoff, bathWallTileSqM, kitchenCounterRmt, KITCHEN_DADO_HEIGHT_M, type Takeoff } from './quantityTakeoff';
 
 /**
@@ -40,7 +40,23 @@ type Level = 0 | 1;
 type DrawingType = 'excavation' | 'column_layout' | 'footing_detail' | 'beam_slab' |
   'column_detail' | 'bar_bending' | 'section_aa' | 'front_elevation' |
   'staircase_detail' | 'water_tank' | 'waterproofing' | 'stp_detail' |
-  'electrical' | 'plumbing' | 'tiling_layout' | 'brickwork_detail';
+  'electrical' | 'plumbing' | 'tiling_layout' | 'brickwork_detail' |
+  'working_plan' | 'door_window_schedule';
+
+/* ── neevv Drafting Standard v1 (IS 962 / SP 46) ──
+ * Sheet = A3 landscape (420 × 297 mm) rendered at 5 px per paper-mm.
+ * Only preferred scales are used; a view is drawn at the largest preferred scale that fits.
+ * Pen weights are paper millimetres × 5. */
+const PX_PER_PAPER_MM = 5;
+const STD_SCALES = [1, 2, 5, 10, 20, 50, 100, 200, 500];
+const PEN = { cut: 3.0, medium: 1.75, thin: 0.9, hair: 0.6 };
+const POCHE = { solid: '#8d8d8d', light: '#d3d3d3' };
+/** Drafting audit collected while a sheet renders (label boxes, dimension sums, scales). */
+export interface DraftingCheck { item: string; status: 'PASS' | 'WARNING' | 'ERROR'; detail: string }
+interface AuditState { labels: { x0: number; y0: number; x1: number; y1: number; t: string }[]; checks: DraftingCheck[]; scales: number[] }
+let AUDIT: AuditState | null = null;
+/** Results of the most recent render per sheet key (`type-floor`), for tests and the validation report. */
+export const DRAFTING_AUDIT: Record<string, DraftingCheck[]> = {};
 
 interface Frame { x: number; y: number; s: number; width: number; height: number; }
 interface ModelRoom { source: Room; x: number; y: number; w: number; d: number; }
@@ -59,6 +75,11 @@ interface Geometry {
   openings: OpeningPlacement[]; floors: number;
 }
 interface Context {
+  /** scale denominators of every view drawn on this sheet */
+  views: number[];
+  type: DrawingType;
+  sheetNo: string;
+  rev: number;
   c: CanvasRenderingContext2D;
   g: Geometry;
   layout: Layout;
@@ -85,11 +106,12 @@ const titleFor: Record<DrawingType, string> = {
   excavation: 'EXCAVATION PLAN', column_layout: 'FOUNDATION & COLUMN LAYOUT',
   footing_detail: 'ISOLATED FOOTING DETAIL', beam_slab: 'RCC BEAM & SLAB LAYOUT',
   column_detail: 'COLUMN & REINFORCEMENT DETAIL', bar_bending: 'BAR BENDING SCHEDULE',
-  section_aa: 'BUILDING SECTION A–A', front_elevation: 'FRONT ELEVATION',
+  section_aa: 'BUILDING SECTION 1–1', front_elevation: 'FRONT ELEVATION',
   staircase_detail: 'STAIRCASE PLAN & SECTION', water_tank: 'SUMP & OVERHEAD TANK DETAILS',
   waterproofing: 'WATERPROOFING DETAILS', stp_detail: 'STP SCHEMATIC LAYOUT',
   electrical: 'ELECTRICAL LAYOUT', plumbing: 'PLUMBING & DRAINAGE LAYOUT',
   tiling_layout: 'FLOOR & WALL TILING LAYOUT', brickwork_detail: 'MASONRY & LINTEL LAYOUT',
+  working_plan: 'WORKING PLAN', door_window_schedule: 'DOOR & WINDOW SCHEDULE',
 };
 
 /** Thin, dimensioned CAD-like primitives. Coordinates are canvas pixels. */
@@ -117,7 +139,15 @@ export function drawDoubleLineWall(c: CanvasRenderingContext2D, x1: number, y1: 
 function label(c: CanvasRenderingContext2D, value: string, x: number, y: number, size = 17,
   align: CanvasTextAlign = 'left', color = COLORS.text, bold = false): void {
   c.save(); c.fillStyle = color; c.font = `${bold ? '700 ' : ''}${size}px Arial, sans-serif`;
-  c.textAlign = align; c.textBaseline = 'middle'; c.fillText(value, x, y); c.restore();
+  c.textAlign = align; c.textBaseline = 'middle'; c.fillText(value, x, y);
+  if (AUDIT && value.trim()) {
+    const w = c.measureText(value).width, x0 = align === 'center' ? x - w / 2 : align === 'right' ? x - w : x;
+    const m = c.getTransform();
+    const pts = [[x0, y - size * 0.42], [x0 + w, y - size * 0.42], [x0, y + size * 0.42], [x0 + w, y + size * 0.42]]
+      .map(([px, py]) => [m.a * px + m.c * py + m.e, m.b * px + m.d * py + m.f]);
+    AUDIT.labels.push({ x0: Math.min(...pts.map(q => q[0])), x1: Math.max(...pts.map(q => q[0])), y0: Math.min(...pts.map(q => q[1])), y1: Math.max(...pts.map(q => q[1])), t: value });
+  }
+  c.restore();
 }
 function multiline(c: CanvasRenderingContext2D, lines: string[], x: number, y: number, size = 17, step = 26): void {
   lines.forEach((s, i) => label(c, s, x, y + i * step, size));
@@ -401,8 +431,11 @@ function map(frame: Frame, x: number, y: number): Point {
   return { x: frame.x + (x - frame.width) * frame.s, y: frame.y + (y - frame.height) * frame.s };
 }
 function fit(bounds: Bounds, target: Bounds, pad = 60): Frame {
-  const s = Math.min((target.w - 2 * pad) / Math.max(1, bounds.w),
+  const raw = Math.min((target.w - 2 * pad) / Math.max(1, bounds.w),
     (target.h - 2 * pad) / Math.max(1, bounds.h));
+  // largest IS 962 preferred scale that fits (never an odd 1:47 / 1:86)
+  const den = STD_SCALES.find(d => PX_PER_PAPER_MM / d <= raw + 1e-12) ?? Math.ceil(PX_PER_PAPER_MM / Math.max(raw, 1e-9));
+  const s = PX_PER_PAPER_MM / den;
   return { x: target.x + (target.w - bounds.w * s) / 2,
     y: target.y + (target.h - bounds.h * s) / 2, s, width: bounds.x, height: bounds.y };
 }
@@ -423,13 +456,14 @@ function extent(): Bounds { return { x: MARGIN, y: MARGIN + 55, w: DRAW_W, h: DR
 function setFrame(k: Context, geometryBounds: Bounds, target = extent(), pad = 70): void {
   k.frame = fit(geometryBounds, target, pad);
   k.scale = k.frame.s;
+  k.views.push(Math.round(PX_PER_PAPER_MM / k.frame.s));
 }
 function drawPlot(k: Context): void {
   const c = k.c, p = box(k, k.g.footprint), b = box(k, k.g.building);
   drawRect(c, p.x, p.y, p.w, p.h, { stroke: COLORS.wall, weight: 2 });
   drawRect(c, b.x, b.y, b.w, b.h, { stroke: COLORS.grid, dash: [10, 6], weight: 1 });
   label(c, 'PLOT BOUNDARY', p.x + 7, p.y - 12, 14);
-  label(c, 'BUILDABLE / BUILDING ENVELOPE', b.x + 5, b.y + 14, 13, 'left', COLORS.grid);
+  label(c, 'BUILDING LINE', b.x + 5, b.y - 12, 11, 'left', COLORS.grid);
   const s = k.frame.s;
   if (k.g.setbacks.left > 0) drawDimensionChain(c, [p.x, b.x], p.y, -30, 'horizontal', s);
   if (k.g.setbacks.right > 0) drawDimensionChain(c, [b.x + b.w, p.x + p.w], p.y, -30, 'horizontal', s);
@@ -437,7 +471,7 @@ function drawPlot(k: Context): void {
   if (k.g.setbacks.rear > 0) drawDimensionChain(c, [b.y + b.h, p.y + p.h], p.x, -38, 'vertical', s);
   drawDimensionChain(c, [p.x, p.x + p.w], p.y, -67, 'horizontal', s);
   drawDimensionChain(c, [p.y, p.y + p.h], p.x, -74, 'vertical', s);
-  drawNorthArrow(c, p.x + p.w + 50, p.y + 55, k.req.facing);
+  drawNorthArrow(c, p.x + p.w + 120, p.y + p.h - 70, k.req.facing);
 }
 function grid(k: Context): void {
   const c = k.c, b = k.g.building;
@@ -474,72 +508,473 @@ function gridSegments(g: Geometry): { a: Point; b: Point }[] {
   return result;
 }
 function drawColumns(k: Context): void {
+  const bb = k.g.building;
   for (const item of k.g.columns) {
-    const p = at(k, item.x, item.y);
+    // edge columns are kept flush with the outer wall face (not projecting outside the building)
+    const p = at(k, clamp(item.x, bb.x + item.w / 2, bb.x + bb.w - item.w / 2), clamp(item.y, bb.y + item.d / 2, bb.y + bb.h - item.d / 2));
     drawColumnSymbol(k.c, p.x, p.y, Math.max(5, item.w * k.scale), Math.max(5, item.d * k.scale));
   }
 }
-function planOpening(c: CanvasRenderingContext2D, k: Context, o: OpeningPlacement): void {
-  const a = o.axis === 'horizontal' ? at(k, o.a, o.fixed) : at(k, o.fixed, o.a);
-  const b = o.axis === 'horizontal' ? at(k, o.b, o.fixed) : at(k, o.fixed, o.b);
-  const length = o.axis === 'horizontal' ? b.x - a.x : b.y - a.y;
-  if (length <= 4) return;
-  // Only erase the small host wall segment; framing remains visible either side.
-  c.save(); c.strokeStyle = '#fff'; c.lineWidth = Math.max(5, (o.face === 'internal' ? WALL_INTERNAL_MM : WALL_EXTERNAL_MM) * k.scale + 3);
-  c.beginPath(); c.moveTo(a.x, a.y); c.lineTo(b.x, b.y); c.stroke(); c.restore();
-  if (o.source.type === 'door') drawDoor(c, a.x, a.y, length, o.axis,
-    o.face === 'rear' || o.face === 'right' ? -1 : 1);
-  else drawWindow(c, a.x, a.y, length, o.axis);
-}
 function drawPlanRooms(k: Context, light = false, cornerLabels = false): void {
-  const c = k.c;
-  const b = box(k, k.g.building);
-  c.save(); if (light) c.globalAlpha = 0.55;
-  const t = Math.max(4, WALL_EXTERNAL_MM * k.scale);
-  drawDoubleLineWall(c, b.x, b.y, b.x + b.w, b.y, t, 2);
-  drawDoubleLineWall(c, b.x, b.y + b.h, b.x + b.w, b.y + b.h, t, 2);
-  drawDoubleLineWall(c, b.x, b.y, b.x, b.y + b.h, t, 2);
-  drawDoubleLineWall(c, b.x + b.w, b.y, b.x + b.w, b.y + b.h, t, 2);
-  const seen = new Set<string>();
-  for (const r of selected(k)) {
-    const q = box(k, { x: r.x, y: r.y, w: r.w, h: r.d });
-    for (const [x1, y1, x2, y2] of [
-      [q.x, q.y, q.x + q.w, q.y], [q.x, q.y + q.h, q.x + q.w, q.y + q.h],
-      [q.x, q.y, q.x, q.y + q.h], [q.x + q.w, q.y, q.x + q.w, q.y + q.h],
-    ]) {
-      const key = [x1, y1, x2, y2].map(v => Math.round(v)).join(',');
-      if (seen.has(key)) continue; seen.add(key);
-      drawDoubleLineWall(c, x1, y1, x2, y2, Math.max(3, WALL_INTERNAL_MM * k.scale), 1.2);
-    }
-    if (cornerLabels) {
-      if (!isNiche(r.source)) label(c, r.source.name, q.x + 10, q.y + 20, 11, 'left', COLORS.dim, true);
-      continue;
-    }
-    const cx = q.x + q.w / 2, cy = q.y + q.h / 2;
-    if (q.w > 65 && q.h > 45) {
-      label(c, r.source.name, cx, cy - 9, clamp(q.w / 14, 11, 16), 'center');
-      label(c, `${round(r.w)} × ${round(r.d)}`, cx, cy + 12, 12, 'center', COLORS.dim);
-    }
-  }
-  for (const o of k.g.openings.filter(v => v.floor === k.level)) planOpening(c, k, o);
-  c.restore();
+  drawPlanWalls(k, light ? 'light' : 'solid');
+  for (const o of k.g.openings.filter(v => v.floor === k.level)) planOpening(k.c, k, o);
+  for (const r of selected(k)) if (cornerLabels || r.source.type !== 'staircase') roomLabel(k, r, { corner: cornerLabels });
 }
-function drawSectionMark(k: Context): void {
-  const cutY = k.g.building.y + k.g.building.h / 2;
-  const a = at(k, k.g.building.x - 600, cutY);
-  const b = at(k, k.g.building.x + k.g.building.w + 600, cutY);
-  dashed(k.c, a, b, COLORS.green, 1.4, [14, 4, 3, 4]);
-  for (const p of [a, b]) {
-    circle(k.c, p.x, p.y, 15, '#fff', COLORS.green, 1.5);
-    label(k.c, 'A', p.x, p.y, 14, 'center', COLORS.green, true);
-  }
-}
+function drawSectionMark(k: Context): void { sectionMarker(k, sectionCutY(k)); }
 function openingLegend(k: Context, x: number, y: number): void {
   const counts = k.g.openings.filter(o => o.floor === k.level);
   legend(k.c, x, y, 'OPENINGS / PLAN REFERENCE', [
     `Door instances: ${counts.filter(o => o.source.type === 'door').length}`,
     `Window instances: ${counts.filter(o => o.source.type === 'window').length}`,
     'Offsets centred/distributed — field verify.',
+  ]);
+}
+
+/* ═════════ Drafting kit (shared by every plan sheet) ═════════ */
+/** Finished internal partition as reserved by the planner: 115 mm brick + plaster both faces ≈ 150 mm. */
+const WALL_PLAN_INT_MM = 150;
+const RAIL_MM = 100;
+type PSide = 'front' | 'rear' | 'left' | 'right';
+const OPP: Record<PSide, PSide> = { front: 'rear', rear: 'front', left: 'right', right: 'left' };
+const INWARD: Record<PSide, number> = { front: 1, rear: -1, left: 1, right: -1 };
+function onBuildingEdge(k: Context, r: ModelRoom, side: PSide): boolean {
+  const b = k.g.building, e = 40;
+  if (side === 'front') return Math.abs(r.y - b.y) < e;
+  if (side === 'rear') return Math.abs(r.y + r.d - (b.y + b.h)) < e;
+  if (side === 'left') return Math.abs(r.x - b.x) < e;
+  return Math.abs(r.x + r.w - (b.x + b.w)) < e;
+}
+/** Intervals (model mm, along the side) where this side has no wall because the rooms are open to each other. */
+function openIntervals(k: Context, r: ModelRoom, side: PSide): [number, number][] {
+  if (onBuildingEdge(k, r, side)) return [];
+  const own = !!r.source.openTo?.includes(side);
+  const out: [number, number][] = [];
+  // only public rooms flow into each other without a wall (living ↔ dining ↔ lobby/lounge); bedrooms, baths, kitchen, stair keep walls
+  const PUBLIC = ['hall', 'dining', 'passage'];
+  if (!PUBLIC.includes(r.source.type)) return out;
+  for (const n of selected(k)) {
+    if (n === r || isNiche(n.source) || !PUBLIC.includes(n.source.type)) continue;
+    if (!own && !n.source.openTo?.includes(OPP[side])) continue;
+    const touch = side === 'front' ? Math.abs(n.y + n.d - r.y) < 5 : side === 'rear' ? Math.abs(n.y - (r.y + r.d)) < 5
+      : side === 'left' ? Math.abs(n.x + n.w - r.x) < 5 : Math.abs(n.x - (r.x + r.w)) < 5;
+    if (!touch) continue;
+    const [a0, a1, b0, b1] = side === 'front' || side === 'rear' ? [r.x, r.x + r.w, n.x, n.x + n.w] : [r.y, r.y + r.d, n.y, n.y + n.d];
+    const lo = Math.max(a0, b0), hi = Math.min(a1, b1);
+    if (hi - lo > 300) out.push([lo, hi]);
+  }
+  return out;
+}
+function sideInset(k: Context, r: ModelRoom, side: PSide): number {
+  if (onBuildingEdge(k, r, side)) return r.source.type === 'balcony' ? RAIL_MM : WALL_EXTERNAL_MM;
+  const len = side === 'front' || side === 'rear' ? r.w : r.d;
+  const open = openIntervals(k, r, side).reduce((s, [a, b]) => s + b - a, 0);
+  return open >= len - 10 ? 0 : WALL_PLAN_INT_MM / 2;
+}
+/** Clear (inside-finish) rectangle of a room, model mm. */
+function clearRect(k: Context, r: ModelRoom): Bounds {
+  const f = sideInset(k, r, 'front'), re = sideInset(k, r, 'rear'), l = sideInset(k, r, 'left'), ri = sideInset(k, r, 'right');
+  return { x: r.x + l, y: r.y + f, w: Math.max(0, r.w - l - ri), h: Math.max(0, r.d - f - re) };
+}
+/** Cut walls: poché between room clear rectangles, cut-pen outline, open sides left unwalled. */
+function drawPlanWalls(k: Context, mode: 'solid' | 'light' | 'brick' = 'solid'): void {
+  const c = k.c, rooms = selected(k).filter(r => !isNiche(r.source));
+  const B = box(k, k.g.building);
+  const fill = mode === 'solid' ? POCHE.solid : mode === 'light' ? POCHE.light : '#e7c4ae';
+  const pen = mode === 'light' ? PEN.medium : PEN.cut;
+  c.save();
+  drawRect(c, B.x, B.y, B.w, B.h, { fill });
+  if (mode === 'brick') drawHatch(c, B.x, B.y, B.w, B.h, 45, 7);
+  for (const r of rooms) { const q = box(k, clearRect(k, r)); drawRect(c, q.x, q.y, q.w, q.h, { fill: '#fff' }); }
+  // open connections: clear the partition band where two rooms are open to each other
+  for (const r of rooms) for (const side of ['front', 'rear', 'left', 'right'] as PSide[]) for (const [a, b] of openIntervals(k, r, side)) {
+    const h = side === 'front' || side === 'rear';
+    const fixed = side === 'front' ? r.y : side === 'rear' ? r.y + r.d : side === 'left' ? r.x : r.x + r.w;
+    const t = WALL_PLAN_INT_MM / 2 + 2;
+    const q = box(k, h ? { x: a + WALL_PLAN_INT_MM / 2, y: fixed - t, w: b - a - WALL_PLAN_INT_MM, h: 2 * t } : { x: fixed - t, y: a + WALL_PLAN_INT_MM / 2, w: 2 * t, h: b - a - WALL_PLAN_INT_MM });
+    drawRect(c, q.x, q.y, q.w, q.h, { fill: '#fff' });
+  }
+  c.strokeStyle = COLORS.wall; c.lineWidth = pen; c.lineCap = 'square';
+  for (const r of rooms) {
+    const q = clearRect(k, r);
+    const edges: [PSide, number, number, number, boolean][] = [
+      ['front', q.y, q.x, q.x + q.w, true], ['rear', q.y + q.h, q.x, q.x + q.w, true],
+      ['left', q.x, q.y, q.y + q.h, false], ['right', q.x + q.w, q.y, q.y + q.h, false]];
+    for (const [side, fixed, s0, s1, h] of edges) {
+      if (r.source.type === 'balcony' && onBuildingEdge(k, r, side)) {
+        const o = side === 'front' ? r.y : side === 'rear' ? r.y + r.d : side === 'left' ? r.x : r.x + r.w;
+        const p0 = h ? at(k, s0, o) : at(k, o, s0), p1 = h ? at(k, s1, o) : at(k, o, s1);
+        drawLine(c, p0.x, p0.y, p1.x, p1.y, PEN.thin);
+      }
+      // the inside face minus open stretches; wall ends get a stub
+      let segs: [number, number][] = [[s0, s1]];
+      for (const [a, b] of openIntervals(k, r, side)) {
+        const ga = a + WALL_PLAN_INT_MM / 2, gb = b - WALL_PLAN_INT_MM / 2;
+        segs = segs.flatMap(([u, v]) => (gb <= u || ga >= v) ? [[u, v] as [number, number]] : [[u, Math.max(u, ga)], [Math.min(v, gb), v]].filter(([x0, x1]) => x1 - x0 > 1) as [number, number][]);
+        const o = side === 'front' ? r.y : side === 'rear' ? r.y + r.d : side === 'left' ? r.x : r.x + r.w;
+        for (const e of [ga, gb]) if (e > s0 + 5 && e < s1 - 5) {
+          const p0 = h ? at(k, e, o - WALL_PLAN_INT_MM / 2) : at(k, o - WALL_PLAN_INT_MM / 2, e);
+          const p1 = h ? at(k, e, o + WALL_PLAN_INT_MM / 2) : at(k, o + WALL_PLAN_INT_MM / 2, e);
+          c.beginPath(); c.moveTo(p0.x, p0.y); c.lineTo(p1.x, p1.y); c.stroke();
+        }
+      }
+      if (sideInset(k, r, side) === 0) continue;
+      for (const [u, v] of segs) {
+        const p0 = h ? at(k, u, fixed) : at(k, fixed, u), p1 = h ? at(k, v, fixed) : at(k, fixed, v);
+        c.beginPath(); c.moveTo(p0.x, p0.y); c.lineTo(p1.x, p1.y); c.stroke();
+      }
+    }
+  }
+  c.strokeRect(B.x, B.y, B.w, B.h);
+  c.restore();
+}
+/** Across-wall band (model mm) of an opening. */
+function openingBand(o: OpeningPlacement): [number, number] {
+  if (o.face === 'internal') return [o.fixed - WALL_PLAN_INT_MM / 2, o.fixed + WALL_PLAN_INT_MM / 2];
+  return INWARD[o.face] > 0 ? [o.fixed, o.fixed + WALL_EXTERNAL_MM] : [o.fixed - WALL_EXTERNAL_MM, o.fixed];
+}
+/** Door, window or ventilator cut through the wall band, drawn per SP 46 (jambs, frame, leaf + swing). */
+function planOpening(c: CanvasRenderingContext2D, k: Context, o: OpeningPlacement): void {
+  const [c0, c1] = openingBand(o), h = o.axis === 'horizontal';
+  const P = (along: number, across: number) => h ? at(k, along, across) : at(k, across, along);
+  const q0 = P(o.a, c0), q1 = P(o.b, c1);
+  const x = Math.min(q0.x, q1.x), y = Math.min(q0.y, q1.y), w = Math.abs(q1.x - q0.x), ht = Math.abs(q1.y - q0.y);
+  if (Math.max(w, ht) < 3) return;
+  drawRect(c, x - (h ? 0 : 1), y - (h ? 1 : 0), w + (h ? 0 : 2), ht + (h ? 2 : 0), { fill: '#fff' });
+  for (const e of [o.a, o.b]) { const p0 = P(e, c0), p1 = P(e, c1); drawLine(c, p0.x, p0.y, p1.x, p1.y, PEN.medium); }
+  if (o.source.type === 'door' && /sliding/i.test(o.source.material ?? '')) {
+    const m = (c0 + c1) / 2, mid = (o.a + o.b) / 2;
+    for (const [u0, u1, v] of [[o.a, mid + 50, m - 25], [mid - 50, o.b, m + 25]] as [number, number, number][]) { const p0 = P(u0, v), p1 = P(u1, v); drawLine(c, p0.x, p0.y, p1.x, p1.y, PEN.medium); }
+  } else if (o.source.type === 'door') {
+    // hinge on the room-side face, leaf opens into the room the door belongs to
+    const roomMid = h ? o.room.y + o.room.d / 2 : o.room.x + o.room.w / 2;
+    const into = roomMid > (c0 + c1) / 2 ? 1 : -1;
+    const face = into > 0 ? c1 : c0, span = o.b - o.a;
+    const hinge = P(o.a, face), tip = P(o.a, face + into * span), end = P(o.b, face);
+    drawLine(c, hinge.x, hinge.y, tip.x, tip.y, PEN.medium);
+    const r = Math.hypot(tip.x - hinge.x, tip.y - hinge.y);
+    const a0 = Math.atan2(tip.y - hinge.y, tip.x - hinge.x), a1 = Math.atan2(end.y - hinge.y, end.x - hinge.x);
+    let d = a1 - a0; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI;
+    c.save(); c.strokeStyle = COLORS.wall; c.lineWidth = PEN.hair; c.beginPath(); c.arc(hinge.x, hinge.y, r, a0, a0 + d, d < 0); c.stroke(); c.restore();
+  } else {
+    for (const f of o.source.type === 'ventilator' ? [0.5] : [0.38, 0.62]) {
+      const p0 = P(o.a, c0 + (c1 - c0) * f), p1 = P(o.b, c0 + (c1 - c0) * f);
+      drawLine(c, p0.x, p0.y, p1.x, p1.y, PEN.thin);
+    }
+    for (const f of [0, 1]) { const p0 = P(o.a, c0 + (c1 - c0) * f), p1 = P(o.b, c0 + (c1 - c0) * f); drawLine(c, p0.x, p0.y, p1.x, p1.y, PEN.hair); }
+  }
+}
+/* Door / window types: identical size + material share one mark (D1, W2, V1) on every sheet and in the schedule. */
+interface OpeningType { mark: string; type: 'door' | 'window' | 'ventilator'; widthMm: number; heightMm: number; sillMm: number; material: string; perFloor: number[]; rooms: Set<string>; main: boolean }
+const TYPE_CACHE = new WeakMap<Geometry, { types: OpeningType[]; markOf: Map<OpeningPlacement, string> }>();
+function openingTypes(g: Geometry): { types: OpeningType[]; markOf: Map<OpeningPlacement, string> } {
+  const hit = TYPE_CACHE.get(g); if (hit) return hit;
+  const groups = new Map<string, { t: OpeningType; members: OpeningPlacement[] }>();
+  for (const o of g.openings) {
+    const s = o.source, wMm = Math.round(o.b - o.a), hMm = Math.round(positive(s.heightMm, s.type === 'door' ? 2100 : 1200));
+    const sill = Math.round(finite(s.sillHeightMm, s.type === 'door' ? 0 : 900)), mat = text(s.material, '—');
+    const main = !!(s as LayoutOpening & { main?: boolean }).main;
+    const key = `${s.type}|${wMm}|${hMm}|${sill}|${mat}|${main}`;
+    let gr = groups.get(key);
+    if (!gr) { gr = { t: { mark: '', type: s.type, widthMm: wMm, heightMm: hMm, sillMm: sill, material: mat, perFloor: Array(g.floors).fill(0), rooms: new Set(), main }, members: [] }; groups.set(key, gr); }
+    gr.t.perFloor[o.floor] = (gr.t.perFloor[o.floor] ?? 0) + 1; gr.t.rooms.add(o.room.source.name); gr.members.push(o);
+  }
+  const order = { door: 0, window: 1, ventilator: 2 };
+  const list2 = [...groups.values()].sort((a, b) => order[a.t.type] - order[b.t.type] || Number(b.t.main) - Number(a.t.main) || b.t.widthMm - a.t.widthMm || b.t.heightMm - a.t.heightMm);
+  const n = { door: 0, window: 0, ventilator: 0 }, markOf = new Map<OpeningPlacement, string>();
+  for (const gr of list2) { gr.t.mark = `${gr.t.type === 'door' ? 'D' : gr.t.type === 'window' ? 'W' : 'V'}${++n[gr.t.type]}`; for (const m of gr.members) markOf.set(m, gr.t.mark); }
+  const out = { types: list2.map(x => x.t), markOf };
+  TYPE_CACHE.set(g, out); return out;
+}
+/** Opening tag: doors tagged inside the room, windows/ventilators outside the wall. */
+function openingTag(k: Context, o: OpeningPlacement): void {
+  const mark = openingTypes(k.g).markOf.get(o); if (!mark) return;
+  const [c0, c1] = openingBand(o), h = o.axis === 'horizontal', mid = (o.a + o.b) / 2;
+  let across: number;
+  if (o.source.type === 'door') { const roomMid = h ? o.room.y + o.room.d / 2 : o.room.x + o.room.w / 2; across = roomMid > (c0 + c1) / 2 ? c1 + 330 : c0 - 330; }
+  else if (o.face !== 'internal') across = INWARD[o.face] > 0 ? c0 - 330 : c1 + 330;
+  else across = c1 + 260;
+  const along = o.source.type === 'door' ? mid + (o.b - o.a) * 0.18 : mid;
+  const p = h ? at(k, along, across) : at(k, across, along);
+  const c = k.c;
+  if (o.source.type === 'door') { drawRect(c, p.x - 15, p.y - 9, 30, 18, { fill: '#fff', stroke: COLORS.wall, weight: PEN.hair }); }
+  else { c.save(); c.beginPath(); c.ellipse(p.x, p.y, 16, 9, 0, 0, Math.PI * 2); c.fillStyle = '#fff'; c.fill(); c.lineWidth = PEN.hair; c.strokeStyle = COLORS.wall; c.stroke(); c.restore(); }
+  label(c, mark, p.x, p.y + 0.5, 11, 'center', COLORS.text, true);
+}
+/** Room label fitted inside the clear rectangle: NAME / clear size / area (/ FFL). Never crosses a wall. */
+function roomLabel(k: Context, r: ModelRoom, opts: { area?: boolean; ffl?: string; corner?: boolean; color?: string } = {}): void {
+  if (isNiche(r.source)) return;
+  const c = k.c, cr = clearRect(k, r), q = box(k, cr), maxW = q.w - 10;
+  if (maxW < 18 || q.h < 14) return;
+  const fits = (t: string, size: number, bold = true) => { c.save(); c.font = `${bold ? '700 ' : ''}${size}px Arial, sans-serif`; const w = c.measureText(t).width; c.restore(); return w <= maxW; };
+  let name = r.source.name.toUpperCase();
+  let size = opts.corner ? 11 : clamp(q.w / 9, 10, 15);
+  while (size > 8 && !fits(name, size)) size -= 0.5;
+  if (!fits(name, size)) name = name.replace(/\s*\(.*?\)\s*/g, '').replace(/ \/ .*$/, '');
+  let lines = [name];
+  if (!fits(name, size)) { const words = name.split(' '); const half = Math.ceil(words.length / 2); lines = [words.slice(0, half).join(' '), words.slice(half).join(' ')].filter(Boolean); }
+  if (lines.some(l => !fits(l, size))) {
+    lines = [lines.join(' ').split(' ')[0]];
+    if (!fits(lines[0], size)) { if (AUDIT) AUDIT.checks.push({ item: 'Room label fits room', status: 'WARNING', detail: `${r.source.name}: room too small at this scale; named in schedule` }); return; }
+  }
+  if (opts.corner) { lines.forEach((l, i) => label(c, l, q.x + 6, q.y + 11 + i * (size + 2), size, 'left', opts.color ?? COLORS.dim, true)); return; }
+  const sub: string[] = [];
+  const dims = `${round(cr.w)} × ${round(cr.h)}`;
+  if (fits(dims, size * 0.8, false)) sub.push(dims);
+  if (opts.area) { const a = `${(cr.w * cr.h / 1e6).toFixed(2)} m²`; if (fits(a, size * 0.8, false)) sub.push(a); }
+  if (opts.ffl && fits(opts.ffl, size * 0.75, false)) sub.push(opts.ffl);
+  const lh = size + 3, sh = size * 0.8 + 3, total = lines.length * lh + sub.length * sh;
+  const room = q.h - 8; while (sub.length && lines.length * lh + sub.length * sh > room) sub.pop();
+  let y = q.y + q.h / 2 - Math.min(total, room) / 2 + lh / 2;
+  for (const l of lines) { label(c, l, q.x + q.w / 2, y, size, 'center', opts.color ?? COLORS.text, true); y += lh; }
+  for (const s2 of sub) { label(c, s2, q.x + q.w / 2, y - 1, size * 0.8, 'center', COLORS.dim); y += sh; }
+}
+/** Dimension string with labels taken from model millimetres, so the parts always add up to the total. */
+function dimMm(k: Context, pts: number[], axis: 'x' | 'y', fixedPx: number, offsetPx: number, tier: string): void {
+  const p = [...new Set(pts.map(v => Math.round(v)))].sort((a, b) => a - b);
+  if (p.length < 2) return;
+  const c = k.c, sign = Math.sign(offsetPx) || 1, line = fixedPx + offsetPx;
+  const P = (v: number, across: number): Point => axis === 'x' ? { x: at(k, v, 0).x, y: across } : { x: across, y: at(k, 0, v).y };
+  const a = P(p[0], line), b = P(p[p.length - 1], line);
+  drawLine(c, a.x, a.y, b.x, b.y, PEN.hair, COLORS.dim);
+  const parts: number[] = [];
+  p.forEach((v, i) => {
+    const e0 = P(v, fixedPx + sign * 6), e1 = P(v, line + sign * 7);
+    drawLine(c, e0.x, e0.y, e1.x, e1.y, PEN.hair, COLORS.dim);
+    const m = P(v, line); drawLine(c, m.x - 4, m.y + 4, m.x + 4, m.y - 4, PEN.medium, COLORS.wall);
+    if (i === 0) return;
+    const d = v - p[i - 1]; parts.push(d);
+    const mid = P((v + p[i - 1]) / 2, line), span = axis === 'x' ? at(k, v, 0).x - at(k, p[i - 1], 0).x : at(k, 0, v).y - at(k, 0, p[i - 1]).y;
+    const size = 11, txt = `${d}`;
+    const off = span < txt.length * 6.5 + 4 ? (i % 2 ? -1 : 1) * 12 : 0; // stagger very short parts
+    if (axis === 'x') label(c, txt, mid.x, mid.y - 8 + (off < 0 ? -10 : 0), size, 'center', COLORS.text);
+    else { c.save(); c.translate(mid.x - 8 + (off < 0 ? -10 : 0), mid.y); c.rotate(-Math.PI / 2); label(c, txt, 0, 0, size, 'center', COLORS.text); c.restore(); }
+  });
+  if (AUDIT) {
+    const sum = parts.reduce((s, v) => s + v, 0), total = p[p.length - 1] - p[0];
+    AUDIT.checks.push({ item: `Dimension string adds up (${tier})`, status: sum === total ? 'PASS' : 'ERROR', detail: `${parts.join(' + ')} = ${sum} vs ${total}` });
+  }
+}
+/** Column grid: chain lines through the building, bubbles outside (A, B, C… across the width; 1, 2, 3… along the depth). */
+function gridBubbles(k: Context, outPx: number, sides: ('top' | 'bottom' | 'left' | 'right')[] = ['top', 'left']): void {
+  const c = k.c, b = k.g.building, B = box(k, b);
+  const R = 15;
+  k.g.gridX.forEach((x, i) => {
+    const px = at(k, x, 0).x;
+    dashed(c, { x: px, y: B.y - outPx + R }, { x: px, y: B.y + B.h + (sides.includes('bottom') ? outPx - R : 0) }, COLORS.grid, PEN.hair, [16, 4, 3, 4]);
+    for (const sd of sides.filter(s2 => s2 === 'top' || s2 === 'bottom')) { const py = sd === 'top' ? B.y - outPx : B.y + B.h + outPx; circle(c, px, py, R, '#fff', COLORS.wall, PEN.thin); label(c, gridLetter(i), px, py, 13, 'center', COLORS.text, true); }
+  });
+  k.g.gridY.forEach((y, i) => {
+    const py = at(k, 0, y).y;
+    dashed(c, { x: B.x - outPx + R, y: py }, { x: B.x + B.w + (sides.includes('right') ? outPx - R : 0), y: py }, COLORS.grid, PEN.hair, [16, 4, 3, 4]);
+    for (const sd of sides.filter(s2 => s2 === 'left' || s2 === 'right')) { const px = sd === 'left' ? B.x - outPx : B.x + B.w + outPx; circle(c, px, py, R, '#fff', COLORS.wall, PEN.thin); label(c, `${i + 1}`, px, py, 13, 'center', COLORS.text, true); }
+  });
+}
+/** Section cut: thick-thin chain with split bubbles "1 / A-301" and view arrows (never a grid letter). */
+function sectionMarker(k: Context, cutY: number, id = '1', ref = sheetNumber('section_aa', 0), outPx?: number): void {
+  const c = k.c, b = k.g.building;
+  const off = outPx ?? 900 * k.scale;
+  const a = { x: at(k, b.x, cutY).x - off, y: at(k, b.x, cutY).y }, e = { x: at(k, b.x + b.w, cutY).x + off, y: a.y };
+  c.save(); c.setLineDash([22, 5, 4, 5]); drawLine(c, a.x + 18, a.y, e.x - 18, e.y, PEN.medium, COLORS.wall); c.restore();
+  for (const p of [a, e]) {
+    circle(c, p.x, p.y, 18, '#fff', COLORS.wall, PEN.medium);
+    drawLine(c, p.x - 18, p.y, p.x + 18, p.y, PEN.thin);
+    label(c, id, p.x, p.y - 8, 12, 'center', COLORS.text, true);
+    label(c, ref, p.x, p.y + 8, 9, 'center', COLORS.text);
+    // looking towards the rear
+    c.save(); c.fillStyle = COLORS.wall; c.beginPath(); c.moveTo(p.x - 9, p.y + 18); c.lineTo(p.x + 9, p.y + 18); c.lineTo(p.x, p.y + 32); c.fill(); c.restore();
+  }
+}
+/** Section cut line used by plans and the section: through the staircase when there is one. */
+function sectionCutY(k: Context): number {
+  const st = (k.g.rooms[0] ?? []).find(r => r.source.type === 'staircase');
+  return st ? st.y + st.d * 0.3 : k.g.building.y + k.g.building.h / 2;
+}
+/* Sheet numbering (A architecture, S structure, M masonry, E electrical, P plumbing, F finishes, D details). */
+const SHEET_BASE: Record<DrawingType, string> = {
+  working_plan: 'A-101', front_elevation: 'A-201', section_aa: 'A-301', door_window_schedule: 'A-401', staircase_detail: 'A-501',
+  excavation: 'S-101', column_layout: 'S-102', footing_detail: 'S-103', beam_slab: 'S-104', column_detail: 'S-105', bar_bending: 'S-106',
+  brickwork_detail: 'M-101', electrical: 'E-101', plumbing: 'P-101', water_tank: 'P-201', stp_detail: 'P-202',
+  tiling_layout: 'F-101', waterproofing: 'D-101',
+};
+const PER_FLOOR: DrawingType[] = ['working_plan', 'brickwork_detail', 'electrical', 'plumbing', 'tiling_layout'];
+export function sheetNumber(type: string, level: number): string {
+  const base = SHEET_BASE[type as DrawingType] ?? 'X-000';
+  if (level > 0 && PER_FLOOR.includes(type as DrawingType)) return base.slice(0, -1) + String(Number(base.slice(-1)) + level);
+  return base;
+}
+/** The complete sheet list of a set, in issue order. */
+export function sheetIndex(floors: number): { type: string; level: number; no: string; title: string }[] {
+  const out: { type: string; level: number; no: string; title: string }[] = [];
+  for (const t of Object.keys(SHEET_BASE) as DrawingType[]) {
+    const levels = PER_FLOOR.includes(t) ? Array.from({ length: Math.min(2, Math.max(1, floors)) }, (_, i) => i) : [0];
+    for (const l of levels) out.push({ type: t, level: l, no: sheetNumber(t, l), title: titleFor[t] });
+  }
+  const pre = 'ASMEPFD';
+  return out.sort((a, b) => pre.indexOf(a.no[0]) - pre.indexOf(b.no[0]) || a.no.localeCompare(b.no));
+}
+function scaleText(k: Context): string {
+  const u = [...new Set(k.views)];
+  return u.length === 0 ? 'NTS' : u.length === 1 ? `1:${u[0]}` : 'AS SHOWN';
+}
+function viewTitle(k: Context, title: string, x: number, y: number): void {
+  const den = k.views[k.views.length - 1];
+  label(k.c, title, x, y, 17, 'left', COLORS.text, true);
+  const w = title.length * 9.5;
+  drawLine(k.c, x, y + 13, x + w, y + 13, PEN.medium); drawLine(k.c, x, y + 17, x + w, y + 17, PEN.hair);
+  if (den) label(k.c, `SCALE 1:${den}`, x, y + 32, 12, 'left', COLORS.dim);
+}
+
+/** Dimension tiers outside a plan: openings → wall faces → overall (front & left), wall faces → overall (rear & right). Returns the outer offset used. */
+function planDimensions(k: Context, full: boolean, gap = 34): number {
+  const b = k.g.building, B = box(k, b), rooms = selected(k).filter(r => !isNiche(r.source));
+  const ops = k.g.openings.filter(o => o.floor === k.level && o.face !== 'internal');
+  const faces: { side: PSide; axis: 'x' | 'y'; fixedPx: number; sign: number }[] = [
+    { side: 'front', axis: 'x', fixedPx: B.y, sign: -1 }, { side: 'left', axis: 'y', fixedPx: B.x, sign: -1 },
+    { side: 'rear', axis: 'x', fixedPx: B.y + B.h, sign: 1 }, { side: 'right', axis: 'y', fixedPx: B.x + B.w, sign: 1 }];
+  let used = 0;
+  for (const f of faces) {
+    const lo = f.axis === 'x' ? b.x : b.y, hi = f.axis === 'x' ? b.x + b.w : b.y + b.h;
+    // Tier 1 is reserved on every face: opening chain (front/left) or opening tags (rear/right).
+    let tier = 1;
+    if (full && (f.side === 'rear' || f.side === 'right') && ops.some(o2 => o2.face === f.side)) tier = 2;
+    if (full && (f.side === 'front' || f.side === 'left')) {
+      const o = ops.filter(o2 => o2.face === f.side).flatMap(o2 => [o2.a, o2.b]);
+      if (o.length) dimMm(k, [lo, ...o, hi], f.axis, f.fixedPx, f.sign * (gap * tier++ + 22), `${f.side} openings`);
+    }
+    if (full) {
+      const pts = [lo, lo + WALL_EXTERNAL_MM, hi - WALL_EXTERNAL_MM, hi];
+      for (const r of rooms.filter(r2 => onBuildingEdge(k, r2, f.side))) {
+        const ends: [number, PSide][] = f.axis === 'x' ? [[r.x, 'left'], [r.x + r.w, 'right']] : [[r.y, 'front'], [r.y + r.d, 'rear']];
+        for (const [e, sd] of ends) if (e > lo + 1 && e < hi - 1 && sideInset(k, r, sd) > 0) pts.push(e - WALL_PLAN_INT_MM / 2, e + WALL_PLAN_INT_MM / 2);
+      }
+      dimMm(k, pts, f.axis, f.fixedPx, f.sign * (gap * tier++ + 22), `${f.side} wall faces`);
+    }
+    dimMm(k, [lo, hi], f.axis, f.fixedPx, f.sign * (gap * tier++ + 22), `${f.side} overall`);
+    used = Math.max(used, gap * (tier - 1) + 22);
+  }
+  return used;
+}
+/** Dog-leg stair in plan: two flights side by side, landing at the far end, tread lines, UP arrow, riser numbers. */
+function stairPlanSymbol(k: Context, r: ModelRoom): void {
+  const c = k.c, cr = clearRect(k, r), st = stair(k);
+  const alongX = cr.w >= cr.h;
+  const L = alongX ? cr.w : cr.h, Wd = alongX ? cr.h : cr.w;
+  const risers = Math.max(4, Math.round(positive(st.numRisers, 18))), half = Math.ceil(risers / 2);
+  const landing = Math.min(Wd, positive(st.flightWidthMm, 1000)) , fw = (Wd - 100) / 2;
+  const treads = half - 1, run = Math.min(L - landing, treads * positive(st.treadMm, 270));
+  const P = (u: number, v: number) => alongX ? at(k, cr.x + u, cr.y + v) : at(k, cr.x + v, cr.y + u);
+  const ln = (u0: number, v0: number, u1: number, v1: number, w = PEN.thin) => { const a = P(u0, v0), e = P(u1, v1); drawLine(c, a.x, a.y, e.x, e.y, w); };
+  const lStart = L - landing;
+  ln(lStart, 0, lStart, Wd, PEN.thin);
+  ln(lStart - run, fw + 50, lStart, fw + 50, PEN.thin);
+  for (let i = 0; i <= treads; i++) { const u = lStart - run + (run * i) / treads; ln(u, 0, u, fw, PEN.hair); ln(u, fw + 100, u, Wd, PEN.hair); }
+  ln(lStart - run, fw, lStart, fw, PEN.thin); ln(lStart - run, fw + 100, lStart, fw + 100, PEN.thin);
+  // walking line: up flight 1 (near side), across the landing, up flight 2
+  const a0 = P(lStart - run + 120, fw / 2), a1 = P(L - landing / 2, fw / 2), a2 = P(L - landing / 2, fw + 100 + fw / 2), a3 = P(lStart - run + 150, fw + 100 + fw / 2);
+  c.save(); c.strokeStyle = COLORS.wall; c.lineWidth = PEN.thin; c.beginPath(); c.moveTo(a0.x, a0.y); c.lineTo(a1.x, a1.y); c.lineTo(a2.x, a2.y); c.stroke(); c.restore();
+  arrow(c, a2.x, a2.y, a3.x, a3.y, COLORS.wall, 9);
+  circle(c, a0.x, a0.y, 3, COLORS.wall, COLORS.wall);
+  const tag = P(lStart - run - 60 > 0 ? (lStart - run) / 2 : lStart - run + 200, Wd / 2);
+  label(c, k.level === 0 ? 'UP' : 'UP / DN', tag.x, tag.y, 11, 'center', COLORS.text, true);
+}
+/** Plan sheet frame: largest preferred scale that leaves room for the dimension tiers (more on the front/left). */
+function planFrame(k: Context): void {
+  const b = k.g.building, T = 236, L = 236, R = 140, Bm = 140, X0 = 60, Y0 = 106, W = 1340, Hh = 1150;
+  const den = STD_SCALES.find(d => b.w * PX_PER_PAPER_MM / d + L + R <= W && b.h * PX_PER_PAPER_MM / d + T + Bm <= Hh) ?? 500;
+  const s2 = PX_PER_PAPER_MM / den;
+  const sx = (W - (b.w * s2 + L + R)) / 2, sy = (Hh - (b.h * s2 + T + Bm)) / 2;
+  k.frame = { x: X0 + L + sx, y: Y0 + T + sy, s: s2, width: b.x, height: b.y };
+  k.scale = s2; k.views.push(den);
+}
+function northAndScale(k: Context, x: number, y: number): void {
+  drawNorthArrow(k.c, x + 40, y, k.req.facing);
+  drawScaleBar(k.c, x + 110, y - 6, k.scale);
+}
+/* A-101 / A-102: Working plan — fully dimensioned, tagged, areas, grid, section marker. */
+function workingPlan(k: Context): void {
+  const c = k.c, b = k.g.building;
+  planFrame(k);
+  drawPlanWalls(k, 'solid');
+  const ops = k.g.openings.filter(o => o.floor === k.level);
+  for (const o of ops) planOpening(c, k, o);
+  drawColumns(k);
+  const ffl = k.level === 0 ? 'FFL +0.450' : `FFL +${(0.45 + 3 * k.level).toFixed(3)}`;
+  for (const r of selected(k)) { if (r.source.type === 'staircase') { stairPlanSymbol(k, r); continue; } roomLabel(k, r, { area: true, ffl }); }
+  for (const o of ops) openingTag(k, o);
+  const out = planDimensions(k, true);
+  // grid-to-grid string beyond the overall, then bubbles
+  const B = box(k, b);
+  dimMm(k, k.g.gridX, 'x', B.y, -(out + 34), 'grid A–' + gridLetter(k.g.gridX.length - 1));
+  dimMm(k, k.g.gridY, 'y', B.x, -(out + 34), `grid 1–${k.g.gridY.length}`);
+  gridBubbles(k, out + 66, ['top', 'left']);
+  sectionMarker(k, sectionCutY(k), '1', sheetNumber('section_aa', 0), out + 40);
+  label(c, 'FRONT / ROAD SIDE', B.x + B.w / 2, B.y - out - 100, 12, 'center', COLORS.dim, true);
+  viewTitle(k, `${floorName(k)} WORKING PLAN`, 80, 140);
+  // room area schedule
+  const rooms = selected(k).filter(r => !isNiche(r.source));
+  const rows = rooms.map(r => { const cr = clearRect(k, r); return [r.source.name, `${round(cr.w)} × ${round(cr.h)}`, (cr.w * cr.h / 1e6).toFixed(2)]; });
+  const carpet = rooms.filter(r => r.source.type !== 'balcony').reduce((s, r) => { const cr = clearRect(k, r); return s + cr.w * cr.h / 1e6; }, 0);
+  const balc = rooms.filter(r => r.source.type === 'balcony').reduce((s, r) => s + r.w * r.d / 1e6, 0);
+  rows.push(['TOTAL CARPET (excl. balcony)', '', carpet.toFixed(2)]);
+  rows.push([`WHOLE FLOOR (built-up ${(b.w * b.h / 1e6 - balc).toFixed(2)} m²)`, `${round(b.w)} × ${round(b.h)}`, '']);
+  const y = table(c, 1420, 150, [{ h: 'ROOM', w: 260 }, { h: 'CLEAR SIZE mm', w: 170 }, { h: 'AREA m²', w: 90 }], rows, `ROOM AREA SCHEDULE — ${floorName(k)}`);
+  legend(c, 1420, y + 38, 'NOTES', [
+    'Dimensions in mm to masonry/finished faces as shown.',
+    `External walls ${WALL_EXTERNAL_MM} mm brick; partitions 115 mm`,
+    '  brick + plaster (150 mm finished).',
+    'D/W/V marks: see door & window schedule ' + sheetNumber('door_window_schedule', 0) + '.',
+    `Section 1–1: see ${sheetNumber('section_aa', 0)}. Stair: see ${sheetNumber('staircase_detail', 0)}.`,
+    'Grid lines A, B… / 1, 2… match the structural sheets.',
+    `${ffl}; NGL ±0.000 (plinth 450 mm).`,
+    'Setbacks/FSI are assumptions — confirm locally.',
+  ]);
+  northAndScale(k, 1420, Math.max(y + 330, 760));
+}
+/* A-401: Door, window & ventilator schedule with type elevations at 1:50. */
+function doorWindowSchedule(k: Context): void {
+  const c = k.c, { types } = openingTypes(k.g);
+  const nm = { door: 'Door', window: 'Window', ventilator: 'Ventilator' };
+  const rows = types.map(t => [t.mark, `${nm[t.type]}${t.main ? ' (main)' : ''}`, `${t.widthMm}`, `${t.heightMm}`, `${t.sillMm}`, `${t.sillMm + t.heightMm}`, t.material,
+    ...Array.from({ length: k.g.floors }, (_, i) => `${t.perFloor[i] ?? 0}`), `${t.perFloor.reduce((s, v) => s + v, 0)}`, [...t.rooms].join(', ')]);
+  const sum = (ty: OpeningType['type']) => types.filter(t => t.type === ty).reduce((s, t) => s + t.perFloor.reduce((a, v) => a + v, 0), 0);
+  const sched = k.layout.openingsSchedule;
+  const boqOk = !sched || (sched.totalDoors === sum('door') && sched.totalWindows === sum('window') && sched.totalVentilators === sum('ventilator'));
+  rows.push(['TOTAL', '', '', '', '', '', '', ...Array.from({ length: k.g.floors }, () => ''), `${sum('door') + sum('window') + sum('ventilator')}`, `Doors ${sum('door')} • Windows ${sum('window')} • Ventilators ${sum('ventilator')} ${boqOk ? '(= BOQ opening count)' : '(CHECK against BOQ)'}`]);
+  if (AUDIT) AUDIT.checks.push({ item: 'Door/window schedule = BOQ counts', status: boqOk ? 'PASS' : 'ERROR', detail: `D ${sum('door')} W ${sum('window')} V ${sum('ventilator')} vs schedule D ${sched?.totalDoors} W ${sched?.totalWindows} V ${sched?.totalVentilators}` });
+  const cols = [{ h: 'MARK', w: 60 }, { h: 'TYPE', w: 125 }, { h: 'W mm', w: 65 }, { h: 'H mm', w: 65 }, { h: 'SILL', w: 60 }, { h: 'LINTEL LVL', w: 90 }, { h: 'MATERIAL', w: 330 },
+    ...Array.from({ length: k.g.floors }, (_, i) => ({ h: i === 0 ? 'GF' : `F${i}`, w: 45 })), { h: 'TOTAL', w: 60 }, { h: 'LOCATION', w: 720 - 45 * k.g.floors }];
+  const yEnd = table(c, 80, 150, cols, rows, 'DOOR, WINDOW & VENTILATOR SCHEDULE', 24);
+  // Type elevations at 1:50 (0.1 px per mm on this A3 sheet)
+  const den = 50, s = PX_PER_PAPER_MM / den; k.views.push(den);
+  let x = 100, rowY = yEnd + 110; const baseOf = (t: OpeningType) => t.sillMm + t.heightMm;
+  label(c, 'TYPE ELEVATIONS (viewed from outside)', 80, yEnd + 50, 17, 'left', COLORS.green, true);
+  label(c, `SCALE 1:${den}`, 80, yEnd + 72, 12, 'left', COLORS.dim);
+  const maxH = Math.max(...types.map(baseOf), 2100) * s;
+  for (const t of types) {
+    const w = t.widthMm * s, h = t.heightMm * s;
+    if (x + w + 70 > 1400) { x = 100; rowY += maxH + 95; }
+    if (rowY + maxH > 1240) break;
+    const ffl = rowY + maxH, top = ffl - (t.sillMm + t.heightMm) * s;
+    drawLine(c, x - 20, ffl, x + w + 20, ffl, PEN.thin, COLORS.dim);
+    drawRect(c, x, top, w, h, { fill: '#fff', stroke: COLORS.wall, weight: PEN.medium });
+    drawRect(c, x + 4, top + 4, w - 8, h - (t.type === 'door' ? 4 : 8), { stroke: COLORS.wall, weight: PEN.hair });
+    if (t.type === 'door') { drawLine(c, x + w - 9, top + h * 0.5, x + w - 9, top + h * 0.56, PEN.medium); if (t.widthMm >= 1000) drawLine(c, x + w / 2, top + 4, x + w / 2, top + h, PEN.hair); }
+    else if (t.type === 'window') { drawLine(c, x + w / 2, top + 4, x + w / 2, top + h - 4, PEN.hair); drawLine(c, x - 5, top + h + 3, x + w + 5, top + h + 3, PEN.medium); }
+    else for (let yy = top + 8; yy < top + h - 4; yy += 6) drawLine(c, x + 5, yy, x + w - 5, yy, PEN.hair, COLORS.dim);
+    drawLine(c, x - 8, top - 6, x + w + 8, top - 6, PEN.thin); // lintel
+    label(c, t.mark, x + w / 2, ffl + 18, 14, 'center', COLORS.text, true);
+    label(c, `${t.widthMm} × ${t.heightMm}`, x + w / 2, ffl + 36, 11, 'center', COLORS.dim);
+    if (t.sillMm > 0) label(c, `sill ${t.sillMm}`, x + w / 2, ffl - t.sillMm * s / 2, 10, 'center', COLORS.dim);
+    x += Math.max(w, 90) + 60;
+  }
+  legend(c, 1440, yEnd + 50, 'NOTES', [
+    'Sizes are clear openings in mm; frames fixed in',
+    '  the opening. Lintel level = sill + height.',
+    'RCC lintels bear 150 mm on each side;',
+    '  chajja 450 mm over external windows (see S-sheets).',
+    'Glazing, hardware and finishes as per',
+    '  customer selection; verify on site.',
+    'Marks D/W/V are used on every plan sheet.',
   ]);
 }
 
@@ -1025,106 +1460,120 @@ function projectVerticalOpening(k: Context, o: OpeningPlacement, transform: (x: 
   void s;
 }
 function levelMark(c: CanvasRenderingContext2D, x: number, y: number, textValue: string): void {
-  drawLine(c, x - 28, y, x + 15, y, 0.8, COLORS.dim);
-  c.save(); c.fillStyle = COLORS.green; c.beginPath(); c.moveTo(x - 28, y);
-  c.lineTo(x - 19, y - 8); c.lineTo(x - 19, y + 8); c.fill(); c.restore();
-  label(c, textValue, x + 23, y, 14, 'left', COLORS.text);
+  // ▽ level symbol on the line, value written above the line (never struck through)
+  drawLine(c, x - 34, y, x + 200, y, PEN.hair, COLORS.dim);
+  c.save(); c.fillStyle = COLORS.wall; c.beginPath(); c.moveTo(x - 8, y); c.lineTo(x - 16, y - 12); c.lineTo(x, y - 12); c.closePath(); c.fill(); c.restore();
+  label(c, textValue, x + 8, y - 9, 13, 'left', COLORS.text);
 }
+const fmtLvl = (mm: number) => `${mm >= 0 ? '+' : '−'}${(Math.abs(mm) / 1000).toFixed(3)}`;
 function sectionAA(k: Context): void {
   const c = k.c, b = k.g.building, floors = Math.min(k.g.floors, 5);
-  const bottom = -900, top = 450 + floors * 3000 + 900;
-  const view = { x: b.x - 500, y: bottom, w: b.w + 1050, h: top - bottom };
-  setFrame(k, view, { x: 135, y: 150, w: 1470, h: 900 }, 55);
-  // Model Z upwards while canvas Y down; x unchanged from plan.
-  const project = (x: number, z: number): Point => at(k, x, top - z + bottom);
-  const s = k.scale, wall = 230 * s;
-  const ngl = project(b.x, 0).y;
-  drawRect(c, 150, ngl, 1440, Math.max(0, 1150 - ngl), { fill: COLORS.earth });
-  drawHatch(c, 150, ngl + 4, 1440, Math.max(0, 1150 - ngl), 45, 16);
-  drawLine(c, 150, ngl, 1600, ngl, 1.5);
-  const left = project(b.x, 0).x, right = project(b.x + b.w, 0).x;
+  const FD = ASSUMED_FOUNDING_DEPTH_M * 1000, H = 3000, PL = 450;
   const found = footingSpec(k, 0);
-  const foundationY = project(0, -found.depth).y;
+  const cutY = sectionCutY(k);
+  const stairRooms = Array.from({ length: floors }, (_, f) => (k.g.rooms[f] ?? []).find(r => r.source.type === 'staircase' && cutY >= r.y && cutY <= r.y + r.d));
+  const st0 = stairRooms[0];
+  const roofZ = PL + floors * H, mumtyZ = roofZ + 2700;
+  const top = (st0 ? mumtyZ + 150 : roofZ + 900) + 400, bottom = -FD - found.pcc - 500;
+  setFrame(k, { x: b.x - 600, y: bottom, w: b.w + 1200, h: top - bottom }, { x: 110, y: 120, w: 1500, h: 1120 }, 60);
+  const project = (x: number, z: number): Point => at(k, x, top - z + bottom);
+  const s = k.scale, wallE = WALL_EXTERNAL_MM * s;
+  const left = project(b.x, 0).x, right = project(b.x + b.w, 0).x, ngl = project(b.x, 0).y, botY = project(0, bottom).y;
+  drawRect(c, left - 520 * s, ngl, right - left + 1040 * s, botY - ngl, { fill: COLORS.earth });
+  drawHatch(c, left - 520 * s, ngl + 3, right - left + 1040 * s, botY - ngl - 3, 45, 16);
+  drawLine(c, left - 520 * s, ngl, right + 520 * s, ngl, PEN.medium);
+  // footings at the assumed founding depth (same depth as BOQ earthwork)
   const groundColumns = k.g.columns.filter(col => col.x >= b.x - 1 && col.x <= b.x + b.w + 1);
-  const drawnX = unique(groundColumns.map(col => col.x));
-  // Foundation and plinth are below and above NGL, respectively.
+  const drawnX = unique(groundColumns.map(col => clamp(col.x, b.x + col.w / 2, b.x + b.w - col.w / 2)));
+  const fTop = project(0, -FD + found.depth).y;
   for (const x of drawnX) {
-    const col = groundColumns.find(cc => Math.abs(cc.x - x) < 1) ?? k.g.columns[0];
+    const col = groundColumns[0] ?? k.g.columns[0];
     const p = project(x, 0);
-    hatchBox(c, { x: p.x - found.w * s / 2, y: foundationY, w: found.w * s,
-      h: found.depth * s }, COLORS.concrete, 45, 10);
-    hatchBox(c, { x: p.x - (found.w + 300) * s / 2, y: foundationY + found.depth * s,
-      w: (found.w + 300) * s, h: found.pcc * s }, '#d7d7d7', -45, 9);
-    hatchBox(c, { x: p.x - (col?.w ?? 300) * s / 2, y: project(x, 450).y,
-      w: (col?.w ?? 300) * s, h: ngl - project(x, 450).y }, COLORS.concrete, 45, 13);
+    hatchBox(c, { x: p.x - (found.w + 300) * s / 2, y: project(0, -FD).y, w: (found.w + 300) * s, h: found.pcc * s }, '#d7d7d7', -45, 9, PEN.thin);
+    hatchBox(c, { x: p.x - found.w * s / 2, y: fTop, w: found.w * s, h: found.depth * s }, COLORS.concrete, 45, 8, PEN.medium);
+    hatchBox(c, { x: p.x - (col?.w ?? 300) * s / 2, y: project(x, PL).y, w: (col?.w ?? 300) * s, h: fTop - project(x, PL).y }, COLORS.concrete, 45, 10, PEN.medium);
   }
-  // DPC runs continuously at plinth. Roof slab and any intermediate slabs reuse structural thickness.
-  const plinthY = project(0, 450).y;
-  hatchBox(c, { x: left, y: plinthY, w: right - left, h: Math.max(3, 130 * s) }, COLORS.concrete, 45, 12);
-  drawLine(c, left, plinthY - 3, right, plinthY - 3, 2, COLORS.green);
-  label(c, 'DPC', right + 14, plinthY - 4, 14, 'left', COLORS.green);
-  const cutY = b.y + b.h / 2;
+  // plinth beam + DPC
+  const plinthY = project(0, PL).y;
+  hatchBox(c, { x: left, y: plinthY, w: right - left, h: Math.max(3, positive(firstBeam(k).depthMm, 400) * s * 0.75) }, COLORS.concrete, 45, 10, PEN.medium);
+  drawLine(c, left, plinthY - 2, right, plinthY - 2, PEN.medium, COLORS.green);
+  label(c, 'DPC', left - 12, plinthY - 8, 11, 'right', COLORS.green, true);
+  const beamD = positive(firstBeam(k).depthMm, 400);
   for (let story = 0; story < floors; story++) {
-    const baseZ = 450 + story * 3000, roofZ = baseZ + 3000;
-    const baseY = project(0, baseZ).y, roofY = project(0, roofZ).y;
-    const slab = storyThickness(k, story), beam = positive(firstBeam(k).depthMm, 400);
-    const wallTop = roofY + slab * s;
-    for (const x of [b.x, b.x + b.w]) {
-      const xx = project(x, 0).x;
-      hatchBox(c, { x: xx - wall / 2, y: wallTop, w: wall, h: baseY - wallTop },
-        '#eeeae4', -45, 14, 2);
-    }
+    const baseZ = PL + story * H, topZ = baseZ + H, slab = storyThickness(k, story);
+    const baseY = project(0, baseZ).y, roofY = project(0, topZ).y, wallTop = roofY + slab * s;
+    for (const x of [b.x, b.x + b.w]) { const xx = project(x, 0).x; hatchBox(c, { x: x === b.x ? xx : xx - wallE, y: wallTop, w: wallE, h: baseY - wallTop }, '#eeeae4', -45, 9, PEN.cut); }
     const rooms = sectionRooms(k, story, cutY);
-    const cuts = intervalCuts(rooms, b);
-    for (const x of cuts.slice(1, -1)) {
+    for (const x of intervalCuts(rooms, b).slice(1, -1)) {
       if (Math.abs(x - b.x) < 230 || Math.abs(x - b.x - b.w) < 230) continue;
-      const xx = project(x, 0).x;
-      hatchBox(c, { x: xx - 75 * s, y: wallTop, w: 150 * s, h: baseY - wallTop },
-        '#eeeae4', -45, 15, 1.2);
+      const xx = project(x, 0).x; hatchBox(c, { x: xx - 75 * s, y: wallTop, w: 150 * s, h: baseY - wallTop }, '#eeeae4', -45, 9, PEN.cut);
     }
     for (const room of rooms) {
-      const center = project(room.x + room.w / 2, baseZ + 1250);
-      const span = room.w * s;
-      if (span > 60) {
-        const roomLabel = room.source.name.replace(/\s*\(.*?\)\s*/g, '').trim().toUpperCase();
-        label(c, roomLabel, center.x, center.y, Math.min(15, span / 10), 'center');
-        label(c, `${round(room.w)} mm`, center.x, center.y + 19, 12, 'center', COLORS.dim);
-      }
+      if (room.source.type === 'staircase') continue;
+      const cen = project(room.x + room.w / 2, baseZ + 1700), span = room.w * s;
+      if (span > 50) label(c, room.source.name.replace(/\s*\(.*?\)\s*/g, '').trim().toUpperCase(), cen.x, cen.y, Math.min(14, span / 9), 'center');
     }
-    // Section includes openings only when front/rear host wall is intersected by
-    // the cut plane. Draw on cut wall itself; every x offset is from the plan resolver.
-    for (const o of k.g.openings.filter(a => a.floor === story && a.axis === 'horizontal'
-      && Math.abs(a.fixed - cutY) < 115)) {
-      projectVerticalOpening(k, o, project, story, s, true);
+    // slab (cut, solid RCC) and beams under it at the grid
+    hatchBox(c, { x: left, y: roofY, w: right - left, h: Math.max(4, slab * s) }, '#cfd3d0', 45, 6, PEN.cut);
+    for (const x of drawnX) { const xx = project(x, 0).x; hatchBox(c, { x: clamp(xx - 115 * s, left, right - 230 * s), y: roofY + slab * s, w: 230 * s, h: Math.max(0, beamD - slab) * s }, '#cfd3d0', 45, 6, PEN.medium); }
+    // lintel band over openings
+    drawLine(c, left, project(0, baseZ + 2100).y, right, project(0, baseZ + 2100).y, PEN.hair, COLORS.grid);
+    levelMark(c, right + 70, baseY, `${story === 0 ? 'FFL GF' : `FFL F${story}`} ${fmtLvl(baseZ)}`);
+    // stair: flight 1 cut (hatched waist), landing, flight 2 seen beyond
+    const sr = stairRooms[story];
+    if (sr) {
+      const stD = stair(k), risers = Math.max(4, Math.round(positive(stD.numRisers, 18))), half = Math.ceil(risers / 2);
+      const rz = H / risers, landingW = Math.min(positive(stD.flightWidthMm, 1000), sr.w * 0.4);
+      const x0 = sr.x + (Math.abs(sr.x - b.x) < 40 ? WALL_EXTERNAL_MM : 75), x1 = sr.x + sr.w - (Math.abs(sr.x + sr.w - b.x - b.w) < 40 ? WALL_EXTERNAL_MM : 75);
+      const run = x1 - landingW - x0, tr = run / Math.max(1, half - 1);
+      const prof: Point[] = [project(x0, baseZ)];
+      for (let i = 0; i < half; i++) { const xx = x0 + i * tr; prof.push(project(xx, baseZ + (i + 1) * rz)); prof.push(project(Math.min(xx + tr, x1 - landingW), baseZ + (i + 1) * rz)); }
+      const waist = positive(stD.waistSlabThicknessMm, 150);
+      const lz = baseZ + half * rz;
+      hatchPolygon(c, [...prof, project(x1 - landingW, lz - waist - 80), project(x0, baseZ - waist)], '#e0e3e0');
+      hatchBox(c, { x: project(x1 - landingW, 0).x, y: project(0, lz).y, w: landingW * s, h: waist * s }, '#e0e3e0', 45, 6, PEN.medium);
+      c.save(); c.strokeStyle = COLORS.wall; c.lineWidth = PEN.thin; c.beginPath();
+      const n2 = risers - half, tr2 = run / Math.max(1, n2);
+      let p = project(x1 - landingW, lz); c.moveTo(p.x, p.y);
+      for (let i = 0; i < n2; i++) { const xx = x1 - landingW - i * tr2; p = project(xx, lz + (i + 1) * rz); c.lineTo(project(xx, lz + i * rz).x, p.y); c.lineTo(project(xx - tr2, 0).x, p.y); }
+      c.stroke(); c.restore();
+      const h0 = project(x0 + 100, baseZ + 900 + rz), h1 = project(x1 - landingW, lz + 900);
+      drawLine(c, h0.x, h0.y, h1.x, h1.y, PEN.thin, COLORS.dim);
+      label(c, `${risers} R × ${rz.toFixed(0)}`, project((x0 + x1) / 2, 0).x, project(0, baseZ + H * 0.82).y, 11, 'center', COLORS.dim);
     }
-    hatchBox(c, { x: left - wall / 2, y: roofY, w: right - left + wall,
-      h: Math.max(5, slab * s) }, COLORS.concrete, 45, 10);
-    for (const x of drawnX) {
-      const xx = project(x, 0).x;
-      hatchBox(c, { x: xx - 115 * s, y: roofY + slab * s,
-        w: 230 * s, h: Math.max(0, beam - slab) * s }, COLORS.concrete, -45, 12, 1.2);
-    }
-    levelMark(c, right + 70, baseY, `${story === 0 ? 'GF' : `F${story}`} +${(baseZ / 1000).toFixed(3)} (${round(baseZ)} mm)`);
   }
-  const roofZ = 450 + floors * 3000;
+  // roof: parapet (and stair-head room when the stair continues to the terrace)
   const roofY = project(0, roofZ).y, parapetY = project(0, roofZ + 900).y;
-  for (const x of [left - wall / 2, right - wall / 2])
-    hatchBox(c, { x, y: parapetY, w: wall, h: roofY - parapetY }, '#eeeae4', -45, 13);
-  levelMark(c, right + 70, ngl, 'NGL ±0.000 (0 mm)');
-  levelMark(c, right + 70, roofY, `ROOF +${(roofZ / 1000).toFixed(3)} (${round(roofZ)} mm)`);
-  levelMark(c, right + 70, parapetY, `PARAPET +${((roofZ + 900) / 1000).toFixed(3)} (${round(roofZ + 900)} mm)`);
+  for (const x of [left, right - wallE]) hatchBox(c, { x, y: parapetY, w: wallE, h: roofY - parapetY }, '#eeeae4', -45, 9, PEN.cut);
+  drawRect(c, left - 4, parapetY - 6, right - left + 8, 6, { fill: '#d6d6d3', stroke: COLORS.wall, weight: PEN.thin });
+  levelMark(c, right + 70, roofY, `TOS ROOF ${fmtLvl(roofZ)}`);
+  levelMark(c, right + 70, parapetY - 6, `TOP OF PARAPET ${fmtLvl(roofZ + 900)}`);
+  const stTop = (k.g.rooms[floors - 1] ?? []).find(r => r.source.type === 'staircase' && cutY >= r.y && cutY <= r.y + r.d);
+  if (stTop) {
+    const mx0 = project(stTop.x, 0).x, mx1 = project(stTop.x + stTop.w, 0).x, my = project(0, mumtyZ).y;
+    for (const x of [mx0, mx1 - wallE]) hatchBox(c, { x, y: my, w: wallE, h: roofY - my }, '#eeeae4', -45, 9, PEN.cut);
+    hatchBox(c, { x: mx0 - 6, y: my - 120 * s, w: mx1 - mx0 + 12, h: 120 * s }, '#cfd3d0', 45, 6, PEN.cut);
+    label(c, 'STAIR HEAD ROOM', (mx0 + mx1) / 2, (my + roofY) / 2, 12, 'center', COLORS.text, true);
+    levelMark(c, right + 70, my - 120 * s, `TOP OF HEAD ROOM ${fmtLvl(mumtyZ + 120)}`);
+  }
+  levelMark(c, right + 70, ngl, 'NGL ±0.000');
+  levelMark(c, right + 70, project(0, -FD).y, `FOUNDING LEVEL ${fmtLvl(-FD)} (ASSUMED — VERIFY BY SOIL REPORT)`);
+  // vertical dimension string on the left, horizontal string below ground
+  const vz = [-FD, 0, ...Array.from({ length: floors + 1 }, (_, i) => PL + i * H), roofZ + 900];
+  const ys = vz.map(z => project(0, z).y);
+  drawDimensionChain(c, ys, left - 40, -50, 'vertical', s);
   const outer = unique([b.x, ...sectionRooms(k, 0, cutY).flatMap(r => [r.x, r.x + r.w]), b.x + b.w]);
-  drawDimensionChain(c, outer.map(x => project(x, 0).x), ngl, 115, 'horizontal', s);
-  drawDimensionChain(c, [parapetY, roofY, ...Array.from({ length: floors }, (_, i) => project(0, 450 + i * 3000).y), ngl]
-    .sort((a, b) => a - b), right + 185, 38, 'vertical', s);
-  label(c, 'SECTION CUT AT MID-DEPTH (A–A ON PLAN)', 250, 180, 21, 'left', COLORS.green, true);
-  legend(c, 1640, 315, 'SECTION REFERENCE', [
-    `External masonry: 230 mm`, `Internal masonry: 150 mm`,
-    `Floor-to-floor: 3000 mm`, `Plinth above NGL: 450 mm`,
-    `Roof parapet: 900 mm`, `Roof slab: ${round(storyThickness(k, floors - 1))} mm`,
-    `Beam depth: ${round(positive(firstBeam(k).depthMm, 400))} mm`,
-    'Room widths = exact plan x-intercepts.',
-    'Founding depth: geotechnical verification.',
+  dimMm(k, outer, 'x', botY - 40, -0.0001, 'section widths');
+  viewTitle(k, 'SECTION 1–1 (THROUGH STAIR)', 130, 150);
+  legend(c, 1640, 330, 'SECTION NOTES', [
+    `Floor-to-floor ${H} mm; plinth ${PL} mm above NGL.`,
+    `Slab ${round(storyThickness(k, floors - 1))} mm; beams ${round(positive(firstBeam(k).widthMm, 230))} × ${round(beamD)} mm.`,
+    `Footing ${round(found.w)} × ${round(found.d)} × ${round(found.depth)} mm on ${round(found.pcc)} mm PCC.`,
+    `Founding depth ${FD} mm is an ASSUMPTION (same as BOQ);`,
+    '  confirm with a soil investigation.',
+    `Walls: ${WALL_EXTERNAL_MM} mm external, 150 mm finished partitions.`,
+    'Lintel level +2100 above each floor.',
+    `Cut shown on plans ${sheetNumber('working_plan', 0)}${k.g.floors > 1 ? '/' + sheetNumber('working_plan', 1) : ''}.`,
   ]);
 }
 function frontElevation(k: Context): void {
@@ -1152,21 +1601,21 @@ function frontElevation(k: Context): void {
     const beam = positive(firstBeam(k).depthMm, 400);
     drawRect(c, left, topY + slab * s, right - left, Math.max(2, (beam - slab) * s),
       { stroke: COLORS.grid, weight: 0.8 });
-    levelMark(c, right + 74, baseY, `${story === 0 ? 'GF' : `F${story}`} +${(z / 1000).toFixed(3)} (${round(z)} mm)`);
+    levelMark(c, right + 74, baseY, `FFL ${story === 0 ? 'GF' : `F${story}`} ${fmtLvl(z)}`);
   }
   const roofZ = 450 + floors * 3000;
   const ry = project(0, roofZ).y, py = project(0, roofZ + 900).y;
   hatchBox(c, { x: left, y: py, w: right - left, h: ry - py }, '#f0eee9', 45, 17);
   drawRect(c, left - 5, py - 10, right - left + 10, 10,
     { fill: '#d6d6d3', stroke: COLORS.wall, weight: 1 });
-  levelMark(c, right + 74, ngl, 'NGL ±0.000 (0 mm)');
-  levelMark(c, right + 74, ry, `ROOF +${(roofZ / 1000).toFixed(3)} (${round(roofZ)} mm)`);
-  levelMark(c, right + 74, py, `COPING +${((roofZ + 900) / 1000).toFixed(3)} (${round(roofZ + 900)} mm)`);
+  levelMark(c, right + 74, ngl, 'NGL ±0.000');
+  levelMark(c, right + 74, ry, `TOS ROOF ${fmtLvl(roofZ)}`);
+  levelMark(c, right + 74, py, `TOP OF COPING ${fmtLvl(roofZ + 900)}`);
   drawDimensionChain(c, [left, right], ngl, 56, 'horizontal', s);
   const frontX = unique([b.x, ...k.g.openings.filter(o => o.face === 'front' && o.floor === 0)
     .flatMap(o => [o.a, o.b]), b.x + b.w]).map(x => project(x, 0).x);
   drawDimensionChain(c, frontX, ngl, 96, 'horizontal', s);
-  label(c, 'FRONT = PLAN Y-MIN; OPENINGS PROJECTED AT MATCHING X', 190, 165, 20, 'left', COLORS.green, true);
+  viewTitle(k, 'FRONT ELEVATION (ROAD SIDE)', 150, 150);
   legend(c, 1715, 285, 'ELEVATION KEY', [
     `Building width ${round(b.w)} mm`,
     `Post-setback buildable ${round(positive(mm(k.layout.buildableWidthM), b.w))} mm`,
@@ -1174,100 +1623,88 @@ function frontElevation(k: Context): void {
     `Sill: per opening schedule`,
     `Plinth: +450 mm; storeys: 3000 mm`,
     `Parapet: 900 mm; coping shown`,
-    'Unlocated openings are centred within',
-    'their plan-room wall; verify offsets.',
+    'Opening positions from the locked plan;',
+    `marks as per ${sheetNumber('door_window_schedule', 0)}. Chajja over windows.`,
   ]);
   const front = k.g.openings.filter(o => o.face === 'front' &&
     Math.abs(o.fixed - b.y) < 500 && o.floor === 0);
   label(c, 'FRONT OPENING SET-OUT (GF)', 1715, 575, 17,
     'left', COLORS.green, true);
   if (!front.length) label(c, 'No front-wall entries in schedule.', 1715, 604, 14);
-  front.slice(0, 12).forEach((o, i) => {
-    const mark = o.source.type === 'door' ? 'D' : o.source.type === 'window' ? 'W' : 'V';
-    const elevRoomName = o.room.source.name.replace(/\s*\(.*?\)\s*/g, '').trim().slice(0, 11);
-    label(c, `${mark}${i + 1} ${elevRoomName} ${round(o.a - b.x)}–${round(o.b - b.x)} mm`,
-      1715, 605 + i * 25, 13);
-    label(c, `SILL ${round(o.source.sillHeightMm)} / HEIGHT ${round(o.source.heightMm)} mm`,
-      1728, 620 + i * 25, 11, 'left', COLORS.dim);
+  const marks = openingTypes(k.g).markOf;
+  front.slice(0, 9).forEach((o, i) => {
+    const elevRoomName = o.room.source.name.replace(/\s*\(.*?\)\s*/g, '').trim().slice(0, 14);
+    label(c, `${marks.get(o) ?? '—'}  ${elevRoomName}: ${round(o.a - b.x)}–${round(o.b - b.x)} mm`, 1715, 605 + i * 38, 13);
+    label(c, `sill ${round(o.source.sillHeightMm)} • height ${round(o.source.heightMm)} mm`, 1740, 623 + i * 38, 11, 'left', COLORS.dim);
   });
-  if (front.length > 12) label(c, `${front.length - 12} further openings — see full schedule.`,
-    1715, 923, 13);
+  if (front.length > 9) label(c, `${front.length - 9} more — see ${sheetNumber('door_window_schedule', 0)}.`, 1715, 605 + 9 * 38, 13);
+  for (const o of k.g.openings.filter(o2 => o2.face === 'front' && Math.abs(o2.fixed - b.y) < 500)) { const m = marks.get(o); if (!m) continue; const z = 450 + o.floor * 3000 + finite(o.source.sillHeightMm, 0) + positive(o.source.heightMm, 1200); const p = project((o.a + o.b) / 2, z); label(c, m, p.x, p.y - 22, 11, 'center', COLORS.text, true);
+    if (o.source.type === 'window') { const l0 = project(o.a - 150, z + 150), l1 = project(o.b + 150, z + 100 + 150); hatchBox(c, { x: l0.x, y: Math.min(l0.y, l1.y), w: l1.x - l0.x, h: Math.max(3, Math.abs(l1.y - l0.y)) }, '#e2e4e2', 45, 6, PEN.thin); } }
 }
 
 /* 9. Stair plan and dimensioned side view. */
 function staircaseDetail(k: Context): void {
   const c = k.c, st = stair(k);
-  const risers = Math.max(2, Math.round(positive(st.numRisers, 18)));
-  const riser = positive(st.riserMm, 3000 / risers), tread = positive(st.treadMm, 270);
-  const flightWidth = positive(st.flightWidthMm, 1000);
-  const waist = positive(st.waistSlabThicknessMm, 150);
-  const landing = positive(st.landingThicknessMm, waist);
-  const half = Math.ceil(risers / 2), run = Math.max(1, half - 1) * tread;
-  const planScale = Math.min(0.26, 800 / Math.max(run + flightWidth, 3000));
-  const px = 210, py = 500, fw = flightWidth * planScale, fh = run * planScale;
-  const gap = 150 * planScale; // 150 mm newel/well, never a pixel-only gap.
-  // Double flight: first rises bottom->top, second descends in plan while rising.
-  drawRect(c, px, py, fw, fh, { stroke: COLORS.wall, weight: 2 });
-  drawRect(c, px + fw + gap, py, fw, fh, { stroke: COLORS.wall, weight: 2 });
-  drawRect(c, px, py - fw, 2 * fw + gap, fw, { fill: COLORS.concrete, stroke: COLORS.wall, weight: 2 });
-  for (let i = 1; i < half; i++) {
-    const y = py + i * fh / half;
-    drawLine(c, px, y, px + fw, y, 1.1);
-    drawLine(c, px + fw + gap, y, px + 2 * fw + gap, y, 1.1);
-    label(c, `${half - i}`, px + fw / 2, y - fh / half / 2, 12, 'center');
-    label(c, `${half + i}`, px + fw * 1.5 + gap, y - fh / half / 2, 12, 'center');
-  }
-  arrow(c, px + fw / 2, py + fh - 25, px + fw / 2, py + 35, COLORS.green, 12);
-  arrow(c, px + fw * 1.5 + gap, py + 35, px + fw * 1.5 + gap, py + fh - 25, COLORS.green, 12);
-  label(c, 'UP', px + fw / 2, py + fh + 25, 17, 'center', COLORS.green, true);
-  label(c, 'LANDING', px + fw + gap / 2, py - fw / 2, 16, 'center');
-  drawDimensionChain(c, [px, px + fw, px + fw + gap, px + 2 * fw + gap],
-    py + fh, 65, 'horizontal', planScale);
-  drawDimensionChain(c, [py, py + fh], px, -65, 'vertical', planScale);
-  label(c, 'DOG-LEG STAIRCASE PLAN', 195, 170, 24, 'left', COLORS.green, true);
-  const sx = 980, sy = 1010, ss = Math.min(0.29, 755 / Math.max(run * 2 + flightWidth, 3900));
-  const landingX = sx + run * ss, landingZ = half * riser * ss;
-  const totalRise = risers * riser * ss;
-  // Flight 1 treads and risers are actual calculated dimensions in both axes.
-  for (let i = 0; i < half; i++) {
-    const x = sx + i * tread * ss, y = sy - i * riser * ss;
-    drawLine(c, x, y, x, y - riser * ss, 1.3);
-    drawLine(c, x, y - riser * ss, x + tread * ss, y - riser * ss, 1.3);
-  }
-  hatchBox(c, { x: landingX, y: sy - landingZ, w: flightWidth * ss,
-    h: landing * ss }, COLORS.concrete, 45, 10);
-  const secondStartX = landingX + flightWidth * ss;
-  for (let i = 0; i < risers - half; i++) {
-    const x = secondStartX + i * tread * ss, y = sy - landingZ - i * riser * ss;
-    drawLine(c, x, y, x, y - riser * ss, 1.3);
-    drawLine(c, x, y - riser * ss, x + tread * ss, y - riser * ss, 1.3);
-  }
-  const endRealX = secondStartX + (risers - half) * tread * ss;
-  // Two raking waist slabs, not a flat slab through the entire stair run.
-  hatchPolygon(c, [
-    { x: sx, y: sy - riser * ss },
-    { x: landingX, y: sy - landingZ },
-    { x: landingX, y: sy - landingZ + waist * ss },
-    { x: sx, y: sy - riser * ss + waist * ss },
-  ]);
-  hatchPolygon(c, [
-    { x: secondStartX, y: sy - landingZ - riser * ss },
-    { x: endRealX, y: sy - totalRise },
-    { x: endRealX, y: sy - totalRise + waist * ss },
-    { x: secondStartX, y: sy - landingZ - riser * ss + waist * ss },
-  ]);
-  drawLine(c, sx + 10, sy - 900 * ss, landingX + 10, sy - landingZ - 900 * ss, 1.3);
-  drawLine(c, secondStartX, sy - landingZ - 900 * ss, endRealX, sy - totalRise - 900 * ss, 1.3);
-  for (const [x, y] of [[sx, sy], [landingX, sy - landingZ], [secondStartX, sy - landingZ], [endRealX, sy - totalRise]]) {
-    drawLine(c, x, y, x, y - 900 * ss, 1.2);
-  }
-  drawDimensionChain(c, [sy - totalRise, sy - landingZ, sy], endRealX + 25, 55, 'vertical', ss);
-  label(c, 'STAIR SECTION — WAIST, LANDING & HANDRAIL', 960, 265, 24, 'left', COLORS.green, true);
-  legend(c, 1040, 1095, 'STAIR DATA', [
-    `${risers} risers @ ${riser.toFixed(1)} mm; tread ${round(tread)} mm`,
-    `Flight width ${round(flightWidth)} mm; waist ${round(waist)} mm`,
-    `Landing slab ${round(landing)} mm; handrail 900 mm high`,
+  const risers = Math.max(4, Math.round(positive(st.numRisers, 18))), H = 3000;
+  const riser = positive(st.riserMm, H / risers), tread = positive(st.treadMm, 270);
+  const fw = positive(st.flightWidthMm, 1000), waist = positive(st.waistSlabThicknessMm, 150);
+  const landingT = positive(st.landingThicknessMm, waist), well = 150;
+  const half = Math.ceil(risers / 2), n1 = half - 1, n2 = risers - half - 1; // treads per flight
+  const run = Math.max(n1, n2) * tread, landing = fw;
+  // ── PLAN 1:50 ──  x = along the flights, y = across (flight 1 near, flight 2 far)
+  setFrame(k, { x: -300, y: -300, w: run + landing + 600, h: 2 * fw + well + 600 }, { x: 70, y: 170, w: 780, h: 900 }, 70);
+  const P = (x: number, y: number) => at(k, x, y);
+  const Wtot = 2 * fw + well;
+  const o = P(0, 0), e = P(run + landing, Wtot);
+  drawRect(c, o.x, o.y, e.x - o.x, e.y - o.y, { stroke: COLORS.wall, weight: PEN.cut });
+  const ln = (x0: number, y0: number, x1: number, y1: number, w = PEN.thin) => { const a = P(x0, y0), z = P(x1, y1); drawLine(c, a.x, a.y, z.x, z.y, w); };
+  ln(run, 0, run, Wtot, PEN.medium);
+  ln(0, fw, run, fw, PEN.medium); ln(0, fw + well, run, fw + well, PEN.medium);
+  // Flight 1 occupies y ∈ [fw+well, Wtot] (bottom), climbs left→right; flight 2 y ∈ [0, fw] climbs right→left.
+  for (let i = 0; i <= n1; i++) { const x = run - n1 * tread + i * tread; ln(x, fw + well, x, Wtot, PEN.thin); if (i < n1) { const m = P(x + tread / 2, fw + well + fw * 0.78); label(c, `${i + 1}`, m.x, m.y, 10, 'center', COLORS.dim); } }
+  for (let i = 0; i <= n2; i++) { const x = run - i * tread; ln(x, 0, x, fw, PEN.thin); if (i < n2) { const m = P(x - tread / 2, fw * 0.22); label(c, `${half + i + 1}`, m.x, m.y, 10, 'center', COLORS.dim); } }
+  const lm = P(run + landing / 2, Wtot / 2); label(c, `LANDING (R${half})`, lm.x, lm.y, 12, 'center', COLORS.text, true);
+  const a0 = P(run - n1 * tread + 80, fw + well + fw / 2), a1 = P(run + landing / 2, fw + well + fw / 2), a2 = P(run + landing / 2, fw / 2), a3 = P(run - n2 * tread + 120, fw / 2);
+  c.save(); c.strokeStyle = COLORS.wall; c.lineWidth = PEN.thin; c.beginPath(); c.moveTo(a0.x, a0.y); c.lineTo(a1.x, a1.y); c.lineTo(a2.x, a2.y); c.stroke(); c.restore();
+  circle(c, a0.x, a0.y, 4, COLORS.wall, COLORS.wall); arrow(c, a2.x, a2.y, a3.x, a3.y, COLORS.wall, 10);
+  label(c, 'UP', a0.x - 26, a0.y, 13, 'center', COLORS.text, true);
+  dimMm(k, [0, run, run + landing], 'x', e.y, 40, 'stair plan run');
+  dimMm(k, [0, fw, fw + well, Wtot], 'y', o.x, -40, 'stair plan width');
+  viewTitle(k, 'STAIR PLAN', 90, 150);
+  // ── SECTION 1:50 ── flight 1 cut, landing, flight 2 seen
+  const secTop = H + 1200;
+  setFrame(k, { x: -500, y: -600, w: run + landing + 1000, h: secTop + 900 }, { x: 880, y: 170, w: 760, h: 900 }, 60);
+  const Q = (x: number, z: number) => at(k, x, secTop - z);
+  const steps: Point[] = [Q(0, 0)];
+  for (let i = 0; i < half; i++) { steps.push(Q(i * tread, (i + 1) * riser)); steps.push(Q(Math.min((i + 1) * tread, run), (i + 1) * riser)); }
+  const lz = half * riser;
+  hatchPolygon(c, [...steps, Q(run + landing, lz), Q(run + landing, lz - landingT), Q(run, lz - landingT), Q(0, -waist)], '#e0e3e0');
+  c.save(); c.strokeStyle = COLORS.wall; c.lineWidth = PEN.thin; c.beginPath();
+  let p = Q(run, lz); c.moveTo(p.x, p.y);
+  for (let i = 0; i < risers - half; i++) { const x = run - i * tread; c.lineTo(Q(x, lz + (i + 1) * riser).x, Q(x, lz + (i + 1) * riser).y); c.lineTo(Q(x - tread, 0).x, Q(x - tread, lz + (i + 1) * riser).y); }
+  c.stroke(); c.restore();
+  const g = Q(-400, 0), g2 = Q(run + landing + 300, 0); drawLine(c, g.x, g.y, g2.x, g2.y, PEN.medium);
+  const f = Q(-400, H), f2 = Q(run - (risers - half) * tread + 0, H); drawLine(c, f.x, f.y, f2.x, f2.y, PEN.medium);
+  const h0 = Q(0, riser + 900), h1 = Q(run, lz + 900); drawLine(c, h0.x, h0.y, h1.x, h1.y, PEN.thin, COLORS.dim);
+  label(c, 'HANDRAIL 900 H', (h0.x + h1.x) / 2 - 30, (h0.y + h1.y) / 2 - 14, 10, 'center', COLORS.dim);
+  drawDimensionChain(c, [Q(0, H).y, Q(0, lz).y, Q(0, 0).y], Q(run + landing, 0).x + 30, 40, 'vertical', k.scale);
+  dimMm(k, [0, run, run + landing], 'x', Q(0, -waist).y + 10, 40, 'stair section run');
+  levelMark(c, Q(run + landing, 0).x + 110, Q(0, 0).y, 'FFL ±0.000 (floor below)');
+  levelMark(c, Q(run + landing, 0).x + 110, Q(0, lz).y, `LANDING +${(lz / 1000).toFixed(3)}`);
+  levelMark(c, Q(run + landing, 0).x + 110, Q(0, H).y, `FFL +${(H / 1000).toFixed(3)} (floor above)`);
+  viewTitle(k, 'STAIR SECTION (FLIGHT 1 CUT, FLIGHT 2 BEYOND)', 900, 150);
+  const going = 2 * riser + tread;
+  legend(c, 1660, 230, 'STAIR DATA', [
+    `${risers} risers × ${riser.toFixed(1)} mm`,
+    `Tread (going) ${round(tread)} mm`,
+    `2R + T = ${going.toFixed(0)} mm ${going >= 550 && going <= 700 ? '(within 550–700)' : '(CHECK)'}`,
+    `Flight width ${round(fw)} mm; well ${well} mm`,
+    `Waist ${round(waist)} mm; landing ${round(landingT)} mm`,
     `Main steel Ø${round(positive(st.mainBarDiaMm, 10))} @ ${round(positive(st.mainBarSpacingMm, 150))} c/c`,
+    'Handrail 900 mm above nosing.',
+    'Keep ≥ 2100 mm clear headroom under',
+    '  any beam over the flight — check on site.',
+    `Located on plans ${sheetNumber('working_plan', 0)}; cut on ${sheetNumber('section_aa', 0)}.`,
   ]);
 }
 
@@ -1486,7 +1923,10 @@ function svcRooms(k: Context): ModelRoom[] { return selected(k).filter(r => !isN
 function svcFrame(k: Context, withPlot = false): void {
   const b = k.g.building, m = 700;
   setFrame(k, withPlot ? k.g.footprint : { x: b.x - m, y: b.y - m, w: b.w + 2 * m, h: b.h + 2 * m }, { x: 80, y: 120, w: 1300, h: 1060 }, 40);
+  // Service symbols shrink with the drawing scale so small wet rooms stay legible (full size at 1:50).
+  SYM_SCALE = Math.max(0.62, Math.min(1, k.scale / 0.1));
 }
+let SYM_SCALE = 1;
 function externalSides(k: Context, r: ModelRoom): Side[] {
   const b = k.g.building, e = 40, out: Side[] = [];
   if (Math.abs(r.y + r.d - (b.y + b.h)) < e) out.push('rear');
@@ -1524,10 +1964,11 @@ function awayFromDoor(r: ModelRoom, side: Side, door?: OpeningPlacement): number
 function servicesBase(k: Context): void {
   drawPlanRooms(k, true, true);
 }
-function sym(c: CanvasRenderingContext2D, p: Point, code: string, color: string, shape: 'circle' | 'square' = 'circle', r = 12): void {
+function sym(c: CanvasRenderingContext2D, p: Point, code: string, color: string, shape: 'circle' | 'square' = 'circle', r0 = 12): void {
+  const r = Math.max(6, r0 * SYM_SCALE), fs = Math.max(7, (code.length > 1 ? 10 : 12) * SYM_SCALE);
   if (shape === 'circle') circle(c, p.x, p.y, r, '#fff', color, 1.6);
   else drawRect(c, p.x - r, p.y - r, 2 * r, 2 * r, { fill: '#fff', stroke: color, weight: 1.6 });
-  label(c, code, p.x, p.y + 0.5, code.length > 1 ? 10 : 12, 'center', color, true);
+  label(c, code, p.x, p.y + 0.5, fs, 'center', color, true);
 }
 function ortho(c: CanvasRenderingContext2D, a: Point, b: Point, color: string, weight: number, dash?: number[]): void {
   c.save(); if (dash) c.setLineDash(dash); c.strokeStyle = color; c.lineWidth = weight;
@@ -1587,7 +2028,7 @@ function electrical(k: Context): void {
   let dbModel: Point;
   if (k.level === 0 && mainDoor) {
     dbModel = mainDoor.axis === 'horizontal' ? { x: mainDoor.b + 250, y: mainDoor.fixed + (mainDoor.room.y + mainDoor.room.d / 2 > mainDoor.fixed ? 250 : -250) } : { x: mainDoor.fixed + (mainDoor.room.x + mainDoor.room.w / 2 > mainDoor.fixed ? 250 : -250), y: mainDoor.b + 250 };
-  } else if (stairRoom) dbModel = onSide(stairRoom, 'front', 0.15, 250);
+  } else if (stairRoom) dbModel = onSide(stairRoom, 'front', 0.55, 300);
   else dbModel = { x: k.g.building.x + 400, y: k.g.building.y + 400 };
   const db = at(k, dbModel.x, dbModel.y);
   const rowsOut: string[][] = [];
@@ -1701,7 +2142,7 @@ function plumbing(k: Context): void {
       put(w.service, tAt(Math.min(L - 300, 2000)), Math.min(sideLen(r, w.service === 'front' || w.service === 'rear' ? 'left' : 'front') - 300, 800), 'FT', SVC.drain, 'circle');
       const g = onSide(r, w.service, tAt(450), 110);
       const gp = at(k, g.x, g.y); sym(c, gp, 'GY', SVC.hot, 'square', 11);
-      const sp = at(k, sh.x, sh.y); drawLine(c, gp.x, gp.y + 11, sp.x, sp.y - 13, 1.5, SVC.hot);
+      const sp = at(k, sh.x, sh.y); drawLine(c, gp.x, gp.y + 11 * SYM_SCALE, sp.x, sp.y - 13 * SYM_SCALE, 1.5, SVC.hot);
       // Stack at the anchored end, outside the external wall where there is one.
       const corner = onSide(r, w.service, w.tEnd, 0);
       const inner = onSide(r, w.service, tAt(1250), 0);
@@ -1754,8 +2195,8 @@ function plumbing(k: Context): void {
     ortho(c, sump, down, SVC.water, 1.5, [3, 3]);
   }
   // Rainwater pipes at the four building corners.
-  for (const [x, y] of [[b.x + 150, b.y + 150], [b.x + b.w - 150, b.y + 150], [b.x + 150, b.y + b.h - 150], [b.x + b.w - 150, b.y + b.h - 150]]) {
-    const p = at(k, x, y); circle(c, p.x, p.y, 7, '#fff', SVC.water, 1.5); label(c, 'RWP', p.x + 10, p.y - 10, 10, 'left', SVC.water);
+  for (const [x, y, dx] of [[b.x - 200, b.y + 300, -1], [b.x + b.w + 200, b.y + 300, 1], [b.x - 200, b.y + b.h - 300, -1], [b.x + b.w + 200, b.y + b.h - 300, 1]]) {
+    const p = at(k, x, y); circle(c, p.x, p.y, 7, '#fff', SVC.water, 1.5); label(c, 'RWP', p.x + dx * 10, p.y - 12, 10, dx < 0 ? 'right' : 'left', SVC.water);
   }
   circle(c, down.x, down.y, 10, SVC.water, SVC.water);
   label(c, 'DOWN-TAKE FROM OHT', down.x + 14, down.y - 12, 11, 'left', SVC.water, true);
@@ -1777,7 +2218,7 @@ function plumbing(k: Context): void {
 
 /* 15. Floor & wall tiling layout. */
 function tiling(k: Context): void {
-  const c = k.c; svcFrame(k);
+  const c = k.c; svcFrame(k); drawPlanWalls(k, 'light');
   const rooms = svcRooms(k);
   const takeoff = (k.boq as (BOQ & { takeoff?: Takeoff }) | null)?.takeoff;
   const tileH = takeoff?.bathTileHeightM ?? 2.1;
@@ -1786,7 +2227,7 @@ function tiling(k: Context): void {
   for (const r of rooms) {
     const type = r.source.type;
     const area = (r.w / 1000) * (r.d / 1000);
-    const q = box(k, { x: r.x, y: r.y, w: r.w, h: r.d });
+    const q = box(k, clearRect(k, r));
     const wetFloor = type === 'toilet' || type === 'utility';
     let finish = 'Vitrified 600×600', tile = 600, fill = SVC.tileA, cat: keyof typeof t | null = 'vit';
     if (wetFloor) { finish = 'Anti-skid matt 300×300'; tile = 300; fill = SVC.wetTile; cat = 'anti'; }
@@ -1794,7 +2235,7 @@ function tiling(k: Context): void {
     else if (type === 'staircase') { finish = 'Granite treads & risers'; tile = 0; fill = '#ece8e1'; cat = null; }
     else if (type === 'parking') { finish = 'Paver / IPS (site works)'; tile = 0; fill = '#eeeeee'; cat = null; }
     if (cat) t[cat] += area;
-    drawRect(c, q.x, q.y, q.w, q.h, { fill, stroke: COLORS.wall, weight: 1 });
+    drawRect(c, q.x, q.y, q.w, q.h, { fill, stroke: COLORS.wall, weight: PEN.medium });
     if (tile) {
       c.save(); c.beginPath(); c.rect(q.x, q.y, q.w, q.h); c.clip(); c.strokeStyle = '#9aa7ad'; c.lineWidth = 0.6;
       const s = tile * k.scale;
@@ -1817,8 +2258,8 @@ function tiling(k: Context): void {
       c.save(); c.fillStyle = '#c9c2b6'; c.globalAlpha = 0.85; strip(long); strip(short); c.restore();
       label(c, 'GRANITE COUNTER + DADO 600', q.x + q.w / 2, q.y + q.h / 2 + 22, 10, 'center', COLORS.dim, true);
     }
-    label(c, r.source.name, q.x + q.w / 2, q.y + q.h / 2 - 8, clamp(q.w / 14, 10, 15), 'center', COLORS.text, true);
-    label(c, finish, q.x + q.w / 2, q.y + q.h / 2 + 8, 10, 'center', COLORS.dim);
+    roomLabel(k, r, { corner: true, color: COLORS.text });
+    { c.save(); c.font = '10px Arial, sans-serif'; const fw2 = c.measureText(finish).width; c.restore(); if (fw2 < q.w - 10) label(c, finish, q.x + q.w / 2, q.y + q.h - 12, 10, 'center', COLORS.dim); }
     rowsOut.push([r.source.name, finish, area.toFixed(2), wall ? wall.toFixed(2) : dado ? dado.toFixed(2) : '–']);
   }
   for (const o of k.g.openings.filter(v => v.floor === k.level)) planOpening(c, k, o);
@@ -1843,50 +2284,33 @@ function tiling(k: Context): void {
 
 /* 16. Brickwork / masonry layout. */
 function brickwork(k: Context): void {
-  const c = k.c; svcFrame(k);
+  const c = k.c; planFrame(k);
   const rooms = svcRooms(k);
   const b = box(k, k.g.building);
-  const tE = WALL_EXTERNAL_MM * k.scale, tI = WALL_INTERNAL_MM * k.scale;
-  const wall = (x1: number, y1: number, x2: number, y2: number, t: number) => {
-    c.save(); c.lineCap = 'square'; c.strokeStyle = COLORS.wall; c.lineWidth = t + 2; c.beginPath(); c.moveTo(x1, y1); c.lineTo(x2, y2); c.stroke();
-    c.strokeStyle = SVC.brick; c.lineWidth = Math.max(1, t - 1); c.stroke(); c.restore();
-  };
-  const seen = new Set<string>();
-  const outer: { s: Side; a: number; b: number; balcony: boolean }[] = [];
+  drawPlanWalls(k, 'brick');
   for (const r of rooms) {
-    const q = box(k, { x: r.x, y: r.y, w: r.w, h: r.d });
-    const ext = externalSides(k, r);
-    const edges: [Side, number, number, number, number][] = [['front', q.x, q.y, q.x + q.w, q.y], ['rear', q.x, q.y + q.h, q.x + q.w, q.y + q.h], ['left', q.x, q.y, q.x, q.y + q.h], ['right', q.x + q.w, q.y, q.x + q.w, q.y + q.h]];
-    for (const [sd, x1, y1, x2, y2] of edges) {
-      if (ext.includes(sd)) { outer.push({ s: sd, a: sd === 'front' || sd === 'rear' ? x1 : y1, b: sd === 'front' || sd === 'rear' ? x2 : y2, balcony: r.source.type === 'balcony' }); continue; }
-      const key = [x1, y1, x2, y2].map(v => Math.round(v)).join(',');
-      if (seen.has(key)) continue; seen.add(key);
-      wall(x1, y1, x2, y2, tI);
+    roomLabel(k, r);
+    if (r.source.type === 'balcony') for (const sd of externalSides(k, r)) {
+      const m = onSide(r, sd, 0.5, sd === 'front' || sd === 'rear' ? -260 : -260), p = at(k, m.x, m.y);
+      void p;
     }
-    label(c, r.source.name, q.x + q.w / 2, q.y + q.h / 2, clamp(q.w / 14, 10, 15), 'center', COLORS.text, true);
   }
-  // External walls along the building edge; balcony edges get a railing, not masonry (same as the BOQ take-off).
-  for (const e of outer) {
-    const fixed = e.s === 'front' ? b.y : e.s === 'rear' ? b.y + b.h : e.s === 'left' ? b.x : b.x + b.w;
-    const [x1, y1, x2, y2] = e.s === 'front' || e.s === 'rear' ? [e.a, fixed, e.b, fixed] : [fixed, e.a, fixed, e.b];
-    if (e.balcony) { drawDoubleLineWall(c, x1, y1, x2, y2, 5, 1); label(c, 'MS RAILING 1000 H', (x1 + x2) / 2, (y1 + y2) / 2 + (e.s === 'front' ? -12 : 14), 10, 'center', COLORS.dim); }
-    else wall(x1, y1, x2, y2, tE);
-  }
+  void b;
   drawColumns(k);
   // Openings with lintels (150 mm bearing each side).
   const ops = k.g.openings.filter(v => v.floor === k.level);
   const lintels = new Map<number, number>();
   for (const o of ops) {
     planOpening(c, k, o);
+    openingTag(k, o);
     const span = Math.round(o.b - o.a);
     lintels.set(span, (lintels.get(span) ?? 0) + 1);
-    const a = o.axis === 'horizontal' ? at(k, o.a - 150, o.fixed) : at(k, o.fixed, o.a - 150);
-    const e = o.axis === 'horizontal' ? at(k, o.b + 150, o.fixed) : at(k, o.fixed, o.b + 150);
-    const off = 10;
-    if (o.axis === 'horizontal') dashed(c, { x: a.x, y: a.y - off }, { x: e.x, y: e.y - off }, '#8e44ad', 1.6, [5, 3]);
-    else dashed(c, { x: a.x - off, y: a.y }, { x: e.x - off, y: e.y }, '#8e44ad', 1.6, [5, 3]);
+    const mid = (openingBand(o)[0] + openingBand(o)[1]) / 2;
+    const a = o.axis === 'horizontal' ? at(k, o.a - 150, mid) : at(k, mid, o.a - 150);
+    const e = o.axis === 'horizontal' ? at(k, o.b + 150, mid) : at(k, mid, o.b + 150);
+    dashed(c, a, e, '#8e44ad', PEN.medium, [5, 3]);
   }
-  gridDimensions(k);
+  planDimensions(k, true);
   const tf = (k.boq as (BOQ & { takeoff?: Takeoff }) | null)?.takeoff ?? computeTakeoff(k.layout);
   const fl = tf.floors[k.level] ?? tf.floors[0];
   const rowsOut: string[][] = [
@@ -1907,38 +2331,39 @@ function brickwork(k: Context): void {
     'Wet-area walls: waterproof plaster to 300 mm above floor.',
     'Bricks soaked before use; max 1.0 m lift per day.',
   ]);
-  label(c, `${floorName(k)} MASONRY LAYOUT`, 100, 140, 16, 'left', COLORS.dim);
+  viewTitle(k, `${floorName(k)} MASONRY & LINTEL PLAN`, 80, 140);
 }
 
-function header(c: CanvasRenderingContext2D, title: string, floor: Level): void {
-  drawRect(c, 24, 24, SHEET_W - 48, SHEET_H - 48, { stroke: COLORS.wall, weight: 2 });
-  label(c, title, MARGIN + 12, 65, 27, 'left', COLORS.green, true);
-  label(c, `FLOOR: ${floor === 0 ? 'GF' : 'FF'}   •   ALL DIMENSIONS IN mm UNLESS SPECIFIED`,
-    SHEET_W - MARGIN - 8, 66, 14, 'right', COLORS.dim);
-  drawLine(c, 40, 99, SHEET_W - 40, 99, 1, COLORS.grid);
+function header(k: Context): void {
+  const c = k.c;
+  drawRect(c, 24, 24, SHEET_W - 48, SHEET_H - 48, { stroke: COLORS.wall, weight: PEN.cut });
+  label(c, k.title, MARGIN + 12, 65, 27, 'left', COLORS.green, true);
+  label(c, `${k.sheetNo}   •   ALL DIMENSIONS IN mm UNLESS NOTED   •   LEVELS IN m`, SHEET_W - MARGIN - 8, 66, 14, 'right', COLORS.dim);
+  drawLine(c, 40, 99, SHEET_W - 40, 99, PEN.thin, COLORS.grid);
 }
 function titleBlock(k: Context): void {
-  const c = k.c, x = SHEET_W - MARGIN - 900, y = SHEET_H - TITLE_H - 20;
-  drawRect(c, x, y, 900, 200, { fill: '#fff', stroke: COLORS.wall, weight: 2 });
-  drawLine(c, x, y + 65, x + 900, y + 65, 1, COLORS.wall);
-  drawLine(c, x, y + 151, x + 900, y + 151, 1, COLORS.wall);
-  drawLine(c, x + 580, y + 65, x + 580, y + 151, 1, COLORS.wall);
-  label(c, 'neevv', x + 18, y + 28, 35, 'left', COLORS.green, true);
-  label(c, 'Architecture • Structure • MEP • Interiors', x + 182, y + 34, 15, 'left', COLORS.dim);
-  label(c, k.title, x + 18, y + 87, 19, 'left', COLORS.text, true);
-  label(c, `PLOT ${round(k.g.plotW)} × ${round(k.g.plotD)} mm  •  ${k.req.city}, ${k.req.state}`,
-    x + 18, y + 117, 14);
-  label(c, `ROAD FACING: ${k.req.facing}`, x + 18, y + 137, 14);
-  label(c, `SCALE 1:${Math.max(1, Math.round(5 / Math.max(0.0001, k.scale)))}`,
-    x + 595, y + 89, 16, 'left', COLORS.text, true);
-  label(c, `DATE ${new Date().toLocaleDateString('en-GB')}`, x + 595, y + 116, 14);
-  label(c, `FLOOR ${k.level === 0 ? 'GF' : 'FF'}`, x + 595, y + 137, 14);
-  label(c, 'PRELIMINARY DESIGN — VERIFY WITH LICENSED PROFESSIONAL BEFORE EXECUTION',
-    x + 14, y + 176, 12, 'left', COLORS.wall, true);
-  label(c, 'DRAWING GENERATED GEOMETRICALLY FROM LOCKED LAYOUT • DO NOT SCALE PRINT',
+  const c = k.c, W = 900, H = 200, x = SHEET_W - MARGIN - W, y = SHEET_H - TITLE_H - 20;
+  drawRect(c, x, y, W, H, { fill: '#fff', stroke: COLORS.wall, weight: PEN.cut });
+  const hl = (yy: number, x0 = x, x1 = x + W) => drawLine(c, x0, y + yy, x1, y + yy, PEN.thin, COLORS.wall);
+  const vl = (xx: number, y0: number, y1: number) => drawLine(c, x + xx, y + y0, x + xx, y + y1, PEN.thin, COLORS.wall);
+  hl(58); hl(160); vl(560, 58, 160); hl(92, x + 560); hl(126, x + 560); vl(730, 58, 160);
+  label(c, 'neevv', x + 18, y + 29, 33, 'left', COLORS.green, true);
+  label(c, 'Architecture • Structure • MEP • Interiors', x + 170, y + 31, 14, 'left', COLORS.dim);
+  label(c, 'DRAFT DESIGN', x + W - 16, y + 31, 12, 'right', COLORS.dim, true);
+  const t = k.level > 0 && PER_FLOOR.includes(k.type) ? `${k.title} — ${floorName(k)}` : k.title;
+  label(c, t.length > 44 ? t.slice(0, 43) + '…' : t, x + 16, y + 78, 17, 'left', COLORS.text, true);
+  label(c, `PLOT ${round(k.g.plotW)} × ${round(k.g.plotD)} mm  •  ${k.req.city}, ${k.req.state}`, x + 16, y + 106, 13);
+  label(c, `ROAD FACING ${k.req.facing}  •  LOCKED PLAN REV ${k.rev}`, x + 16, y + 128, 13);
+  label(c, `DATE ${new Date().toLocaleDateString('en-GB')}`, x + 16, y + 148, 12, 'left', COLORS.dim);
+  const cell = (cx: number, cy: number, h: string, v: string, big = false) => { label(c, h, x + cx + 8, y + cy + 9, 9, 'left', COLORS.dim, true); label(c, v, x + cx + 8, y + cy + 24, big ? 16 : 13, 'left', COLORS.text, true); };
+  const idx = sheetIndex(k.g.floors), pos = idx.findIndex(e => e.no === k.sheetNo);
+  cell(560, 58, 'DRG NO', k.sheetNo, true); cell(730, 58, 'REV', `P${k.rev}`, true);
+  cell(560, 92, 'SCALE (A3)', scaleText(k)); cell(730, 92, 'SHEET', pos >= 0 ? `${pos + 1} of ${idx.length}` : '—');
+  cell(560, 126, 'DRAWN', 'neevv engine'); cell(730, 126, 'CHECKED', 'pending');
+  label(c, 'PRELIMINARY DESIGN — VERIFY WITH LICENSED PROFESSIONAL BEFORE EXECUTION', x + 14, y + 180, 11, 'left', COLORS.dim);
+  label(c, 'DO NOT SCALE — FOLLOW WRITTEN DIMENSIONS • GENERATED FROM THE LOCKED PLAN • REVIEW BY ARCHITECT / STRUCTURAL ENGINEER PENDING',
     MARGIN + 12, SHEET_H - 43, 12, 'left', COLORS.dim);
 }
-
 
 /** Drawing types that have programmatic (non-AI) renderers. */
 export const PROGRAMMATIC_TYPES = [
@@ -1946,6 +2371,7 @@ export const PROGRAMMATIC_TYPES = [
   'column_detail', 'bar_bending', 'section_aa', 'front_elevation',
   'staircase_detail', 'water_tank', 'waterproofing', 'stp_detail',
   'electrical', 'plumbing', 'tiling_layout', 'brickwork_detail',
+  'working_plan', 'door_window_schedule',
 ] as const;
 
 /** Render a coordinated A3 landscape construction drawing and return a PNG data URL. */
@@ -1954,6 +2380,7 @@ export function generateProgrammaticDrawing(
   structuralResult?: any, boq?: BOQ | null, floor?: 'GF' | 'FF',
 ): string {
   if (typeof document === 'undefined') throw new Error('Canvas drawing requires a browser document.');
+  SYM_SCALE = 1;
   const canvas = document.createElement('canvas'); canvas.width = SHEET_W; canvas.height = SHEET_H;
   const c = canvas.getContext('2d');
   if (!c) throw new Error('Unable to obtain Canvas 2D context.');
@@ -1965,9 +2392,12 @@ export function generateProgrammaticDrawing(
   const level: Level = floor === 'FF' && g.floors > 1 ? 1 : 0;
   const k: Context = { c, g, layout, req: requirements, data, boq: boq ?? null,
     level, frame: { x: 0, y: 0, s: 1, width: 0, height: 0 }, scale: 1,
-    title: titleFor[drawing] };
+    title: titleFor[drawing], views: [], type: drawing, sheetNo: sheetNumber(drawing, level),
+    rev: Math.max(1, Math.round(finite((layout as Layout & { revision?: number }).revision, 1))) };
+  AUDIT = { labels: [], checks: [], scales: [] };
+  try {
   c.fillStyle = '#fff'; c.fillRect(0, 0, SHEET_W, SHEET_H);
-  header(c, k.title, level);
+  header(k);
   c.save(); c.beginPath(); c.rect(45, 105, SHEET_W - 90, DRAW_BOTTOM - 105); c.clip();
   switch (drawing) {
     case 'excavation': excavation(k); break;
@@ -1986,8 +2416,26 @@ export function generateProgrammaticDrawing(
     case 'plumbing': plumbing(k); break;
     case 'tiling_layout': tiling(k); break;
     case 'brickwork_detail': brickwork(k); break;
+    case 'working_plan': workingPlan(k); break;
+    case 'door_window_schedule': doorWindowSchedule(k); break;
   }
   c.restore();
   titleBlock(k);
+  // ── drafting audit: preferred scales, overlapping text ──
+  const a = AUDIT;
+  const odd = k.views.filter(d => !STD_SCALES.includes(d));
+  a.checks.push({ item: 'Preferred scale (IS 962)', status: odd.length ? 'ERROR' : 'PASS', detail: k.views.length ? k.views.map(d => `1:${d}`).join(', ') : 'diagrammatic sheet (NTS)' });
+  const L = a.labels.filter(l => l.x1 - l.x0 > 2);
+  const clashes: string[] = [];
+  for (let i = 0; i < L.length; i++) for (let j = i + 1; j < L.length; j++) {
+    const p = L[i], q = L[j];
+    const ox = Math.min(p.x1, q.x1) - Math.max(p.x0, q.x0), oy = Math.min(p.y1, q.y1) - Math.max(p.y0, q.y0);
+    if (ox <= 1 || oy <= 1) continue;
+    const small = Math.min((p.x1 - p.x0) * (p.y1 - p.y0), (q.x1 - q.x0) * (q.y1 - q.y0));
+    if (ox * oy > 0.2 * small) clashes.push(`"${p.t}" × "${q.t}"`);
+  }
+  a.checks.push({ item: 'No overlapping text', status: clashes.length ? 'WARNING' : 'PASS', detail: clashes.length ? `${clashes.length}: ${clashes.slice(0, 6).join('; ')}` : `${L.length} labels clear` });
+  DRAFTING_AUDIT[`${drawing}-${level === 0 ? 'GF' : 'FF'}`] = a.checks;
   return canvas.toDataURL('image/png');
+  } finally { AUDIT = null; }
 }

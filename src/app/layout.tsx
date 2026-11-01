@@ -8,12 +8,12 @@ import FeedbackButton from '../components/FeedbackButton';
 export const metadata: Metadata = {
   metadataBase: new URL('https://neevv.in'),
   title: "neevv — Architecture • Structure • MEP • Interiors",
-  description: "AI-powered residential design studio for Indian home builders. Get professional floor plans, 3D renders, working drawings, BOQ & interior design — all powered by AI. NBC 2016 compliant. Vastu intelligent.",
+  description: "AI-powered residential design studio for Indian home builders. Get professional floor plans, 3D renders, working drawings, BOQ & interior design — with Vastu-aware layouts, preliminary and for professional review.",
   icons: { icon: "/logo.png" },
   alternates: { canonical: 'https://neevv.in' },
   openGraph: {
     title: "neevv — AI-Powered Home Design Studio",
-    description: "Design your dream home in minutes. Free floor plans, 3D renders, 21+ working drawings, BOQ & cost estimation. NBC 2016 compliant.",
+    description: "Design your dream home in minutes. Free floor plans, 3D renders, 21+ preliminary working drawings, BOQ & cost estimation for professional review.",
     siteName: "neevv",
     type: "website",
     locale: "en_IN",

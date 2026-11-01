@@ -91,3 +91,6 @@ export function bedroomOpeningIds(layout: Layout): { doors: Set<string>; windows
     bedroomsWithoutWindow: beds.filter((r) => !ops.some((o) => o.type === 'window' && o.roomId === r.id)).map((r) => r.name),
   };
 }
+
+/** Assumed founding depth below natural ground level (m) — used by BOQ earthwork AND drawn on sections. Verify with a soil report. */
+export const ASSUMED_FOUNDING_DEPTH_M = 1.5;

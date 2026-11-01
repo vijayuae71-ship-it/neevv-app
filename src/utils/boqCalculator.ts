@@ -1,7 +1,7 @@
 import type { BOQ, BOQLineItem, DoorScheduleItem, WindowScheduleItem, Layout, MaterialRate, CustomRateSheet, BudgetRange } from '../types';
 import { computeTakeoff, type Takeoff } from './quantityTakeoff';
 import { cityRateFactor, specFactor } from './marketRates';
-import { electricalPoints as electricalPointsFor, plumbingPoints as plumbingPointsFor, electricalTotals, fixtureTotals, isNiche, WALL_EXTERNAL_MM, WALL_INTERNAL_MM } from './quantityRules';
+import { electricalPoints as electricalPointsFor, plumbingPoints as plumbingPointsFor, electricalTotals, fixtureTotals, isNiche, ASSUMED_FOUNDING_DEPTH_M, WALL_EXTERNAL_MM, WALL_INTERNAL_MM } from './quantityRules';
 
 /** Pricing context: city and specification level. Custom rates entered by the customer always win. */
 export interface BOQContext { city?: string; budget?: BudgetRange; bathTileHeightM?: number }
@@ -295,7 +295,7 @@ export function calculateBOQ(
 
   // Footing-derived earthwork when the structural engine has designed footings
   const footings = (structuralResult as (StructuralResultLike & { foundations?: Array<{ footingSizeMm: number; footingDepthMm: number; pccSizeMm?: number; pccThicknessMm?: number }> }) | undefined)?.foundations ?? [];
-  const foundingDepthM = 1.5;
+  const foundingDepthM = ASSUMED_FOUNDING_DEPTH_M;
   const gfInternalLen = takeoff.floors[0]?.internalWallLenM ?? 0;
   const gfExternalLen = takeoff.floors[0]?.externalWallLenM ?? perimeter;
   const excavationM3 = footings.length
