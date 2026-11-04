@@ -2422,7 +2422,7 @@ function plumbing(k: Context): void {
     drawRect(c, fp.x - 16, fp.y - 12, 32, 24, { fill: '#fff', stroke: SVC.drain, weight: 2 });
     label(c, 'MH', fp.x, fp.y + 1, 10, 'center', SVC.drain, true);
     label(c, 'TO SEPTIC TANK / MUNICIPAL SEWER', fp.x - 20, fp.y - 26, 12, 'right', SVC.drain, true);
-    const sump = at(k, b.x - 200, b.y - Math.max(500, k.g.setbacks.front * 0.5));
+    const spm = sumpPlacement(k.layout), sump = at(k, spm.cx * 1000, spm.cy * 1000);
     drawRect(c, sump.x - 40, sump.y - 14, 80, 28, { fill: '#e8f3f8', stroke: SVC.water, weight: 2 });
     label(c, 'UG SUMP', sump.x, sump.y + 1, 11, 'center', SVC.water, true);
     ortho(c, sump, down, SVC.water, 1.5, [3, 3]);

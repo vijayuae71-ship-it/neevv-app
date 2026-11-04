@@ -182,7 +182,7 @@ function build(b: Brief, env: SiteEnvelope, v: Variant): Built {
   const gfExtraBed = two ? overflow - ffFrontBeds : 0;
   if (v.bedsUp && gfExtraBed > 0) return fail('Not every bedroom fits on the upper floor');
   if (gfExtraBed > 1) return fail('Too many bedrooms for two floors of this plot');
-  const hasPoojaRoom = b.pooja && k >= 1 && !midBed && !compact;
+  let hasPoojaRoom = b.pooja && k >= 1 && !midBed && !compact;
 
   // ── Width: sized to the brief (big plots keep side gardens), capped by the envelope ──
   const livingT = Math.min(SZ.livingCapW, 3.6 + 0.5 * B + 0.5 * k);
@@ -247,6 +247,13 @@ function build(b: Brief, env: SiteEnvelope, v: Variant): Built {
   const rx: Record<string, [number, number]> = {}; let acc = 0;
   spec.forEach((c, i) => { rx[c.key] = [r2(acc), r2(acc + rw![i])]; acc += rw![i]; });
   const restKeys = spec.filter((s) => s.key.startsWith('b') || s.key === 'x').map((s) => s.key);
+  // A pooja room in the middle band must not cut a ground-floor wash/bath column off from the lobby (its only door wall);
+  // when it would, the pooja becomes a niche in the living room instead.
+  if (hasPoojaRoom) {
+    const lobbyEnd = r2(W - SZ.poojaW[k]);
+    const gfWet = Array.from({ length: wetCols }, (_, i) => rx[`w${i}`]).filter((_, i) => two || !(attached && i === 0));
+    if (gfWet.some(([a, z]) => Math.min(z, lobbyEnd) - Math.max(a, Ws) < 0.9 - 1e-6)) hasPoojaRoom = false;
+  }
 
   const bathColumn = (x0: number, x1: number, top: Kind, topName: string, bathKind: Kind, bathName: string): Cell[] => {
     const bd = SZ.bathD[k];
@@ -345,7 +352,8 @@ function build(b: Brief, env: SiteEnvelope, v: Variant): Built {
   // FF front band: over the kitchen → balcony/study; over dining + living → bedrooms first, then the family lounge
   const kEnd = compact ? r2(Df - SZ.stairBoxD) : Df;          // K column above the kitchen
   const kTop = Math.min(kEnd, 2.6);
-  const studyTop = b.study && !rx.x && !(compact && ffFrontBeds > 0);
+  // a study over the kitchen needs a door to circulation: not possible when front bedrooms flank it
+  const studyTop = b.study && !rx.x && ffFrontBeds === 0;
   ff.push({ name: studyTop ? 'Study' : 'Balcony (open)', kind: studyTop ? 'study' : 'balcony', x0: 0, x1: Ws, y0: 0, y1: kEnd - kTop >= 0.9 ? kTop : kEnd });
   if (kEnd - kTop >= 0.9) ff.push({ name: 'Linen / store', kind: 'store', x0: 0, x1: Ws, y0: kTop, y1: kEnd });
   if (compact) ff.push({ ...compactStair });
@@ -360,10 +368,14 @@ function build(b: Brief, env: SiteEnvelope, v: Variant): Built {
     if (!ww) return fail('Upper-floor front bedrooms do not fit');
     let xx = Ws;
     for (let i = 0; i < ffFrontBeds; i++) { ff.push({ name: `Bedroom ${bedNo++}`, kind: 'bedroom', x0: r2(xx), x1: r2(xx + ww[i]), y0: 0, y1: bedD }); xx += ww[i]; }
-    const left = r2(W - xx);
+    let left = r2(W - xx);
+    const lastBed = ff[ff.length - 1];
+    // a sliver under 1 m is not merged into the bedroom (it would outgrow the master): the bedroom gives up
+    // the difference so a usable 1 m balcony remains, if the bedroom stays at its minimum width
+    if (left > 0.01 && left < 1.0 && lastBed.x1 - lastBed.x0 - (1.0 - left) >= minBed - 1e-6) { lastBed.x1 = r2(W - 1.0); xx = lastBed.x1; left = 1.0; }
     if (left >= 2.6) ff.push({ name: 'Family lounge', kind: 'lounge', x0: r2(xx), x1: W, y0: 0, y1: bedD, open: compact ? ['R'] : [] });
     else if (left >= 1.0) ff.push({ name: 'Balcony (open)', kind: 'balcony', x0: r2(xx), x1: W, y0: 0, y1: bedD });
-    else if (left > 0.01) ff[ff.length - 1].x1 = W;
+    else lastBed.x1 = W; // rounding: never past (or short of) the outer wall
     if (lobbyD) ff.push({ name: 'Upper lobby', kind: 'lobby', x0: Ws, x1: W, y0: bedD, y1: Df });
   } else ff.push({ name: 'Family lounge', kind: 'lounge', x0: Ws, x1: W, y0: 0, y1: Df, open: ['R'] });
   if (gfExtraBed) {

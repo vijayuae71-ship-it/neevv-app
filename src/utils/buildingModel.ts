@@ -104,8 +104,12 @@ export function rainwaterPipes(layout: Layout): { x: number; y: number; side: 'l
 }
 /** Underground sump: in the front setback near the building's left front corner (as on the plumbing layout). */
 export function sumpPlacement(layout: Layout): { cx: number; cy: number; l: number; w: number } {
-  const s = sumpSizeM(waterStorage(layout).sumpL); const front = layout.setbacks?.front ?? 1.5;
-  return { cx: -0.2, cy: -Math.max(0.5, front * 0.5), l: s.l, w: s.w };
+  const s = sumpSizeM(waterStorage(layout).sumpL); const front = layout.setbacks?.front ?? 1.5, left = layout.setbacks?.left ?? 1;
+  // long side along the road; kept inside the plot (300 mm clear of the compound wall) and 300 mm off the building
+  const l = Math.max(s.l, s.w), w = Math.min(s.l, s.w);
+  const cx = Math.max(-left + 0.3 + l / 2, -0.2);
+  const cy = Math.min(-0.3 - w / 2, Math.max(-front + 0.3 + w / 2, -front / 2));
+  return { cx, cy, l, w };
 }
 
 export type Face = 'front' | 'rear' | 'left' | 'right';
