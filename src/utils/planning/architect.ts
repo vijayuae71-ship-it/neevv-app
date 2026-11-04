@@ -707,7 +707,23 @@ export function planHome(b: Brief, opts: { alternatives?: boolean } = {}): PlanR
     pool.sort((a, c) => (Math.min(...chosen.map((x) => diff(x, c))) * 10 + q(c) / 10) - (Math.min(...chosen.map((x) => diff(x, a))) * 10 + q(a) / 10));
     chosen.push(pool.shift()!);
   }
-  if (chosen.length && chosen.length < 3) verdict += ` ${chosen.length === 1 ? 'Only one arrangement' : `Only ${chosen.length} genuinely different arrangements`} pass${chosen.length === 1 ? 'es' : ''} every check on this plot; mirror-image copies are not shown as separate options.`;
+  // The three options are the customer's choice. When fewer than three genuinely different schemes pass, the list is
+  // topped up with the mirrored version of a passing scheme (kitchen + stair on the other side): a real alternative on
+  // the plot — Vastu zones, morning sun and the neighbour each room faces all change — clearly labelled as such.
+  const distinct = chosen.length;
+  if (distinct && distinct < 3) {
+    const mirrorOf = (c: Cand) => cands.find((o) => o.sig === c.sig && o.v.serviceSide !== c.v.serviceSide);
+    const pool2: Cand[] = [];
+    for (const c of [...chosen, ...pool]) { const m = mirrorOf(c); if (m && !chosen.includes(m) && !pool2.includes(m)) pool2.push(m); }
+    for (const m of pool2.filter(vastuOk)) if (chosen.length < 3) chosen.push(m);
+    for (const m of pool2.filter((x) => !vastuOk(x))) if (chosen.length < 3) chosen.push(m);
+    const added = chosen.length - distinct;
+    verdict += ` ${distinct === 1 ? 'One arrangement passes' : `${distinct} genuinely different arrangements pass`} every check on this plot`
+      + (added ? `; ${added === 1 ? 'the other option shows' : `the other ${added} options show`} the same plan mirrored — kitchen and stair on the other side — so you can choose the orientation that suits your Vastu, sunlight and neighbours.` : '.');
+  }
+  const sigCount = (sig: string) => chosen.filter((c) => c.sig === sig).length;
+  // serviceSide 'left' = kitchen at x = 0 in the app frame (seen from inside, facing the road) → on the RIGHT seen from the road
+  const sideNote = (v: Variant) => `kitchen & stair on the ${v.serviceSide === 'left' ? 'right' : 'left'} (seen from the road)`;
   const schemeName = (v: Variant) => [v.compact ? 'Compact hall plan' : 'Zoned plan', v.openHall && !v.compact ? 'open living-dining' : '', v.bedsUp ? 'all bedrooms upstairs' : (v.storeys === 2 ? 'parents\u2019 room on ground floor' : '')].filter(Boolean).join(' · ');
   const schemeNote = (v: Variant) => (v.compact ? 'Compact hall plan: no middle band — the stair sits behind the kitchen and the hall leads straight to the bedrooms (least circulation).'
     : v.openHall ? 'Zoned plan with one open living-dining hall instead of separate living and dining rooms.'
@@ -722,10 +738,10 @@ export function planHome(b: Brief, opts: { alternatives?: boolean } = {}): PlanR
       : `Two-wheeler only in front (${c.bt.frontOpen} m open) — a car needs a plot at least 40 ft wide and 50 ft deep, or stilt parking with higher FSI`;
     return {
       id: `${c.v.storeys === 1 ? 'G' : 'G1'}-${c.v.compact ? 'compact' : c.v.bedsUp ? 'bedsup' : c.v.openHall ? 'openhall' : 'zoned'}-${c.v.serviceSide}`,
-      title: `${c.v.storeys === 1 ? 'Single storey' : 'G+1'} · ${schemeName(c.v)}`,
+      title: `${c.v.storeys === 1 ? 'Single storey' : 'G+1'} · ${schemeName(c.v)}${sigCount(c.sig) > 1 ? ` · ${sideNote(c.v)}` : ''}`,
       storeys: c.v.storeys, serviceSide: c.v.serviceSide, widthM: c.bt.W, depthM: c.bt.D, floors,
       builtUpSqm: bua, builtUpSqft: Math.round(bua * SQFT), fsiUsed: r2(bua / env.plotSqm), frontOpenM: c.bt.frontOpen, parkingNote,
-      vastuScore: b.vastu ? c.vastu : -1, checks: c.checks, notes: [schemeNote(c.v), ...c.bt.notes], recommended: i === 0,
+      vastuScore: b.vastu ? c.vastu : -1, checks: c.checks, notes: [schemeNote(c.v), ...(sigCount(c.sig) > 1 ? [`Orientation: ${sideNote(c.v)}.`] : []), ...c.bt.notes], recommended: i === 0,
       ...appOpeningsAndGrid(c.bt, c.v.serviceSide, floors),
     };
   });
