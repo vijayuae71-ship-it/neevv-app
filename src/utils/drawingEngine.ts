@@ -1,7 +1,7 @@
 'use client';
 
 import type { Layout, Room, ProjectRequirements, BOQ, Column, Setbacks, LayoutOpening } from '../types';
-import { ASSUMED_FOUNDING_DEPTH_M, PARAPET_HEIGHT_MM, ELEC_KINDS, electricalBreakdown, electricalPoints, fixturesFor, fixtureTotals, isNiche, WALL_EXTERNAL_MM, WALL_INTERNAL_MM } from './quantityRules';
+import { planCircuits, circuitDemand, ASSUMED_FOUNDING_DEPTH_M, PARAPET_HEIGHT_MM, ELEC_KINDS, electricalBreakdown, electricalPoints, fixturesFor, fixtureTotals, isNiche, WALL_EXTERNAL_MM, WALL_INTERNAL_MM } from './quantityRules';
 import { COMPOUND_WALL_HEIGHT_MM, COMPOUND_WALL_THICKNESS_MM, FLOOR_TO_FLOOR_MM, PLINTH_HEIGHT_MM, STAIR_HEAD_ROOM_MM, floorLevelMm, gateCentreM, gateWidthM, mainDoorCentreM, ohtPlacement, ohtTanks, rainwaterPipes, roofLevelMm, sumpPlacement, sumpSizeM, waterStorage } from './buildingModel';
 import { computeTakeoff, bathWallTileSqM, kitchenCounterRmt, KITCHEN_DADO_HEIGHT_M, type Takeoff } from './quantityTakeoff';
 
@@ -2337,7 +2337,7 @@ type Side = 'front' | 'rear' | 'left' | 'right';
 const SVC = { power: '#b5651d', light: '#2f5d8a', water: '#1f78b4', hot: '#c0392b', drain: '#7a5230', brick: '#e7c4ae', tileA: '#e9eef2', tileB: '#dfe9df', wetTile: '#cfe3ea' };
 function svcRooms(k: Context): ModelRoom[] { return selected(k).filter(r => !isNiche(r.source)); }
 function svcFrame(k: Context, withPlot = false): void {
-  const b = k.g.building, m = 700;
+  const b = k.g.building, m = 450; // tight margin so small houses reach 1:50
   setFrame(k, withPlot ? k.g.footprint : { x: b.x - m, y: b.y - m, w: b.w + 2 * m, h: b.h + 2 * m }, { x: 80, y: 120, w: 1300, h: 1060 }, 40);
   // Service symbols shrink with the drawing scale so small wet rooms stay legible (full size at 1:50).
   SYM_SCALE = Math.max(0.62, Math.min(1, k.scale / 0.1));
@@ -2449,7 +2449,15 @@ function electrical(k: Context): void {
   const db = at(k, dbModel.x, dbModel.y);
   const rowsOut: string[][] = [];
   const tot = { light: 0, fan: 0, exhaust: 0, socket: 0, power: 0, ac: 0 };
+  const circuits = planCircuits(rooms.map(r => r.source));
+  /** wiring curve (draughting convention): switch board → point */
+  const wire = (a: Point, b: Point, color: string) => {
+    const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2, dx = b.x - a.x, dy = b.y - a.y, L = Math.hypot(dx, dy) || 1;
+    c.save(); c.setLineDash([4, 3]); c.strokeStyle = color; c.lineWidth = 0.8; c.beginPath(); c.moveTo(a.x, a.y);
+    c.quadraticCurveTo(mx - dy / L * Math.min(30, L * 0.2), my + dx / L * Math.min(30, L * 0.2), b.x, b.y); c.stroke(); c.restore();
+  };
   for (const r of rooms) {
+    const ceilPts: Point[] = [], wallPts: Point[] = [];
     const b = electricalBreakdown(r.source.type);
     for (const kind of ELEC_KINDS) tot[kind] += b[kind];
     const n = ELEC_KINDS.reduce((s, kind) => s + b[kind], 0);
@@ -2465,6 +2473,7 @@ function electrical(k: Context): void {
       const off = ceiling.length > 2 ? ((i % 2) ? 0.62 : 0.38) : 0.5;
       const p = longX ? { x: r.x + r.w * t, y: r.y + r.d * off } : { x: r.x + r.w * off, y: r.y + r.d * t };
       const q = at(k, p.x, p.y);
+      ceilPts.push(q);
       if (item.code === 'F') { circle(c, q.x, q.y, 13, '#fff', item.color, 1.6); for (let a = 0; a < 3; a++) { const ang = a * 2.094; drawLine(c, q.x, q.y, q.x + 11 * Math.cos(ang), q.y + 11 * Math.sin(ang), 1.4, item.color); } }
       else sym(c, q, 'L', item.color, 'circle', 10);
     });
@@ -2488,6 +2497,7 @@ function electrical(k: Context): void {
       const extra = idx < 0 ? 0 : Math.floor(idx / Math.max(1, slots.length)) * 0.08;
       const p = at(k, onSide(r, slot.side, Math.min(0.9, slot.t + extra), 170).x, onSide(r, slot.side, Math.min(0.9, slot.t + extra), 170).y);
       sym(c, p, item.code, item.color, item.code === 'S' ? 'circle' : 'square', item.code.length > 1 ? 12 : 9);
+      (item.code === 'EF' ? ceilPts : wallPts).push(p);
     }
     // Switch board beside the door, with the home run to the DB.
     let sb: Point;
@@ -2498,7 +2508,11 @@ function electrical(k: Context): void {
     } else sb = { x: r.x + 250, y: r.y + 250 };
     const sp = at(k, sb.x, sb.y);
     ortho(c, sp, db, SVC.power, 1, [6, 4]);
+    for (const q of ceilPts) wire(sp, q, SVC.light);
+    for (const q of wallPts) wire(sp, q, SVC.power);
     drawRect(c, sp.x - 7, sp.y - 5, 14, 10, { fill: COLORS.wall, stroke: COLORS.wall, weight: 1 });
+    const tag = circuits.filter(ci => ci.roomIds.includes(r.source.id)).map(ci => ci.no).join(',');
+    if (tag) { const w = textWidth(c, tag, 9, true) + 6; soft(w, 12, ringCands(sp.x + w / 2 + 9, sp.y - 10, 16, 12, 2), (x, y) => { drawRect(c, x - w / 2, y - 6, w, 12, { fill: '#fff', stroke: SVC.power, weight: 0.6 }); label(c, tag, x, y + 0.5, 9, 'center', SVC.power, true); }, true); }
   }
   drawRect(c, db.x - 18, db.y - 12, 36, 24, { fill: '#fff', stroke: SVC.power, weight: 2.2 });
   label(c, k.level === 0 ? 'DB' : 'SDB', db.x, db.y + 1, 11, 'center', SVC.power, true);
@@ -2508,18 +2522,21 @@ function electrical(k: Context): void {
   const allRooms = k.layout.floors.flatMap(f => f.rooms);
   const whole = electricalPoints(allRooms);
   rowsOut.push(['WHOLE HOUSE (= BOQ)', '', '', '', '', '', '', `${whole}`]);
-  const y = table(c, 1420, 150, [{ h: 'ROOM', w: 230 }, { h: 'L', w: 38 }, { h: 'F', w: 38 }, { h: 'EF', w: 38 }, { h: 'S', w: 38 }, { h: 'P', w: 38 }, { h: 'AC', w: 38 }, { h: 'PTS', w: 50 }], rowsOut, `ELECTRICAL POINT SCHEDULE — ${floorName(k)}`);
-  legend(c, 1420, y + 40, 'LEGEND', [
-    'L  ceiling light point        F  ceiling fan point',
-    'EF exhaust fan                 S  6A socket (modular)',
-    'P  16A power point             AC split-AC 16A point + drain',
-    '▬  switch board at door, 1200 mm FFL',
-    `${k.level === 0 ? 'DB  main distribution board' : 'SDB sub-distribution board'} — RCCB 30 mA + MCBs`,
-    '- - - circuit run, FR/FRLS Cu in concealed PVC conduit',
-    'Lighting 1.5 mm², 6A sockets 2.5 mm², 16A/AC 4 mm² (prelim.)',
-    'Earthing per IS 3043; final load to be designed by electrician.',
+  let y = table(c, 1420, 140, [{ h: 'ROOM', w: 200 }, { h: 'L', w: 36 }, { h: 'F', w: 36 }, { h: 'EF', w: 36 }, { h: 'S', w: 36 }, { h: 'P', w: 36 }, { h: 'AC', w: 36 }, { h: 'PTS', w: 46 }], rowsOut, `POINT SCHEDULE — ${floorName(k)}`, 19);
+  const crow = circuits.map(ci => [ci.no, ci.kind === 'lighting' ? 'Lights/fans' : ci.kind === 'socket' ? '6A sockets' : ci.kind === 'power' ? '16A power' : 'Split AC',
+    ci.rooms.map(n => n.replace(/\s*\(.*?\)\s*/g, '')).join(', '), `${ci.points}`, `${ci.loadW}`, `${ci.mcbA}A`, `${ci.cableMm2}`]);
+  const dm = circuitDemand(circuits);
+  // the main DB (GF) carries the whole house: main switch and supply from every floor's circuits
+  const whole0 = circuitDemand(k.layout.floors.flatMap(f => planCircuits(f.rooms)));
+  crow.push(['TOTAL', `${circuits.length} circuits`, `demand ${(dm.demandW / 1000).toFixed(1)} kW`, '', `${dm.connectedW}`, '', '']);
+  y = table(c, 1420, y + 34, [{ h: 'CKT', w: 40 }, { h: 'TYPE', w: 78 }, { h: 'ROOMS', w: 170 }, { h: 'PTS', w: 34 }, { h: 'LOAD W', w: 56 }, { h: 'MCB', w: 44 }, { h: 'mm²', w: 40 }], crow, `CIRCUIT SCHEDULE — ${k.level === 0 ? 'DB' : 'SDB'}`, 19);
+  legend(c, 1420, y + 30, 'LEGEND & NOTES', [
+    'L light  F fan  EF exhaust  S 6A socket  P 16A power  AC split AC',
+    '▬ switch board 1200 FFL, tag = its circuits; curves = switch wiring',
+    k.level === 0 ? `DB: ${whole0.mainA}A ${whole0.supply === 'single-phase' ? 'DP' : 'TPN'} main + RCCB 30 mA; house demand ${(whole0.demandW / 1000).toFixed(1)} kW, ${whole0.supply}` : `SDB: ${dm.mainA}A DP incomer + RCCB 30 mA, fed from the GF DB`,
+    'FRLS Cu in concealed PVC conduit; earthing per IS 3043.',
   ]);
-  label(c, `${floorName(k)} ELECTRICAL LAYOUT — points as per locked plan`, 100, 140, 16, 'left', COLORS.dim);
+  viewTitle(k, `${floorName(k)} ELECTRICAL LAYOUT`, 80, 130);
 }
 
 /* 14. Plumbing & drainage layout. */

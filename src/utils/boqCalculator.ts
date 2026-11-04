@@ -2,7 +2,7 @@ import type { BOQ, BOQLineItem, DoorScheduleItem, WindowScheduleItem, Layout, Ma
 import { computeTakeoff, type Takeoff } from './quantityTakeoff';
 import { COMPOUND_WALL_HEIGHT_MM, gateWidthM, waterStorage } from './buildingModel';
 import { cityRateFactor, specFactor } from './marketRates';
-import { electricalPoints as electricalPointsFor, plumbingPoints as plumbingPointsFor, electricalTotals, fixtureTotals, isNiche, ASSUMED_FOUNDING_DEPTH_M, PARAPET_HEIGHT_MM, WALL_EXTERNAL_MM, WALL_INTERNAL_MM } from './quantityRules';
+import { planCircuits, circuitDemand, electricalPoints as electricalPointsFor, plumbingPoints as plumbingPointsFor, electricalTotals, fixtureTotals, isNiche, ASSUMED_FOUNDING_DEPTH_M, PARAPET_HEIGHT_MM, WALL_EXTERNAL_MM, WALL_INTERNAL_MM } from './quantityRules';
 
 /** Pricing context: city and specification level. Custom rates entered by the customer always win. */
 export interface BOQContext { city?: string; budget?: BudgetRange; bathTileHeightM?: number }
@@ -421,7 +421,12 @@ export function calculateBOQ(
   add('Exhaust Fans (Kitchen & Baths)', el.exhaust, 'nos', 2200, 'mep', '150–200 mm, incl. fixing');
   add('AC Points (Power + Drain)', el.ac, 'nos', 4500, 'mep', '16A socket with drain pipe');
   add('Geyser Point (15A)', toilets.length, 'nos', 2000, 'mep', '15A socket + MCB');
-  add('MCB Distribution Board', numFloors, 'nos', 12000, 'mep', 'Per floor');
+  // DB ways and MCBs from the same circuit plan as the electrical drawings (E-sheets)
+  const circuitsPerFloor = layout.floors.map((f) => planCircuits(f.rooms));
+  const nCircuits = circuitsPerFloor.reduce((s, c) => s + c.length, 0);
+  const demand = circuitDemand(circuitsPerFloor.flat());
+  add(`MCB Distribution Board (${Math.max(...circuitsPerFloor.map((c) => c.length)) + 4}-way, RCCB)`, numFloors, 'nos', 12000, 'mep', `Per floor; ${nCircuits} circuits in all (E-sheets)`);
+  add('MCBs (SP, C-curve)', nCircuits, 'nos', 350, 'mep', `6A lighting / 16A sockets / 20A power & AC; max demand ${(demand.demandW / 1000).toFixed(1)} kW, ${demand.supply}`);
   add('RCCB (Earth Leakage)', numFloors, 'nos', 4500, 'mep', '63A/30mA');
   add('Earthing (Pipe/Plate)', 2, 'nos', 9000, 'mep', 'As per IS 3043');
   add('TV & Internet Points', bedrooms.length + halls.length, 'nos', 1000, 'mep', 'Cat6 + coaxial');
