@@ -1,6 +1,6 @@
 'use client';
 
-import type { Layout, Room, ProjectRequirements, BOQ, Column, Setbacks, LayoutOpening } from '../types';
+import type { Layout, Room, ProjectRequirements, BOQ, Column, Setbacks, LayoutOpening, RoomInterior, FurnitureItem } from '../types';
 import { planCircuits, circuitDemand, ASSUMED_FOUNDING_DEPTH_M, PARAPET_HEIGHT_MM, ELEC_KINDS, electricalBreakdown, electricalPoints, fixturesFor, fixtureTotals, isNiche, WALL_EXTERNAL_MM, WALL_INTERNAL_MM } from './quantityRules';
 import { COMPOUND_WALL_HEIGHT_MM, COMPOUND_WALL_THICKNESS_MM, FLOOR_TO_FLOOR_MM, PLINTH_HEIGHT_MM, STAIR_HEAD_ROOM_MM, floorLevelMm, gateCentreM, gateWidthM, mainDoorCentreM, ohtPlacement, ohtTanks, rainwaterPipes, roofLevelMm, sumpPlacement, sumpSizeM, waterStorage } from './buildingModel';
 import { computeTakeoff, bathWallTileSqM, kitchenCounterRmt, KITCHEN_DADO_HEIGHT_M, type Takeoff } from './quantityTakeoff';
@@ -3132,6 +3132,261 @@ function titleBlock(k: Context): void {
   label(c, 'PRELIMINARY DESIGN — VERIFY WITH LICENSED PROFESSIONAL BEFORE EXECUTION', x + 14, y + 180, 11, 'left', COLORS.dim);
   label(c, 'DO NOT SCALE — FOLLOW WRITTEN DIMENSIONS • GENERATED FROM THE LOCKED PLAN • REVIEW BY ARCHITECT / STRUCTURAL ENGINEER PENDING',
     MARGIN + 12, SHEET_H - 43, 12, 'left', COLORS.dim);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+ * INTERIOR ENGINE — furniture placement from the locked plan.
+ * One placement per room feeds the interior sheets, the interior BOQ cross-check and the 3D room view.
+ * Model coordinates are building millimetres (same frame as every architectural sheet).
+ * ══════════════════════════════════════════════════════════════════════════════ */
+export interface PlacedFurniture {
+  name: string; category: string; x: number; y: number; w: number; d: number; h: number;
+  /** wall the item backs onto ('free' = free-standing); for wall items w runs along that wall */
+  side: Side | 'free'; kind: 'furniture' | 'counter' | 'upper' | 'fixture' | 'seat';
+  /** quantity represented by this symbol (e.g. a workstation cluster) */
+  qty?: number; cost?: number; material?: string; color?: string;
+}
+export interface InteriorPlan {
+  roomId: string; roomName: string; roomType: string; floor: number;
+  room: Bounds; clear: Bounds; option: number; label: string; keySide?: Side;
+  items: PlacedFurniture[]; omitted: string[]; doorZones: Bounds[];
+}
+const ovl = (a: Bounds, b: Bounds, gap = 0) => a.x < b.x + b.w + gap && b.x < a.x + a.w + gap && a.y < b.y + b.h + gap && b.y < a.y + a.h + gap;
+const inside = (a: Bounds, b: Bounds) => a.x >= b.x - 1 && a.y >= b.y - 1 && a.x + a.w <= b.x + b.w + 1 && a.y + a.h <= b.y + b.h + 1;
+function interiorContext(layout: Layout, req: ProjectRequirements, level: number): Context {
+  const g = makeGeometry(layout, req, {});
+  return { c: null as unknown as CanvasRenderingContext2D, g, layout, req, data: {}, boq: null, level: (level > 0 ? 1 : 0) as Level,
+    frame: { x: 0, y: 0, s: 1, width: 0, height: 0 }, scale: 1, title: '', views: [], type: 'working_plan', sheetNo: '', rev: 1 };
+}
+function findModelRoom(g: Geometry, roomId: string): { r: ModelRoom; floor: number } | null {
+  for (let f = 0; f < g.rooms.length; f++) { const r = (g.rooms[f] ?? []).find(m => m.source.id === roomId); if (r) return { r, floor: f }; }
+  return null;
+}
+/** Openings on any wall of room r (including doors owned by the neighbour). */
+function roomWallOpenings(k: Context, r: ModelRoom): { o: OpeningPlacement; side: Side }[] {
+  const out: { o: OpeningPlacement; side: Side }[] = [];
+  for (const o of k.g.openings.filter(v => v.floor === k.level)) {
+    if (o.axis === 'horizontal' && o.b > r.x + 5 && o.a < r.x + r.w - 5) {
+      if (Math.abs(o.fixed - r.y) < 160) out.push({ o, side: 'front' }); else if (Math.abs(o.fixed - (r.y + r.d)) < 160) out.push({ o, side: 'rear' });
+    } else if (o.axis === 'vertical' && o.b > r.y + 5 && o.a < r.y + r.d - 5) {
+      if (Math.abs(o.fixed - r.x) < 160) out.push({ o, side: 'left' }); else if (Math.abs(o.fixed - (r.x + r.w)) < 160) out.push({ o, side: 'right' });
+    }
+  }
+  return out;
+}
+const countOf = (name: string) => { const m = /[×x]\s*(\d+)\s*\)?\s*$/i.exec(name) ?? /\(set of (\d+)\)/i.exec(name) ?? /(\d+)-seat/i.exec(name); return m ? Math.max(1, Number(m[1])) : 1; };
+/** Plan one arrangement of the room's selected furniture. option 0,1,2… rotates the wall the key piece backs onto. */
+export function planInteriorRoom(layout: Layout, req: ProjectRequirements, roomId: string, interior: RoomInterior | undefined, option = 0,
+  /** fix the key piece (bed, else sofa) at this wall position — used by the option search */ force?: { side: Side; t: number }): InteriorPlan | null {
+  const g0 = makeGeometry(layout, req, {}); const found = findModelRoom(g0, roomId); if (!found) return null;
+  const k = interiorContext(layout, req, found.floor); const r = (k.g.rooms[found.floor] ?? []).find(m => m.source.id === roomId)!;
+  const clear = clearRect(k, r), items: PlacedFurniture[] = [], omitted: string[] = [], occupied: Bounds[] = [];
+  const ops = roomWallOpenings(k, r), ext = externalSides(k, r);
+  const doorZones: Bounds[] = [], windows: { side: Side; a: number; b: number; sill: number }[] = [];
+  for (const { o, side } of ops) {
+    if (o.source.type === 'door') {
+      const depth = o.room === r ? Math.min(1000, o.b - o.a + 100) : 750, a = o.a - 100, b = o.b + 100;
+      doorZones.push(side === 'front' ? { x: a, y: clear.y, w: b - a, h: depth } : side === 'rear' ? { x: a, y: clear.y + clear.h - depth, w: b - a, h: depth }
+        : side === 'left' ? { x: clear.x, y: a, w: depth, h: b - a } : { x: clear.x + clear.w - depth, y: a, w: depth, h: b - a });
+    } else windows.push({ side, a: o.a, b: o.b, sill: finite(o.source.sillHeightMm, o.source.type === 'ventilator' ? 2100 : 900) });
+  }
+  const sideL = (s: Side) => (s === 'front' || s === 'rear' ? clear.w : clear.h);
+  const along0 = (s: Side) => (s === 'front' || s === 'rear' ? clear.x : clear.y);
+  const wallRect = (s: Side, t: number, w: number, d: number): Bounds => s === 'front' ? { x: t, y: clear.y, w, h: d } : s === 'rear' ? { x: t, y: clear.y + clear.h - d, w, h: d }
+    : s === 'left' ? { x: clear.x, y: t, w: d, h: w } : { x: clear.x + clear.w - d, y: t, w: d, h: w };
+  const fits = (b: Bounds, h: number, side?: Side, extra: Bounds[] = []) => inside(b, clear) && !occupied.some(o => ovl(o, b, -1)) && !doorZones.some(z => ovl(z, b, -1)) && !extra.some(z => ovl(z, b, -1))
+    && !(side && h > 0 && windows.some(wn => wn.side === side && h > wn.sill - 50 && (side === 'front' || side === 'rear' ? b.x < wn.b && wn.a < b.x + b.w : b.y < wn.b && wn.a < b.y + b.h)));
+  const put = (it: PlacedFurniture, clearance?: Bounds) => { items.push(it); occupied.push({ x: it.x, y: it.y, w: it.w, h: it.d }); if (clearance) occupied.push(clearance); };
+  const asItem = (f: FurnitureItem | undefined, name: string, cat: string, b: Bounds, h: number, side: Side | 'free', kind: PlacedFurniture['kind'] = 'furniture', qty?: number): PlacedFurniture =>
+    ({ name, category: cat, x: b.x, y: b.y, w: b.w, d: b.h, h, side, kind, qty, cost: f?.estimatedCost, material: f?.material, color: f?.color });
+  /** Wall slot: positions centred, corners, then every 100 mm along each preferred side. Returns the rect (w along wall). */
+  const wallSlot = (w: number, d: number, h: number, sides: Side[], mode: 'center' | 'corner' = 'center', front = 0): { b: Bounds; side: Side } | null => {
+    for (const s of sides) {
+      const L = sideL(s), a0 = along0(s); if (w > L) continue;
+      const cands = mode === 'center' ? [a0 + (L - w) / 2, a0, a0 + L - w] : [a0, a0 + L - w, a0 + (L - w) / 2];
+      for (let t = a0; t <= a0 + L - w; t += 100) cands.push(t);
+      for (const t of cands) {
+        const b = wallRect(s, t, w, d);
+        const fr = front > 0 ? wallRect(s, t, w, d + front) : undefined;
+        if (fits(b, h, s) && (!fr || !doorZones.some(z => ovl(z, fr, -1)))) return { b, side: s };
+      }
+    }
+    return null;
+  };
+  const inward = (s: Side, b: Bounds, dist: number, w: number, d: number): Bounds => { // rect in front of b, centred
+    const cx = b.x + b.w / 2, cy = b.y + b.h / 2;
+    return s === 'front' ? { x: cx - w / 2, y: b.y + b.h + dist, w, h: d } : s === 'rear' ? { x: cx - w / 2, y: b.y - dist - d, w, h: d }
+      : s === 'left' ? { x: b.x + b.w + dist, y: cy - d / 2, w: d, h: w } : { x: b.x - dist - d, y: cy - d / 2, w: d, h: w };
+  };
+  const all: Side[] = ['rear', 'left', 'right', 'front'];
+  const doorSides = new Set(ops.filter(v => v.o.source.type === 'door').map(v => v.side));
+  const winSides = new Set(windows.filter(wn => wn.sill < 1500).map(wn => wn.side));
+  const rankSides = (pref: (s: Side) => number) => [...all].sort((p, q) => pref(q) - pref(p));
+  const keyRank = rankSides(s => sideL(s) / 1000 + (doorSides.has(s) ? -3 : 0) + (winSides.has(s) ? -1.5 : 0));
+  const keyOrder = (n: number) => { const ok = keyRank.slice(0, Math.max(1, keyRank.length)); return [...ok.slice(n % ok.length), ...ok.slice(0, n % ok.length)]; };
+  const furn = interior?.furniture ?? []; // the customer's selection (MoodBoard / room flow already filtered it)
+  const t = r.source.type as string, used = new Set<FurnitureItem>();
+  const take = (pred: (f: FurnitureItem) => boolean) => { const f = furn.find(x => !used.has(x) && pred(x)); if (f) used.add(f); return f; };
+  let keySide: Side | undefined;
+
+  if (t === 'toilet') {
+    // fixtures exactly where the plumbing layout puts them
+    const w = wetLayout(k, r), L = sideLen(r, w.service), tAt = (mm: number) => (w.tEnd === 0 ? mm / L : 1 - mm / L);
+    const at0 = (mm: number, inset: number) => onSide(r, w.service, tAt(mm), inset);
+    const fixAt = (p: Point, wAlong: number, dOut: number, name: string, side: Side) => {
+      const hz = side === 'front' || side === 'rear';
+      const sgn = side === 'front' || side === 'left' ? 1 : -1, wallC = side === 'front' ? clear.y : side === 'rear' ? clear.y + clear.h : side === 'left' ? clear.x : clear.x + clear.w;
+      const b = hz ? { x: p.x - wAlong / 2, y: sgn > 0 ? wallC : wallC - dOut, w: wAlong, h: dOut } : { x: sgn > 0 ? wallC : wallC - dOut, y: p.y - wAlong / 2, w: dOut, h: wAlong };
+      items.push(asItem(take(f => new RegExp(name.split(' ')[0], 'i').test(f.name)), name, 'bathroom_fixture', b, 800, side, 'fixture')); occupied.push(b);
+    };
+    const sh = at0(450, 450); const shB = { x: sh.x - 450, y: sh.y - 450, w: 900, h: 900 };
+    items.push(asItem(take(f => /shower/i.test(f.name)), 'Shower 900×900', 'bathroom_fixture', shB, 2000, w.service, 'fixture')); occupied.push(shB);
+    fixAt(at0(1250, 0), 400, 700, 'WC', w.service);
+    const L2 = L >= 2500; const vanity = take(f => /vanity/i.test(f.name));
+    fixAt(L2 ? at0(2150, 0) : onSide(r, opposite[w.service], 0.5, 0), vanity ? 900 : 600, vanity ? 450 : 450, vanity ? 'Vanity unit' : 'Wash basin', L2 ? w.service : opposite[w.service]);
+  } else if (t === 'kitchen') {
+    const kc = kitchenCounter(k, r);
+    for (const [s, maxLen] of [[kc.long, 99999], [kc.short, 2400]] as [Side, number][]) {
+      const L = Math.min(sideL(s), maxLen), a0 = s === kc.short ? along0(s) : along0(s);
+      let run = { b: wallRect(s, a0, L, 600) };
+      // shorten the run off any door zone
+      for (let cut = 0; cut < L && !fits(run.b, 900, undefined); cut += 100) run = { b: wallRect(s, a0 + (s === kc.short ? 0 : 0), L - cut, 600) };
+      if (!fits(run.b, 900, undefined)) continue;
+      put(asItem(take(f => /lower cabinet/i.test(f.name)), s === kc.long ? 'Counter + base units (L)' : 'Counter + base units (S)', 'kitchen_cabinet', run.b, 900, s, 'counter'));
+      items.push({ ...asItem(take(f => /upper cabinet/i.test(f.name)), 'Upper units over', 'kitchen_cabinet', wallRect(s, (s === 'front' || s === 'rear' ? run.b.x : run.b.y), (s === 'front' || s === 'rear' ? run.b.w : run.b.h), 350), 700, s, 'upper') });
+    }
+    const lr = items.find(i => i.side === kc.long && i.kind === 'counter');
+    if (lr) {
+      const hz = kc.long === 'front' || kc.long === 'rear', sinkC = onSide(r, kc.long, 0.5, 300);
+      const sink = hz ? { x: clamp(sinkC.x - 400, lr.x, lr.x + lr.w - 800), y: lr.y + 75, w: 800, h: 450 } : { x: lr.x + 75, y: clamp(sinkC.y - 400, lr.y, lr.y + lr.d - 800), w: 450, h: 800 };
+      items.push(asItem(take(f => /sink/i.test(f.name)), 'Sink', 'kitchen_cabinet', sink, 900, kc.long, 'fixture'));
+      const hobT = hz ? (sink.x - lr.x > lr.x + lr.w - sink.x - sink.w ? lr.x + 150 : lr.x + lr.w - 750) : (sink.y - lr.y > lr.y + lr.d - sink.y - sink.h ? lr.y + 150 : lr.y + lr.d - 750);
+      const hob = hz ? { x: hobT, y: lr.y + 50, w: 600, h: 500 } : { x: lr.x + 50, y: hobT, w: 500, h: 600 };
+      items.push(asItem(take(f => /\bhob\b/i.test(f.name)), 'Hob + chimney over', 'kitchen_cabinet', hob, 900, kc.long, 'fixture'));
+    }
+    const tall = take(f => /tall unit/i.test(f.name));
+    if (tall) { const sl = wallSlot(600, 600, 2100, [opposite[kc.short], kc.long, kc.short], 'corner', 600); if (sl) put(asItem(tall, 'Tall pantry unit', 'kitchen_cabinet', sl.b, 2100, sl.side)); else omitted.push('Tall pantry unit'); }
+    furn.filter(f => /island/i.test(f.name) && !used.has(f)).forEach(f => { used.add(f); const b = { x: clear.x + clear.w / 2 - f.widthMM / 2, y: clear.y + clear.h / 2 - f.depthMM / 2, w: f.widthMM, h: f.depthMM }; if (fits(b, 900, undefined, [])) put(asItem(f, 'Island', 'kitchen_cabinet', b, 900, 'free')); else omitted.push(f.name); });
+    furn.filter(f => /countertop|backsplash|led strip|cutlery|bottle|carousel|chimney/i.test(f.name)).forEach(f => used.add(f)); // part of the counter run
+  } else if (t.startsWith('workstation') || t === 'open_office') {
+    const desk = take(f => /desk cluster|workstation/i.test(f.name)); const n = desk ? countOf(desk.name) : Math.max(1, Math.floor(clear.w * clear.h / 1e6 / 4.5 / 4));
+    const W = desk?.widthMM ?? 2400, D = desk?.depthMM ?? 1200, aisle = 1200, edge = 900; let placed = 0;
+    for (let y = clear.y + edge; y + D + 450 <= clear.y + clear.h - 600 && placed < n; y += D + aisle + 900)
+      for (let x = clear.x + edge; x + W <= clear.x + clear.w - edge && placed < n; x += W + 900) {
+        const b = { x, y: y + 450, w: W, h: D }; if (!fits(b, 750)) continue;
+        put(asItem(desk, `Workstation cluster ${placed + 1}`, 'study_table', b, 750, 'free', 'furniture', 4), { x: b.x, y: b.y - 450, w: b.w, h: b.h + 900 }); placed++;
+      }
+    if (placed < n) omitted.push(`${n - placed} of ${n} workstation clusters (room too small)`);
+    furn.filter(f => /chair|pedestal|screen/i.test(f.name)).forEach(f => used.add(f)); // drawn with the clusters
+  } else if (/conference|board/.test(t)) {
+    const tb = take(f => f.category === 'dining_table'); const seats = tb ? countOf(tb.name) : 6;
+    const long = clear.w >= clear.h, TW = Math.min((long ? clear.w : clear.h) - 1600, tb?.widthMM ?? 2400), TD = Math.min(tb?.depthMM ?? 1200, (long ? clear.h : clear.w) - 1600);
+    const b = long ? { x: clear.x + (clear.w - TW) / 2, y: clear.y + (clear.h - TD) / 2, w: TW, h: TD } : { x: clear.x + (clear.w - TD) / 2, y: clear.y + (clear.h - TW) / 2, w: TD, h: TW };
+    if (TW > 900 && TD > 600) put(asItem(tb, `Conference table (${seats} seats)`, 'dining_table', b, 750, 'free', 'furniture', seats), { x: b.x - 600, y: b.y - 600, w: b.w + 1200, h: b.h + 1200 }); else omitted.push('Conference table');
+    furn.filter(f => /chair/i.test(f.name)).forEach(f => used.add(f));
+  }
+
+  // key piece: bed / sofa / desk / dining table, on the wall the option selects
+  const order = keyOrder(option);
+  const bed = take(f => f.category === 'bed');
+  if (bed) {
+    let sl: { b: Bounds; side: Side } | null = null;
+    if (force) { const b = wallRect(force.side, force.t, bed.widthMM, bed.depthMM); sl = fits(b, 450, force.side) ? { b, side: force.side } : null; }
+    else for (const s of order) { sl = wallSlot(bed.widthMM, bed.depthMM, 450, [s], 'center'); if (sl) break; }
+    if (sl) {
+      keySide = sl.side; put(asItem(bed, bed.name, 'bed', sl.b, 450, sl.side), inward(sl.side, sl.b, 0, sl.b.w + 0, 600));
+      const sideTables = furn.filter(f => f.category === 'side_table' && !used.has(f));
+      for (const [i, st] of sideTables.slice(0, 2).entries()) {
+        used.add(st); const hz = sl.side === 'front' || sl.side === 'rear';
+        const tpos = hz ? (i === 0 ? sl.b.x - st.widthMM - 50 : sl.b.x + sl.b.w + 50) : (i === 0 ? sl.b.y - st.widthMM - 50 : sl.b.y + sl.b.h + 50);
+        const b = wallRect(sl.side, tpos, st.widthMM, st.depthMM);
+        if (fits(b, st.heightMM, sl.side)) put(asItem(st, st.name, 'side_table', b, st.heightMM, sl.side)); else omitted.push(st.name);
+      }
+    } else omitted.push(bed.name);
+  }
+  const sofa = take(f => f.category === 'sofa' && !/recliner/i.test(f.name));
+  if (sofa) {
+    let sl: { b: Bounds; side: Side } | null = null;
+    if (force && !bed) { const b = wallRect(force.side, force.t, sofa.widthMM, Math.min(sofa.depthMM, 1000)); sl = fits(b, sofa.heightMM, force.side) ? { b, side: force.side } : null; }
+    else for (const s of (bed ? rankSides(s2 => (s2 === keySide ? -9 : 0) + sideL(s2) / 1000) : order)) { sl = wallSlot(sofa.widthMM, Math.min(sofa.depthMM, 1000), sofa.heightMM, [s], /l-shape/i.test(sofa.name) ? 'corner' : 'center'); if (sl) break; }
+    if (sl) {
+      if (!keySide) keySide = sl.side;
+      const lshape = /l-shape/i.test(sofa.name);
+      put(asItem(sofa, sofa.name, 'sofa', sl.b, sofa.heightMM, sl.side), inward(sl.side, sl.b, 0, sl.b.w, 450));
+      if (lshape) { const hz = sl.side === 'front' || sl.side === 'rear', leg = sofa.depthMM - Math.min(sofa.depthMM, 1000);
+        const lb = hz ? { x: sl.b.x <= clear.x + 5 ? sl.b.x : sl.b.x + sl.b.w - 900, y: sl.side === 'front' ? sl.b.y + sl.b.h : sl.b.y - leg, w: 900, h: leg } : { x: sl.side === 'left' ? sl.b.x + sl.b.w : sl.b.x - leg, y: sl.b.y <= clear.y + 5 ? sl.b.y : sl.b.y + sl.b.h - 900, w: leg, h: 900 };
+        if (leg > 100 && fits(lb, sofa.heightMM)) put({ ...asItem(undefined, 'L-return', 'sofa', lb, sofa.heightMM, sl.side) }); }
+      const ct = take(f => /center table|coffee/i.test(f.name));
+      if (ct) { const b = inward(sl.side, sl.b, 450, ct.widthMM, ct.depthMM); if (fits(b, 400)) put(asItem(ct, ct.name, 'console', b, ct.heightMM, 'free')); else omitted.push(ct.name); }
+    } else omitted.push(sofa.name);
+  }
+  const dining = take(f => f.category === 'dining_table');
+  if (dining) {
+    const seats = countOf(furn.find(f => /dining chair/i.test(f.name))?.name ?? '') || 6;
+    const rot = option % 2 === 1 && clear.h > clear.w * 0.9; const W = rot ? dining.depthMM : dining.widthMM, D = rot ? dining.widthMM : dining.depthMM;
+    const b = { x: clear.x + (clear.w - W) / 2, y: clear.y + (clear.h - D) / 2, w: W, h: D };
+    if (fits({ x: b.x - 550, y: b.y - 550, w: b.w + 1100, h: b.h + 1100 }, 750)) put(asItem(dining, dining.name, 'dining_table', b, 750, 'free', 'furniture', seats), { x: b.x - 550, y: b.y - 550, w: b.w + 1100, h: b.h + 1100 });
+    else if (fits(b, 750)) put(asItem(dining, dining.name, 'dining_table', b, 750, 'free', 'furniture', seats)); else omitted.push(dining.name);
+    furn.filter(f => /dining chair/i.test(f.name)).forEach(f => used.add(f));
+  }
+  const tv = take(f => f.category === 'tv_unit');
+  if (tv) { const pref = keySide ? [opposite[keySide], ...all.filter(s => s !== opposite[keySide!] && s !== keySide)] : order; const sl = wallSlot(tv.widthMM, tv.depthMM, tv.heightMM, pref, 'center'); if (sl) put(asItem(tv, tv.name, 'tv_unit', sl.b, tv.heightMM, sl.side)); else omitted.push(tv.name); }
+  // desks: by a window where possible, chair in front
+  for (const dk of furn.filter(f => f.category === 'study_table' && !used.has(f))) {
+    used.add(dk); const pref = rankSides(s => (winSides.has(s) ? 3 : 0) + (s === keySide ? -5 : 0) + sideL(s) / 2000);
+    const sl = wallSlot(dk.widthMM, dk.depthMM, dk.heightMM, /executive/i.test(dk.name) ? [] : pref, 'center', 700)
+      ?? (/executive/i.test(dk.name) ? (() => { const b = { x: clear.x + (clear.w - dk.widthMM) / 2, y: clear.y + clear.h * 0.35, w: dk.widthMM, h: dk.depthMM }; return fits(b, 750) ? { b, side: 'rear' as Side } : null; })() : null);
+    if (sl) put(asItem(dk, dk.name, 'study_table', sl.b, dk.heightMM, /executive/i.test(dk.name) ? 'free' : sl.side), inward(sl.side, sl.b, 0, sl.b.w, 700)); else omitted.push(dk.name);
+  }
+  // storage and everything else against free wall lengths; tall items avoid windows, wardrobes need 600 in front
+  const rest = furn.filter(f => !used.has(f) && f.category !== 'chair' && f.category !== 'bathroom_fixture' && f.category !== 'side_table');
+  rest.sort((p, q) => q.widthMM * q.heightMM - p.widthMM * p.heightMM);
+  for (const f of rest) {
+    used.add(f);
+    if (/mirror|towel|bell|decorative|cutlery|led|backsplash|countertop|bottle|carousel|hood|chimney/i.test(f.name)) continue; // wall-mounted / accessories: no floor area
+    const front = f.category === 'wardrobe' || f.category === 'crockery' ? 600 : 450;
+    const pref = rankSides(s => (s === keySide ? -4 : 0) + (doorSides.has(s) ? -1 : 0) + sideL(s) / 1000);
+    const sl = wallSlot(f.widthMM, f.depthMM, f.heightMM, pref, f.heightMM > 1500 ? 'corner' : 'center', front);
+    if (sl) put(asItem(f, f.name, f.category, sl.b, f.heightMM, sl.side), inward(sl.side, sl.b, 0, sl.b.w, front)); else omitted.push(f.name);
+  }
+  // seats drawn with their tables/desks
+  for (const ch of furn.filter(f => f.category === 'chair' && !used.has(f))) used.add(ch);
+  const label0 = keySide ? `${t === 'hall' || t === 'living' ? 'Sofa' : bed ? 'Bed' : 'Main piece'} on the ${keySide} wall` : 'Standard arrangement';
+  return { roomId, roomName: r.source.name, roomType: t, floor: found.floor, room: { x: r.x, y: r.y, w: r.w, h: r.d }, clear, option, label: label0, keySide, items, omitted, doorZones };
+}
+/** Up to three genuinely different arrangements: the key piece (bed, else sofa) on a different wall each time, at the
+ * position along that wall that leaves room for the most furniture (fewest items that don't fit, then most central). */
+export function interiorOptions(layout: Layout, req: ProjectRequirements, roomId: string, interior: RoomInterior | undefined): InteriorPlan[] {
+  const p0 = planInteriorRoom(layout, req, roomId, interior, 0); if (!p0) return [];
+  const key = (interior?.furniture ?? []).find(f => f.category === 'bed') ?? (interior?.furniture ?? []).find(f => f.category === 'sofa' && !/recliner/i.test(f.name));
+  const candidates: InteriorPlan[] = [];
+  if (key) {
+    const c = p0.clear, kw = key.widthMM;
+    for (const side of ['rear', 'left', 'right', 'front'] as Side[]) {
+      const L = side === 'front' || side === 'rear' ? c.w : c.h, a0 = side === 'front' || side === 'rear' ? c.x : c.y;
+      if (kw > L) continue;
+      let best: InteriorPlan | null = null; let bestScore = Infinity;
+      const ts: number[] = [a0, a0 + L - kw]; for (let t = a0; t <= a0 + L - kw + 1; t += 150) ts.push(t);
+      for (const t of ts) {
+        const p = planInteriorRoom(layout, req, roomId, interior, 0, { side, t }); if (!p || p.keySide !== side) continue;
+        // losing a wardrobe matters more than losing a side table: weight what doesn't fit by its cost
+        const lost = p.omitted.reduce((sum, n) => sum + ((interior?.furniture ?? []).find(f => f.name === n)?.estimatedCost ?? 20000), 0);
+        const score = lost * 10 + Math.abs(t + kw / 2 - (a0 + L / 2));
+        if (score < bestScore) { bestScore = score; best = p; }
+      }
+      if (best) candidates.push(best);
+    }
+  }
+  if (!candidates.length) candidates.push(p0);
+  const lostOf = (p: InteriorPlan) => p.omitted.reduce((sum, n) => sum + ((interior?.furniture ?? []).find(f => f.name === n)?.estimatedCost ?? 20000), 0);
+  candidates.sort((p, q) => lostOf(p) - lostOf(q) || q.items.length - p.items.length);
+  const out: InteriorPlan[] = [], seen = new Set<string>();
+  for (const p of candidates) {
+    const sig = p.items.map(i => `${i.name}:${Math.round(i.x / 50)},${Math.round(i.y / 50)}`).sort().join('|');
+    if (seen.has(sig) || out.length >= 3) continue; seen.add(sig);
+    out.push({ ...p, option: out.length, label: `Option ${out.length + 1} — ${p.label}${p.omitted.length ? ` (${p.omitted.length} item${p.omitted.length > 1 ? 's' : ''} don't fit)` : ''}` });
+  }
+  return out;
 }
 
 /** Drawing types that have programmatic (non-AI) renderers. */
