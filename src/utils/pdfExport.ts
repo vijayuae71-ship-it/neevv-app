@@ -69,6 +69,10 @@ export async function exportAIPDF(
     sideElevation: 'SIDE & REAR ELEVATIONS',
     workingPlan: 'WORKING PLAN',
     doorWindow: 'DOOR & WINDOW SCHEDULE',
+    coverSheet: 'COVER SHEET & DRAWING REGISTER',
+    sectionBB: 'BUILDING SECTION 2-2',
+    wetAreas: 'TOILET & KITCHEN ENLARGEMENTS',
+    typicalDetails: 'TYPICAL CONSTRUCTION DETAILS',
   };
 
   // Write each AI image as a PNG file

@@ -42,7 +42,7 @@ type DrawingType = 'excavation' | 'column_layout' | 'footing_detail' | 'beam_sla
   'column_detail' | 'bar_bending' | 'section_aa' | 'front_elevation' |
   'staircase_detail' | 'water_tank' | 'waterproofing' | 'stp_detail' |
   'electrical' | 'plumbing' | 'tiling_layout' | 'brickwork_detail' |
-  'working_plan' | 'door_window_schedule' | 'site_plan' | 'terrace_plan' | 'side_elevation';
+  'working_plan' | 'door_window_schedule' | 'site_plan' | 'terrace_plan' | 'side_elevation' | 'section_bb' | 'cover_sheet' | 'wet_areas' | 'typical_details';
 
 /* ── neevv Drafting Standard v1 (IS 962 / SP 46) ──
  * Sheet = A3 landscape (420 × 297 mm) rendered at 5 px per paper-mm.
@@ -114,6 +114,8 @@ const titleFor: Record<DrawingType, string> = {
   tiling_layout: 'FLOOR & WALL TILING LAYOUT', brickwork_detail: 'MASONRY & LINTEL LAYOUT',
   working_plan: 'WORKING PLAN', door_window_schedule: 'DOOR & WINDOW SCHEDULE',
   site_plan: 'SITE PLAN', terrace_plan: 'TERRACE / ROOF PLAN', side_elevation: 'SIDE & REAR ELEVATIONS',
+  section_bb: 'BUILDING SECTION 2–2', cover_sheet: 'COVER SHEET & DRAWING REGISTER',
+  wet_areas: 'TOILET & KITCHEN ENLARGEMENTS', typical_details: 'TYPICAL CONSTRUCTION DETAILS',
 };
 
 /** Thin, dimensioned CAD-like primitives. Coordinates are canvas pixels. */
@@ -853,6 +855,24 @@ function sectionMarker(k: Context, cutY: number, id = '1', ref = sheetNumber('se
     c.save(); c.fillStyle = COLORS.wall; c.beginPath(); c.moveTo(p.x - 9, p.y + 18); c.lineTo(p.x + 9, p.y + 18); c.lineTo(p.x, p.y + 32); c.fill(); c.restore();
   }
 }
+/** Vertical section marker (section 2–2, looking towards the right-hand side so the road is on the section's left). */
+function sectionMarkerV(k: Context, cutX: number, id: string, ref: string, outPx?: number): void {
+  const c = k.c, b = k.g.building, off = outPx ?? 900 * k.scale;
+  const a = { x: at(k, cutX, b.y).x, y: at(k, cutX, b.y).y - off }, e = { x: a.x, y: at(k, cutX, b.y + b.h).y + off };
+  c.save(); c.setLineDash([22, 5, 4, 5]); drawLine(c, a.x, a.y + 18, e.x, e.y - 18, PEN.medium, COLORS.wall); c.restore();
+  for (const p of [a, e]) {
+    circle(c, p.x, p.y, 18, '#fff', COLORS.wall, PEN.medium);
+    drawLine(c, p.x - 18, p.y, p.x + 18, p.y, PEN.thin);
+    label(c, id, p.x, p.y - 8, 12, 'center', COLORS.text, true);
+    label(c, ref, p.x, p.y + 8, 9, 'center', COLORS.text);
+    c.save(); c.fillStyle = COLORS.wall; c.beginPath(); c.moveTo(p.x + 18, p.y - 9); c.lineTo(p.x + 18, p.y + 9); c.lineTo(p.x + 32, p.y); c.fill(); c.restore();
+  }
+}
+/** Section 2–2 cut: through the centre of the largest ground-floor room that is not the stair. */
+function sectionCutX(k: Context): number {
+  const rooms = (k.g.rooms[0] ?? []).filter(r => r.source.type !== 'staircase' && !isNiche(r.source)).sort((p, q) => q.w * q.d - p.w * p.d);
+  return rooms[0] ? rooms[0].x + rooms[0].w / 2 : k.g.building.x + k.g.building.w / 2;
+}
 /** Section cut line used by plans and the section: through the staircase when there is one. */
 function sectionCutY(k: Context): number {
   const st = (k.g.rooms[0] ?? []).find(r => r.source.type === 'staircase');
@@ -860,7 +880,7 @@ function sectionCutY(k: Context): number {
 }
 /* Sheet numbering (A architecture, S structure, M masonry, E electrical, P plumbing, F finishes, D details). */
 const SHEET_BASE: Record<DrawingType, string> = {
-  site_plan: 'A-001', working_plan: 'A-101', terrace_plan: 'A-109', front_elevation: 'A-201', side_elevation: 'A-202', section_aa: 'A-301', door_window_schedule: 'A-401', staircase_detail: 'A-501',
+  cover_sheet: 'G-001', site_plan: 'A-001', working_plan: 'A-101', section_bb: 'A-302', terrace_plan: 'A-109', front_elevation: 'A-201', side_elevation: 'A-202', section_aa: 'A-301', door_window_schedule: 'A-401', staircase_detail: 'A-501', wet_areas: 'A-601', typical_details: 'A-602',
   excavation: 'S-101', column_layout: 'S-102', footing_detail: 'S-103', beam_slab: 'S-104', column_detail: 'S-105', bar_bending: 'S-106',
   brickwork_detail: 'M-101', electrical: 'E-101', plumbing: 'P-101', water_tank: 'P-201', stp_detail: 'P-202',
   tiling_layout: 'F-101', waterproofing: 'D-101',
@@ -878,7 +898,7 @@ export function sheetIndex(floors: number): { type: string; level: number; no: s
     const levels = PER_FLOOR.includes(t) ? Array.from({ length: Math.min(2, Math.max(1, floors)) }, (_, i) => i) : [0];
     for (const l of levels) out.push({ type: t, level: l, no: sheetNumber(t, l), title: titleFor[t] });
   }
-  const pre = 'ASMEPFD';
+  const pre = 'GASMEPFD';
   return out.sort((a, b) => pre.indexOf(a.no[0]) - pre.indexOf(b.no[0]) || a.no.localeCompare(b.no));
 }
 function scaleText(k: Context): string {
@@ -977,6 +997,7 @@ function workingPlan(k: Context): void {
   dimMm(k, k.g.gridY, 'y', B.x, -(out + 34), `grid 1–${k.g.gridY.length}`);
   gridBubbles(k, out + 66, ['top', 'left']);
   sectionMarker(k, sectionCutY(k), '1', sheetNumber('section_aa', 0), out + 40);
+  sectionMarkerV(k, sectionCutX(k), '2', sheetNumber('section_bb', 0), out + 80);
   label(c, 'FRONT / ROAD SIDE', B.x + B.w / 2, B.y - out - 100, 12, 'center', COLORS.dim, true);
   viewTitle(k, `${floorName(k)} WORKING PLAN`, 80, 140);
   // room area schedule
@@ -1106,7 +1127,7 @@ function excavation(k: Context): void {
     dashed(c, p, q, '#956f4f', 0.7, [12, 3, 2, 3]);
   }
   gridDimensions(k);
-  const example = trenches[0];
+  const example = raft ? undefined : trenches[0];
   if (example) {
     const p = box(k, example);
     drawDimensionChain(c, [p.x, p.x + p.w], p.y, -18, 'horizontal', k.scale);
@@ -1760,6 +1781,293 @@ function sectionAA(k: Context): void {
     `Cut shown on plans ${sheetNumber('working_plan', 0)}${k.g.floors > 1 ? '/' + sheetNumber('working_plan', 1) : ''}.`,
   ]);
 }
+/* A-302: Section 2–2, front (road) to rear, through the largest ground-floor room. */
+function sectionBB(k: Context): void {
+  const c = k.c, b = k.g.building, floors = Math.min(k.g.floors, 5);
+  const FD = ASSUMED_FOUNDING_DEPTH_M * 1000, H = FLOOR_TO_FLOOR_MM, PL = PLINTH_HEIGHT_MM, cutX = sectionCutX(k);
+  const roofZ = PL + floors * H;
+  const stTop = (k.g.rooms[floors - 1] ?? []).find(r => r.source.type === 'staircase' && cutX >= r.x && cutX <= r.x + r.w);
+  const top = (stTop ? roofZ + STAIR_HEAD_ROOM_MM + 150 : roofZ + PARAPET_HEIGHT_MM) + 400, bottom = -FD - 150 - 500;
+  setFrame(k, { x: b.y - 600, y: bottom, w: b.h + 1200, h: top - bottom }, { x: 110, y: 120, w: 1220, h: 1120 }, 60);
+  const project = (u: number, z: number): Point => at(k, u, top - z + bottom);
+  const s = k.scale, wallE = WALL_EXTERNAL_MM * s;
+  const left = project(b.y, 0).x, right = project(b.y + b.h, 0).x, ngl = project(0, 0).y, botY = project(0, bottom).y;
+  drawRect(c, left - 520 * s, ngl, right - left + 1040 * s, botY - ngl, { fill: COLORS.earth });
+  drawHatch(c, left - 520 * s, ngl + 3, right - left + 1040 * s, botY - ngl - 3, 45, 16);
+  drawLine(c, left - 520 * s, ngl, right + 520 * s, ngl, PEN.medium);
+  // foundations cut by the line
+  for (const pad of padsMm(k).filter(p => cutX >= p.x - 1 && cutX <= p.x + p.w + 1)) {
+    const pTop = project(0, -FD + pad.depth).y;
+    hatchBox(c, { x: project(pad.y - 75, 0).x, y: project(0, -FD).y, w: (pad.d + 150) * s, h: pad.pcc * s }, '#d7d7d7', -45, 9, PEN.thin);
+    hatchBox(c, { x: project(pad.y, 0).x, y: pTop, w: pad.d * s, h: pad.depth * s }, COLORS.concrete, 45, 8, PEN.medium);
+    for (const col of (pad.type === 'raft' ? k.g.columns : pad.cols).filter(cl => Math.abs(cl.x - cutX) < cl.w / 2 + 1))
+      hatchBox(c, { x: project(col.y, 0).x - col.d * s / 2, y: project(0, PL).y, w: col.d * s, h: pTop - project(0, PL).y }, COLORS.concrete, 45, 10, PEN.medium);
+  }
+  const plinthY = project(0, PL).y, beamD = positive(firstBeam(k).depthMm, 400);
+  hatchBox(c, { x: left, y: plinthY, w: right - left, h: Math.max(3, 300 * s) }, COLORS.concrete, 45, 10, PEN.medium);
+  drawLine(c, left, plinthY - 2, right, plinthY - 2, PEN.medium, COLORS.green);
+  label(c, 'DPC', left - 12, plinthY - 8, 11, 'right', COLORS.green, true);
+  for (let story = 0; story < floors; story++) {
+    const baseZ = PL + story * H, slab = storyThickness(k, story);
+    const baseY = project(0, baseZ).y, roofY = project(0, baseZ + H).y, wallTop = roofY + slab * s;
+    const rooms = (k.g.rooms[story] ?? []).filter(r => !isNiche(r.source) && cutX >= r.x && cutX <= r.x + r.w).sort((p, q) => p.y - q.y);
+    for (const u of [b.y, b.y + b.h]) { const xx = project(u, 0).x; hatchBox(c, { x: u === b.y ? xx : xx - wallE, y: wallTop, w: wallE, h: baseY - wallTop }, '#eeeae4', -45, 9, PEN.cut); }
+    for (let i = 1; i < rooms.length; i++) {
+      const yb = rooms[i].y; if (Math.abs(yb - b.y) < 230 || Math.abs(yb - b.y - b.h) < 230) continue;
+      const open = rooms[i].source.openTo?.includes('front') || rooms[i - 1].source.openTo?.includes('rear');
+      if (open) continue;
+      const xx = project(yb, 0).x; hatchBox(c, { x: xx - 75 * s, y: wallTop, w: 150 * s, h: baseY - wallTop }, '#eeeae4', -45, 9, PEN.cut);
+    }
+    // openings cut by the section line (doors in partitions, windows / doors in the front and rear walls)
+    for (const o of k.g.openings.filter(o2 => o2.floor === story && o2.axis === 'horizontal' && cutX >= o2.a && cutX <= o2.b)) {
+      const sill = Math.max(0, finite(o.source.sillHeightMm, o.source.type === 'door' ? 0 : 900)), h = positive(o.source.heightMm, o.source.type === 'door' ? 2100 : 1200);
+      const thick = o.face === 'internal' ? 150 : WALL_EXTERNAL_MM;
+      const u0 = o.face === 'rear' ? o.fixed - thick : o.face === 'front' ? o.fixed : o.fixed - 75;
+      const p0 = project(u0, baseZ + sill + h), p1 = project(u0 + thick, baseZ + sill);
+      drawRect(c, p0.x - 1, p0.y, p1.x - p0.x + 2, p1.y - p0.y, { fill: '#fff', stroke: COLORS.wall, weight: PEN.thin });
+      if (o.source.type !== 'door') drawLine(c, (p0.x + p1.x) / 2, p0.y, (p0.x + p1.x) / 2, p1.y, PEN.thin, COLORS.dim);
+      hatchBox(c, { x: p0.x - 1, y: p0.y - 150 * s, w: p1.x - p0.x + 2, h: 150 * s }, COLORS.concrete, 45, 5, PEN.thin);
+    }
+    for (const r of rooms) { const cen = project(r.y + r.d / 2, baseZ + 1700), span = r.d * s; if (span > 50) label(c, r.source.name.replace(/\s*\(.*?\)\s*/g, '').trim().toUpperCase(), cen.x, cen.y, Math.min(14, span / 9), 'center'); }
+    hatchBox(c, { x: left, y: roofY, w: right - left, h: Math.max(4, slab * s) }, '#cfd3d0', 45, 6, PEN.cut);
+    for (const gy of k.g.gridY) { const xx = clamp(project(gy, 0).x - 115 * s, left, right - 230 * s); hatchBox(c, { x: xx, y: roofY + slab * s, w: 230 * s, h: Math.max(0, beamD - slab) * s }, '#cfd3d0', 45, 6, PEN.medium); }
+    levelMark(c, right + 70, baseY, `${story === 0 ? 'FFL GF' : `FFL F${story}`} ${fmtLvl(baseZ)}`);
+  }
+  const roofY = project(0, roofZ).y, parapetY = project(0, roofZ + PARAPET_HEIGHT_MM).y;
+  for (const x of [left, right - wallE]) hatchBox(c, { x, y: parapetY, w: wallE, h: roofY - parapetY }, '#eeeae4', -45, 9, PEN.cut);
+  drawRect(c, left - 4, parapetY - 6, right - left + 8, 6, { fill: '#d6d6d3', stroke: COLORS.wall, weight: PEN.thin });
+  if (stTop) {
+    const m0 = project(stTop.y, 0).x, m1 = project(stTop.y + stTop.d, 0).x, my = project(0, roofZ + STAIR_HEAD_ROOM_MM).y;
+    for (const x of [m0, m1 - wallE]) hatchBox(c, { x, y: my, w: wallE, h: roofY - my }, '#eeeae4', -45, 9, PEN.cut);
+    hatchBox(c, { x: m0 - 6, y: my - 150 * s, w: m1 - m0 + 12, h: 150 * s }, '#cfd3d0', 45, 6, PEN.cut);
+    label(c, 'STAIR HEAD ROOM', (m0 + m1) / 2, (my + roofY) / 2, 12, 'center', COLORS.text, true);
+  }
+  levelMark(c, right + 70, roofY, `TOS ROOF ${fmtLvl(roofZ)}`);
+  levelMark(c, right + 70, parapetY - 6, `TOP OF PARAPET ${fmtLvl(roofZ + PARAPET_HEIGHT_MM)}`);
+  levelMark(c, right + 70, ngl, 'NGL ±0.000');
+  levelMark(c, right + 70, project(0, -FD).y, `FOUNDING ${fmtLvl(-FD)} (ASSUMED)`);
+  const vz = [-FD, 0, ...Array.from({ length: floors + 1 }, (_, i) => PL + i * H), roofZ + PARAPET_HEIGHT_MM];
+  drawDimensionChain(c, vz.map(z => project(0, z).y), left - 40, -50, 'vertical', s);
+  const outer = unique([b.y, ...(k.g.rooms[0] ?? []).filter(r => !isNiche(r.source) && cutX >= r.x && cutX <= r.x + r.w).flatMap(r => [r.y, r.y + r.d]), b.y + b.h]);
+  dimMm(k, outer, 'x', botY + 34, -0.0001, 'section depths');
+  label(c, 'ROAD SIDE', left, botY + 66, 11, 'left', COLORS.dim, true); label(c, 'REAR', right, botY + 66, 11, 'right', COLORS.dim, true);
+  viewTitle(k, 'SECTION 2–2 (FRONT TO REAR)', 130, 150);
+  legend(c, 1660, 330, 'SECTION NOTES', [
+    `Cut shown on ${sheetNumber('working_plan', 0)}${k.g.floors > 1 ? '/' + sheetNumber('working_plan', 1) : ''}; looking right.`,
+    `Floor-to-floor ${H}; plinth ${PL}; parapet ${PARAPET_HEIGHT_MM} mm.`,
+    `Foundation: ${foundationName(foundationType(k)).toLowerCase()}.`,
+    'Lintels 150 mm over every opening cut.',
+    `Section 1–1 (through stair): ${sheetNumber('section_aa', 0)}.`,
+  ]);
+}
+
+/* G-001: Cover sheet — project data, drawing register, general notes, codes and abbreviations. */
+function coverSheet(k: Context): void {
+  const c = k.c, L = k.layout, g = k.g, req = k.req;
+  label(c, `PROPOSED ${g.floors > 1 ? 'G+1' : 'GROUND FLOOR'} RESIDENCE`, 80, 150, 30, 'left', COLORS.text, true);
+  label(c, `${req.city}, ${req.state}  •  Plot ${req.plotWidthFt} × ${req.plotDepthFt} ft  •  Road facing ${req.facing}`, 80, 186, 16, 'left', COLORS.dim);
+  { let nm = L.name ?? ''; while (nm.length > 8 && textWidth(c, nm, 14) > 600) nm = nm.slice(0, -2).trimEnd() + '…'; label(c, nm.replace(/……$/, '…'), 80, 212, 14, 'left', COLORS.dim); }
+  const beds = L.floors.flatMap(f => f.rooms).filter(r => r.type === 'bedroom' || r.type === 'master_bedroom').length;
+  const ws = waterStorage(L);
+  const proj: string[][] = [
+    ['Plot', `${round(g.plotW)} × ${round(g.plotD)} mm (${(g.plotW * g.plotD / 1e6).toFixed(1)} m²)`],
+    ['Building', `${round(g.building.w)} × ${round(g.building.h)} mm, ${g.floors > 1 ? 'G+1' : 'ground floor'}`],
+    ['Built-up area', `${finite(L.totalBuiltUpSqM, 0).toFixed(1)} m² (${Math.round(finite(L.totalBuiltUpSqFt, 0))} sqft)`],
+    ['Bedrooms', `${beds}`],
+    ['FSI used / allowed', `${finite(L.fsiUsed, 0).toFixed(2)} / ${finite(L.fsiValue, 1)} (${L.fsiSource ?? 'assumed'})`],
+    ['Structure', `RCC frame, ${concrete(k)} / ${steel(k)}`],
+    ['Foundation', foundationName(foundationType(k)).toLowerCase()],
+    ['Seismic zone / SBC', `${sval(obj(k.data.parameters), 'seismicZone', '—')} / ${round(nval(obj(k.data.parameters), 'sbc', 150))} kN/m² (assumed)`],
+    ['Water storage', `sump ${ws.sumpL} L, OHT ${ws.ohtL} L`],
+    ['Levels', `NGL ±0.000, GF FFL +${(PLINTH_HEIGHT_MM / 1000).toFixed(3)}, roof +${(roofLevelMm(g.floors) / 1000).toFixed(3)}`],
+  ];
+  let y = table(c, 80, 250, [{ h: 'PROJECT DATA', w: 170 }, { h: '', w: 400 }], proj, 'PROJECT', 22);
+  const idx = sheetIndex(g.floors);
+  const reg = idx.map(e => [e.no, e.level > 0 && PER_FLOOR.includes(e.type as DrawingType) ? `${e.title} — FIRST FLOOR` : (PER_FLOOR.includes(e.type as DrawingType) && g.floors > 1 ? `${e.title} — GROUND FLOOR` : e.title), `P${k.rev}`]);
+  table(c, 720, 140, [{ h: 'DRG NO', w: 80 }, { h: 'TITLE', w: 380 }, { h: 'REV', w: 50 }], reg, `DRAWING REGISTER (${idx.length} SHEETS)`, Math.min(22, Math.floor(1000 / (reg.length + 2))));
+  legend(c, 80, y + 40, 'GENERAL NOTES', [
+    '1. All dimensions in mm, levels in m. Do not scale; follow written dimensions.',
+    '2. Read with all architectural, structural and services drawings.',
+    '3. Setbacks, FSI, SBC and founding depth are ASSUMED — confirm locally.',
+    `4. Concrete ${concrete(k)} (structure), M20 (lintels, chajjas), PCC 1:4:8.`,
+    `5. Reinforcement ${steel(k)} TMT; cover: footing 50, column 40, beam 25, slab 20.`,
+    '6. Masonry: 230 ext. CM 1:6, 115 int. CM 1:4; plaster 12/20 mm.',
+    '7. Cure all concrete 10 days minimum; formwork striking per IS 456.',
+    '8. Electrical per IS 732 / NBC Part 8; plumbing per NBC Part 9.',
+    '9. Preliminary design: architect and structural engineer to verify and sign.',
+  ]);
+  legend(c, 1280, 140, 'CODES', ['IS 456:2000 — plain & reinforced concrete', 'IS 875 (1–3) — loads', 'IS 1893:2016 — seismic', 'IS 13920:2016 — ductile detailing', 'IS 2502 — bar bending', 'NBC 2016 — building code', 'IS 962 / SP 46 — drafting']);
+  legend(c, 1280, 360, 'ABBREVIATIONS', ['FFL finished floor level   NGL natural ground level', 'TOS top of slab   DPC damp-proof course', 'RCC reinforced cement concrete   PCC plain cement concrete', 'OHT overhead tank   RWP rain-water pipe', 'IC inspection chamber   MH manhole   SWR soil/waste', 'DB distribution board   MCB miniature circuit breaker', 'c/c centre to centre   Ø bar diameter   THK thickness']);
+  legend(c, 1280, 600, 'SHEET SERIES', ['G general   A architecture   S structure', 'M masonry   E electrical   P plumbing', 'F finishes   D details']);
+}
+
+/* A-601: Enlarged toilet and kitchen plans (1:25 where they fit) with fixture set-out and the toilet's service-wall elevation. */
+function wetAreas(k: Context): void {
+  const c = k.c;
+  const all = k.g.rooms.flatMap((fl, f) => fl.map(r => ({ r, f }))).filter(o => !isNiche(o.r.source));
+  const toilets = all.filter(o => o.r.source.type === 'toilet').sort((p, q) => q.r.w * q.r.d - p.r.w * p.r.d);
+  const pickT: typeof toilets = [];
+  for (const t of toilets) if (!pickT.some(p => Math.abs(p.r.w - t.r.w) < 50 && Math.abs(p.r.d - t.r.d) < 50) && pickT.length < 2) pickT.push(t);
+  const kit = all.find(o => o.r.source.type === 'kitchen');
+  const views = [...pickT, ...(kit ? [kit] : [])];
+  const boxes: Bounds[] = [{ x: 70, y: 150, w: 560, h: 560 }, { x: 680, y: 150, w: 560, h: 560 }, { x: 1290, y: 150, w: 640, h: 560 }];
+  const tileH = ((k.boq as (BOQ & { takeoff?: Takeoff }) | null)?.takeoff?.bathTileHeightM ?? 2.1) * 1000;
+  const keepLevel = k.level;
+  views.slice(0, 3).forEach(({ r, f }, vi) => {
+    const bx = boxes[vi], m = 450;
+    const geo = { x: r.x - m, y: r.y - m, w: r.w + 2 * m, h: r.d + 2 * m };
+    const den = STD_SCALES.find(d => geo.w * PX_PER_PAPER_MM / d <= bx.w && geo.h * PX_PER_PAPER_MM / d <= bx.h - 60) ?? 100, s = PX_PER_PAPER_MM / den;
+    k.views.push(den); k.level = (f > 0 ? 1 : 0) as Level;
+    k.frame = { x: bx.x + (bx.w - geo.w * s) / 2, y: bx.y + 40, s, width: geo.x, height: geo.y }; k.scale = s;
+    const clip = box(k, geo);
+    c.save(); c.beginPath(); c.rect(clip.x, clip.y, clip.w, clip.h); c.clip();
+    drawPlanWalls(k, 'solid');
+    for (const o of k.g.openings.filter(v => v.floor === k.level && (v.room === r || Math.abs(v.fixed - r.x) < 5 || Math.abs(v.fixed - r.x - r.w) < 5 || Math.abs(v.fixed - r.y) < 5 || Math.abs(v.fixed - r.y - r.d) < 5))) planOpening(c, k, o);
+    c.restore();
+    const P = (x: number, y: number) => at(k, x, y);
+    const fx = (pt: Point, w: number, d: number, draw: (q: Bounds) => void, side: Side) => { // w along the wall, d out of the wall
+      const hz = side === 'front' || side === 'rear';
+      const q0 = hz ? { x: pt.x - w / 2, y: side === 'front' ? pt.y : pt.y - d, w, h: d } : { x: side === 'left' ? pt.x : pt.x - d, y: pt.y - w / 2, w: d, h: w };
+      draw(box(k, q0));
+    };
+    const setOut: number[] = [];
+    let svc: Side = 'rear', tEnd: 0 | 1 = 0;
+    if (r.source.type === 'toilet') {
+      const w = wetLayout(k, r); svc = w.service; tEnd = w.tEnd;
+      const L = sideLen(r, svc), tAt = (mm: number) => (w.tEnd === 0 ? mm / L : 1 - mm / L);
+      const wallPt = (mm: number) => onSide(r, svc, tAt(mm), svc === 'front' || svc === 'left' ? 115 : 115);
+      const sh = onSide(r, svc, tAt(450), 450), shB = box(k, { x: sh.x - 450, y: sh.y - 450, w: 900, h: 900 });
+      c.save(); c.setLineDash([6, 4]); drawRect(c, shB.x, shB.y, shB.w, shB.h, { stroke: SVC.water, weight: 1.2 }); c.restore();
+      label(c, 'SHOWER 900×900', shB.x + shB.w / 2, shB.y + shB.h / 2 + 16, 10, 'center', SVC.water, true);
+      const ft = P(onSide(r, svc, tAt(450), 950).x, onSide(r, svc, tAt(450), 950).y); circle(c, ft.x, ft.y, Math.max(4, 50 * s), '#fff', SVC.drain, 1.4); label(c, 'FT', ft.x + 12, ft.y, 9, 'left', SVC.drain, true);
+      fx(wallPt(1250), 380, 600, q => { drawRect(c, q.x, q.y, q.w, q.h, { stroke: COLORS.wall, weight: 1.2, fill: '#fff' }); c.save(); c.beginPath(); c.ellipse(q.x + q.w / 2, q.y + q.h / 2, q.w / 2 - 3, q.h / 2 - 3, 0, 0, Math.PI * 2); c.strokeStyle = COLORS.wall; c.lineWidth = 1; c.stroke(); c.restore(); label(c, 'EWC', q.x + q.w / 2, q.y + q.h / 2, 10, 'center', COLORS.text, true); }, svc);
+      const hf = P(onSide(r, svc, tAt(1650), 130).x, onSide(r, svc, tAt(1650), 130).y); circle(c, hf.x, hf.y, 4, SVC.water, SVC.water); label(c, 'HF', hf.x + 8, hf.y, 9, 'left', SVC.water);
+      const wbOn = L >= 2500 ? svc : opposite[svc];
+      const wbPt = L >= 2500 ? wallPt(2150) : onSide(r, wbOn, 0.5, 115);
+      fx(wbPt, 500, 420, q => { drawRect(c, q.x, q.y, q.w, q.h, { stroke: COLORS.wall, weight: 1.2, fill: '#fff' }); label(c, 'WB', q.x + q.w / 2, q.y + q.h / 2, 10, 'center', COLORS.text, true); }, wbOn);
+      const g = P(onSide(r, svc, tAt(450), 110).x, onSide(r, svc, tAt(450), 110).y); drawRect(c, g.x - 10, g.y - 7, 20, 14, { fill: '#fff', stroke: SVC.hot, weight: 1.2 }); label(c, 'GY', g.x, g.y + 1, 8, 'center', SVC.hot, true);
+      setOut.push(450, 1250, 1650, ...(L >= 2500 ? [2150] : []));
+    } else {
+      const kc = kitchenCounter(k, r); svc = kc.long;
+      for (const [sd, len] of [[kc.long, sideLen(r, kc.long)], [kc.short, Math.min(sideLen(r, kc.short), 1800)]] as [Side, number][]) {
+        const start = 0; void start;
+        const pt = onSide(r, sd, sd === kc.long ? 0.5 : 0.5, 115);
+        fx(pt, sd === kc.long ? len - 230 : len - 230, 600, q => { hatchBox(c, q, '#efe9df', 45, 10, PEN.thin); }, sd);
+      }
+      fx(onSide(r, kc.long, 0.5, 115), 900, 450, q => { drawRect(c, q.x + 4, q.y + 4, q.w - 8, q.h - 8, { fill: '#fff', stroke: SVC.water, weight: 1.4 }); label(c, 'SINK', q.x + q.w / 2, q.y + q.h / 2, 10, 'center', SVC.water, true); }, kc.long);
+      fx(onSide(r, kc.long, 0.8, 115), 600, 500, q => { drawRect(c, q.x + 4, q.y + 4, q.w - 8, q.h - 8, { fill: '#fff', stroke: COLORS.wall, weight: 1.2 }); for (const [a2, b2] of [[0.3, 0.3], [0.7, 0.3], [0.3, 0.7], [0.7, 0.7]]) circle(c, q.x + q.w * a2, q.y + q.h * b2, 5, '#fff', COLORS.wall, 1); label(c, 'HOB', q.x + q.w / 2, q.y + q.h / 2, 9, 'center', COLORS.text, true); }, kc.long);
+      label(c, 'COUNTER 600 DEEP, 820 HIGH (GRANITE ON RCC/SS FRAME)', P(r.x + r.w / 2, r.y + r.d / 2).x, P(r.x + r.w / 2, r.y + r.d / 2).y, 10, 'center', COLORS.dim, true);
+    }
+    // clear room dimensions
+    const cr = clearRect(k, r);
+    dimMm(k, [cr.x, cr.x + cr.w], 'x', box(k, cr).y + box(k, cr).h, 0.0001 + 28, 'clear');
+    dimMm(k, [cr.y, cr.y + cr.h], 'y', box(k, cr).x + box(k, cr).w, 0.0001 + 28, 'clear');
+    label(c, `${r.source.name.toUpperCase()} — ${f === 0 ? 'GF' : 'FF'}`, bx.x, bx.y, 15, 'left', COLORS.green, true);
+    label(c, `ENLARGED PLAN  SCALE 1:${den}`, bx.x, bx.y + 18, 11, 'left', COLORS.dim);
+    if (setOut.length) label(c, `Set-out from ${tEnd === 0 ? 'the start' : 'the end'} of the ${svc} wall: SH ${setOut[0]}, WC ${setOut[1]}, HF ${setOut[2]}${setOut[3] ? `, WB ${setOut[3]}` : ''} mm (centres)`, bx.x, bx.y + bx.h - 6, 10, 'left', COLORS.dim);
+  });
+  k.level = keepLevel;
+  // toilet service-wall elevation at 1:25
+  const t0 = pickT[0];
+  if (t0) {
+    const w = wetLayout(k, t0.r), L = sideLen(t0.r, w.service), Hc = FLOOR_TO_FLOOR_MM - 150;
+    const den = STD_SCALES.find(d => (L + 400) * PX_PER_PAPER_MM / d <= 900 && (Hc + 400) * PX_PER_PAPER_MM / d <= 420) ?? 50, s = PX_PER_PAPER_MM / den;
+    k.views.push(den);
+    const ox = 110, base = 1190, X = (mm: number) => ox + (w.tEnd === 0 ? mm : L - mm) * s, Y = (mm: number) => base - mm * s;
+    label(c, `${t0.r.source.name.toUpperCase()} — SERVICE WALL ELEVATION`, ox - 40, 760, 15, 'left', COLORS.green, true);
+    label(c, `SCALE 1:${den}`, ox - 40, 778, 11, 'left', COLORS.dim);
+    drawRect(c, X(0) < X(L) ? X(0) : X(L), Y(Hc), L * s, Hc * s, { fill: '#fff', stroke: COLORS.wall, weight: PEN.cut });
+    hatchBox(c, { x: Math.min(X(0), X(L)), y: Y(tileH), w: L * s, h: tileH * s }, '#e3eef3', 0, 14, PEN.thin);
+    label(c, `WALL TILES TO ${round(tileH)}`, Math.min(X(0), X(L)) + 8, Y(tileH) + 12, 10, 'left', COLORS.dim, true);
+    const rect = (cx: number, z0: number, ww: number, hh: number, t: string) => {
+      drawRect(c, X(cx) - ww * s / 2, Y(z0 + hh), ww * s, hh * s, { fill: '#fff', stroke: COLORS.wall, weight: 1.2 });
+      const tw = textWidth(c, t, 9, true);
+      if (tw + 4 <= ww * s) label(c, t, X(cx), Y(z0 + hh / 2), 9, 'center', COLORS.text, true);
+      else soft(tw, 11, [{ x: X(cx) + ww * s / 2 + 6 + tw / 2, y: Y(z0 + hh / 2) }, { x: X(cx) - ww * s / 2 - 6 - tw / 2, y: Y(z0 + hh / 2) }, { x: X(cx), y: Y(z0 + hh) - 8 }], (x, y) => label(c, t, x, y, 9, 'center', COLORS.text, true));
+    };
+    rect(1250, 0, 380, 400, 'EWC'); rect(1250, 450, 450, 650, 'CISTERN / FLUSH');
+    rect(450, 2250, 400, 450, 'GEYSER'); circle(c, X(450), Y(2100), 6, '#fff', SVC.water, 1.4); soft(textWidth(c, 'SHOWER ROSE 2100', 9), 11, [{ x: X(450) + 60, y: Y(2100) + 14 }, { x: X(450) - 60, y: Y(2100) + 14 }], (x, y) => label(c, 'SHOWER ROSE 2100', x, y, 9, 'center', SVC.water)); drawLine(c, X(450), Y(2100), X(450), Y(1090), 1.4, SVC.water);
+    rect(450, 1000, 160, 90, 'MIXER 1000'); circle(c, X(1650), Y(600), 5, SVC.water, SVC.water); label(c, 'HF 600', X(1650) + 8, Y(600), 10, 'left', SVC.water);
+    if (L >= 2500) { rect(2150, 800, 500, 150, 'WB TOP 800'); rect(2150, 1300, 450, 600, 'MIRROR'); }
+    drawDimensionChain(c, [Y(Hc), Y(tileH), Y(0)], Math.max(X(0), X(L)), 30, 'vertical', s);
+    drawDimensionChain(c, [X(0), X(450), X(1250), X(1650), ...(L >= 2500 ? [X(2150)] : []), X(L)].sort((a, b) => a - b), Y(0), 30, 'horizontal', s);
+  }
+  legend(c, 1290, 780, 'WET-AREA NOTES', [
+    `Bath floor sunk 300 mm; waterproofing per ${sheetNumber('waterproofing', 0)}; fall 1:100 to FT.`,
+    `Wall tiles to ${round(tileH)} mm (= BOQ); anti-skid floor tiles.`,
+    'Fixture centres from the plumbing layout; CP points per schedule.',
+    'EWC wall-hung / floor-mounted per client; 100 mm SWR to stack.',
+    'Kitchen: granite counter 600 deep on RCC slab / SS frame, 820 high;',
+    '  dado 600 mm above counter; sink with RO point; hob with chimney.',
+    `Drainage and supply runs: ${sheetNumber('plumbing', 0)}${k.g.floors > 1 ? '/' + sheetNumber('plumbing', 1) : ''}.`,
+  ]);
+}
+
+/* A-602: Typical construction details — lintel & chajja (1:10); plinth / DPC, stair railing, parapet & coping (1:20). */
+function typicalDetails(k: Context): void {
+  const c = k.c; k.views.push(10, 20);
+  const head = (t: string, den: number, x: number, y: number) => { label(c, t, x, y, 15, 'left', COLORS.green, true); label(c, `SCALE 1:${den}`, x, y + 18, 11, 'left', COLORS.dim); };
+  const tag = (t: string, x: number, y: number, tx: number, ty: number) => { drawLine(c, x, y, tx - 4, ty, 0.6, COLORS.dim); circle(c, x, y, 2, COLORS.wall, COLORS.wall); label(c, t, tx, ty, 10.5, 'left', COLORS.text); };
+  // quadrant frames (thin) so the four details read as separate views
+  for (const q of [{ x: 60, y: 120, w: 960, h: 520 }, { x: 1040, y: 120, w: 920, h: 520 }, { x: 60, y: 660, w: 960, h: 560 }, { x: 1040, y: 660, w: 920, h: 560 }]) drawRect(c, q.x, q.y, q.w, q.h, { stroke: '#d8dcd8', weight: 0.6 });
+  // 1. Lintel + chajja (1:10)
+  { const S = PX_PER_PAPER_MM / 10, ox = 330, oy = 330; head('1  LINTEL & CHAJJA AT WINDOW HEAD', 10, 80, 140);
+    hatchBox(c, { x: ox, y: oy - 100, w: 230 * S, h: 100 }, '#eeeae4', -45, 9, PEN.cut);
+    hatchBox(c, { x: ox, y: oy, w: 230 * S, h: 150 * S }, COLORS.concrete, 45, 8, PEN.cut);
+    c.save(); c.beginPath(); c.moveTo(ox, oy); c.lineTo(ox - 450 * S, oy + 25 * S); c.lineTo(ox - 450 * S, oy + 75 * S); c.lineTo(ox, oy + 100 * S); c.closePath(); c.fillStyle = COLORS.concrete; c.fill(); c.strokeStyle = COLORS.wall; c.lineWidth = PEN.cut; c.stroke(); c.restore();
+    drawRect(c, ox + 20, oy + 150 * S, 230 * S - 40, 140, { stroke: COLORS.dim, weight: 0.8 }); label(c, 'WINDOW FRAME', ox + 115 * S, oy + 150 * S + 70, 10, 'center', COLORS.dim);
+    for (const yy of [oy + 30 * S, oy + 120 * S]) for (const xx of [ox + 35 * S, ox + 195 * S]) circle(c, xx, yy, 4, COLORS.wall, COLORS.wall);
+    drawRect(c, ox + 25 * S, oy + 25 * S, 180 * S, 100 * S, { stroke: COLORS.wall, weight: 1 });
+    drawLine(c, ox + 180 * S, oy + 20 * S, ox - 420 * S, oy + 45 * S, 1.6, '#1f5f99');
+    drawDimensionChain(c, [ox - 450 * S, ox, ox + 230 * S], oy - 100, -22, 'horizontal', S);
+    drawDimensionChain(c, [oy, oy + 150 * S], ox + 230 * S, 26, 'vertical', S);
+    tag('Lintel 230×150 M20: 2-10 bottom, 2-8 top, Ø6 @ 150', ox + 57, oy + 40, 560, 250);
+    tag('Chajja 450, 100→75 thick: Ø8 @ 150 top into lintel, Ø6 @ 200', ox - 150, oy + 25, 560, 282);
+    tag('Drip groove 15×15 at the chajja edge', ox - 220, oy + 37, 560, 314);
+    tag('Lintel bears 150 mm each side of the opening', ox + 105, oy + 70, 560, 346); }
+  // 2. Plinth / DPC (1:20)
+  { const S = PX_PER_PAPER_MM / 20, ox = 1330, yNGL = 540, yFFL = yNGL - PLINTH_HEIGHT_MM * S; head('2  PLINTH, DPC & PLINTH PROTECTION', 20, 1060, 140);
+    drawLine(c, ox - 800 * S, yNGL, ox + 1000 * S, yNGL, PEN.medium); label(c, 'NGL ±0.000', ox + 1010 * S, yNGL, 11, 'left', COLORS.text, true);
+    drawHatch(c, ox - 800 * S, yNGL + 2, 1800 * S, 80, 45, 10);
+    hatchBox(c, { x: ox, y: yNGL - 150 * S, w: 230 * S, h: 450 * S }, COLORS.concrete, 45, 7, PEN.cut);
+    hatchBox(c, { x: ox, y: yFFL - 600 * S, w: 230 * S, h: (yNGL - 150 * S) - (yFFL - 600 * S) }, '#eeeae4', -45, 8, PEN.cut);
+    drawRect(c, ox, yNGL - 150 * S - 3, 230 * S, 3, { fill: COLORS.green, stroke: COLORS.green, weight: 0.5 });
+    hatchBox(c, { x: ox + 230 * S, y: yFFL, w: 800 * S, h: 100 * S }, '#e6e6e6', -45, 6, PEN.medium);
+    drawHatch(c, ox + 230 * S, yFFL + 100 * S, 800 * S, yNGL - yFFL - 100 * S, 135, 8);
+    hatchBox(c, { x: ox - 600 * S, y: yNGL - 75 * S, w: 600 * S, h: 75 * S }, '#e6e6e6', -45, 6, PEN.medium);
+    drawDimensionChain(c, [yFFL, yNGL], ox + 1040 * S, 16, 'vertical', S);
+    label(c, `FFL +${(PLINTH_HEIGHT_MM / 1000).toFixed(3)}`, ox + 1010 * S, yFFL - 12, 11, 'left', COLORS.text, true);
+    tag('DPC 40 CC 1:2:4 + waterproofing compound', ox + 115 * S, yNGL - 150 * S - 1, 1560, 240);
+    tag('Floor: tile on 100 PCC 1:4:8 over compacted filling', ox + 600 * S, yFFL + 50 * S, 1560, 272);
+    tag('Plinth protection 600 wide, 75 PCC, slope away', ox - 300 * S, yNGL - 40 * S, 1560, 304);
+    tag('Plinth beam 230×300 on all wall lines', ox + 115 * S, yNGL + 30 * S, 1560, 336);
+    tag('Anti-termite treatment (IS 6313)', ox + 600 * S, yNGL - 20, 1560, 368); }
+  // 3. Stair railing (1:20)
+  { const S = PX_PER_PAPER_MM / 20, ox = 160, oy = 1150; head('3  STAIR RAILING', 20, 80, 680);
+    const step = (i: number) => ({ x: ox + i * 270 * S, y: oy - i * 165 * S });
+    c.save(); c.strokeStyle = COLORS.wall; c.lineWidth = PEN.cut; c.beginPath(); c.moveTo(ox, oy); for (let i = 0; i < 5; i++) { const p0 = step(i); c.lineTo(p0.x, p0.y - 165 * S); c.lineTo(p0.x + 270 * S, p0.y - 165 * S); } c.stroke(); c.restore();
+    const railY = (x: number) => step(0).y - 165 * S - 900 * S - (x - step(0).x) * 165 / 270;
+    for (let i = 0; i < 5; i++) { const p0 = step(i); for (const dx of [0.3, 0.7]) { const xx = p0.x + dx * 270 * S; drawLine(c, xx, p0.y - 165 * S, xx, railY(xx), 1, COLORS.wall); } }
+    drawLine(c, step(0).x, step(0).y - 165 * S - 900 * S, step(5).x, step(5).y - 165 * S - 900 * S, 3, COLORS.wall);
+    drawDimensionChain(c, [step(0).y - 165 * S - 900 * S, step(0).y - 165 * S], step(0).x, -16, 'vertical', S);
+    tag('Handrail 50 Ø SS / MS pipe, 900 above nosing', step(4).x, step(4).y - 165 * S - 900 * S, 560, 760);
+    tag('Balusters 20×20 MS, ≤ 100 clear (NBC), grouted 75 into tread', step(3).x + 0.3 * 270 * S, step(3).y - 600 * S, 560, 792);
+    tag('Treads 270, risers ≈ 165, granite nosing', step(1).x + 135 * S, step(1).y - 165 * S, 560, 824); }
+  // 4. Parapet & coping (1:20)
+  { const S = PX_PER_PAPER_MM / 20, ox = 1420, oy = 1120; head('4  PARAPET, COPING & ROOF UPSTAND', 20, 1060, 680);
+    hatchBox(c, { x: ox, y: oy - PARAPET_HEIGHT_MM * S, w: 115 * S, h: PARAPET_HEIGHT_MM * S }, '#eeeae4', -45, 8, PEN.cut);
+    hatchBox(c, { x: ox - 25 * S, y: oy - (PARAPET_HEIGHT_MM + 75) * S, w: 165 * S, h: 75 * S }, '#e6e6e6', 45, 6, PEN.cut);
+    hatchBox(c, { x: ox - 1200 * S, y: oy, w: 1315 * S, h: 150 * S }, COLORS.concrete, 45, 7, PEN.cut);
+    drawRect(c, ox - 1200 * S, oy - 75 * S, 1200 * S, 75 * S, { fill: '#ebe6d7', stroke: COLORS.wall, weight: 1 });
+    drawLine(c, ox - 1200 * S, oy - 78 * S, ox - 2, oy - 78 * S, 2, '#899c89'); drawLine(c, ox - 2, oy - 78 * S, ox - 2, oy - 300 * S, 2, '#899c89');
+    drawDimensionChain(c, [oy - (PARAPET_HEIGHT_MM + 75) * S, oy - PARAPET_HEIGHT_MM * S, oy], ox + 140 * S, 18, 'vertical', S);
+    tag(`Parapet 115 brick, ${PARAPET_HEIGHT_MM} high, CM 1:4`, ox + 60 * S, oy - 600 * S, 1560, 800);
+    tag('PCC coping 75 with drip both sides', ox + 60 * S, oy - (PARAPET_HEIGHT_MM + 40) * S, 1560, 768);
+    tag('Membrane turned up 300 into a groove', ox - 4, oy - 200 * S, 1560, 832);
+    tag(`Screed to falls; waterproofing per ${sheetNumber('waterproofing', 0)}`, ox - 600 * S, oy - 40 * S, 1560, 864);
+    tag('Roof slab', ox - 700 * S, oy + 75 * S, 1560, 896); }
+}
+
 type ElevSide = 'front' | 'rear' | 'left' | 'right';
 /** Elevation geometry for one side, viewed from OUTSIDE the building (so the front elevation reads as seen from the road). */
 function elevAxis(k: Context, side: ElevSide): { len: number; u: (along: number) => number; line: number; axis: Axis } {
@@ -2774,7 +3082,7 @@ function brickwork(k: Context): void {
 function header(k: Context): void {
   const c = k.c;
   drawRect(c, 24, 24, SHEET_W - 48, SHEET_H - 48, { stroke: COLORS.wall, weight: PEN.cut });
-  label(c, k.title, MARGIN + 12, 65, 27, 'left', COLORS.green, true);
+  label(c, k.title, MARGIN + 12, 65, 24, 'left', COLORS.text, true);
   label(c, `${k.sheetNo}   •   ALL DIMENSIONS IN mm UNLESS NOTED   •   LEVELS IN m`, SHEET_W - MARGIN - 8, 66, 14, 'right', COLORS.dim);
   drawLine(c, 40, 99, SHEET_W - 40, 99, PEN.thin, COLORS.grid);
 }
@@ -2809,7 +3117,7 @@ export const PROGRAMMATIC_TYPES = [
   'staircase_detail', 'water_tank', 'waterproofing', 'stp_detail',
   'electrical', 'plumbing', 'tiling_layout', 'brickwork_detail',
   'working_plan', 'door_window_schedule',
-  'site_plan', 'terrace_plan', 'side_elevation',
+  'site_plan', 'terrace_plan', 'side_elevation', 'section_bb', 'cover_sheet', 'wet_areas', 'typical_details',
 ] as const;
 
 /** Render a coordinated A3 landscape construction drawing and return a PNG data URL. */
@@ -2860,6 +3168,10 @@ export function generateProgrammaticDrawing(
     case 'site_plan': sitePlan(k); break;
     case 'terrace_plan': terracePlan(k); break;
     case 'side_elevation': sideElevations(k); break;
+    case 'section_bb': sectionBB(k); break;
+    case 'cover_sheet': coverSheet(k); break;
+    case 'wet_areas': wetAreas(k); break;
+    case 'typical_details': typicalDetails(k); break;
   }
   resolveSoft();
   c.restore();

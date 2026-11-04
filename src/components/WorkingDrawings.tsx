@@ -47,7 +47,11 @@ type DrawingType =
   | 'stp'
   | 'sitePlan'
   | 'terracePlan'
-  | 'sideElevation';
+  | 'sideElevation'
+  | 'coverSheet'
+  | 'sectionBB'
+  | 'wetAreas'
+  | 'typicalDetails';
 
 /* Map internal drawing types to API drawing types */
 const aiDrawingMap: Record<DrawingType, string> = {
@@ -72,6 +76,10 @@ const aiDrawingMap: Record<DrawingType, string> = {
   sitePlan: 'site_plan',
   terracePlan: 'terrace_plan',
   sideElevation: 'side_elevation',
+  coverSheet: 'cover_sheet',
+  sectionBB: 'section_bb',
+  wetAreas: 'wet_areas',
+  typicalDetails: 'typical_details',
 };
 
 /* Drawing types that differ between Ground Floor and First Floor and need separate generation/caching */
@@ -358,6 +366,7 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq, on
   const totalDrawings = Object.keys(aiDrawingMap).length + (isMultiFloor ? FLOOR_SPECIFIC.length : 0);
 
   const tabs: { id: DrawingType; label: string; icon: React.ReactNode; group: string }[] = [
+    { id: 'coverSheet', label: 'Cover & Register', icon: <Layers size={12} />, group: 'Architecture' },
     { id: 'sitePlan', label: 'Site Plan', icon: <MapIcon size={12} />, group: 'Architecture' },
     { id: 'workingPlan', label: 'Working Plan', icon: <Ruler size={12} />, group: 'Architecture' },
     { id: 'terracePlan', label: 'Terrace Plan', icon: <Layers size={12} />, group: 'Architecture' },
@@ -369,6 +378,9 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq, on
     { id: 'reinforcement', label: 'Column Schedule', icon: <Ruler size={12} />, group: 'Structure' },
     { id: 'barBending', label: 'BBS', icon: <BarChart3 size={12} />, group: 'Structure' },
     { id: 'section', label: 'Section 1-1', icon: <ArrowUpDown size={12} />, group: 'Architecture' },
+    { id: 'sectionBB', label: 'Section 2-2', icon: <ArrowUpDown size={12} />, group: 'Architecture' },
+    { id: 'wetAreas', label: 'Toilet & Kitchen', icon: <Droplets size={12} />, group: 'Architecture' },
+    { id: 'typicalDetails', label: 'Typical Details', icon: <Ruler size={12} />, group: 'Finishes' },
     { id: 'elevation', label: 'Front Elevation', icon: <Building size={12} />, group: 'Architecture' },
     { id: 'sideElevation', label: 'Side & Rear Elevations', icon: <Building size={12} />, group: 'Architecture' },
     { id: 'brickwork', label: 'Brickwork', icon: <BrickWall size={12} />, group: 'Finishes' },
@@ -394,6 +406,10 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq, on
     barBending: 'Bar Bending Schedule per IS 2502. All members quantified with bar mark, diameter, shape code, cutting length, and total weight.',
     section: `Cross-section through the stair: foundation at the assumed founding depth, RCC frame, slabs, stair flights, parapet and stair head room. Plinth 450 mm; floor-to-floor 3000 mm.`,
     elevation: `Front elevation as seen from the road (${requirements.facing} facing): openings, sills and chajjas from the locked plan, plinth, slab bands, parapet, stair head room and overhead tank.`,
+    coverSheet: 'Cover sheet: project data, drawing register (every sheet with number and revision), general notes, codes and abbreviations.',
+    sectionBB: 'Section 2–2 from the road to the rear through the largest room: foundations cut, plinth, walls and openings cut, slabs and beams, levels and room depths.',
+    wetAreas: 'Toilet and kitchen enlargements at 1:25 / 1:50: fixture set-out from the plumbing layout, counter, sink and hob, and the toilet service-wall elevation with tile height.',
+    typicalDetails: 'Typical details: lintel & chajja (1:10), plinth / DPC / plinth protection, stair railing and parapet coping with roof upstand (1:20).',
     sideElevation: 'Left, right and rear elevations at one common scale, each as seen from outside that side: openings from the locked plan, levels, stair head room and overhead tank.',
     sitePlan: 'Site plan: plot, setbacks (required vs provided), building footprint, main gate, parking, sump, manhole, rain-water pipes and an area statement (coverage, built-up, FSI) matching the planner and BOQ.',
     terracePlan: 'Terrace / roof plan: parapet, stair head room with door, overhead tank(s) sized as in the BOQ, falls to the four rain-water pipes and a terrace schedule.',
