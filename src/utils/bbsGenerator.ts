@@ -22,6 +22,7 @@ export interface BeamDesignResult {
   tensionBars: string; tensionAreaMm2: number; compressionBars: string; compressionAreaMm2: number;
   stirrupDiaMm: number; stirrupSpacingNearSupportMm: number; stirrupSpacingMidSpanMm: number;
   deflectionCheck: boolean; ptProvided: number; isDoublyReinforced: boolean;
+  topBars?: string; supportTopBars?: string; mark?: string;
 }
 export interface ColumnDesignResult {
   id: string; floor: number; x: number; y: number; widthMm: number; depthMm: number;
@@ -271,7 +272,7 @@ function scheduleBeams(result: StructuralDesignResult_Input, collector: Schedule
   result.beams.forEach((beam, index) => {
     const memberIndex = index + 1;
     const memberId = `B${memberIndex}`;
-    const description = `${floorLabel(beam.floor)} Beam ${memberIndex} (${beam.id})`;
+    const description = `${floorLabel(beam.floor)} Beam ${beam.mark ?? memberIndex} (${beam.id})`;
     const span = beam.spanM * 1000;
     for (const bar of parseBars(beam.tensionBars)) {
       const ld = developmentLength(bar.diaMm, result.parameters.steelGrade, result.parameters.concreteGrade);
@@ -285,6 +286,22 @@ function scheduleBeams(result: StructuralDesignResult_Input, collector: Schedule
         collector.add({ memberType: 'beam', memberId, memberDescription: description, memberIndex, barType: 'compression', barDiaMm: bar.diaMm,
           barShape: 'Straight', barLengthMm: span + 2 * ld, numberOfBars: bar.count, floor: beam.floor,
           remarks: 'Top compression / negative-moment reinforcement', });
+      }
+    }
+    if (!beam.isDoublyReinforced && beam.topBars) {
+      for (const bar of parseBars(beam.topBars)) {
+        const ld = developmentLength(bar.diaMm, result.parameters.steelGrade, result.parameters.concreteGrade);
+        collector.add({ memberType: 'beam', memberId, memberDescription: description, memberIndex, barType: 'tension_top', barDiaMm: bar.diaMm,
+          barShape: 'Straight', barLengthMm: span + 2 * ld, numberOfBars: bar.count, floor: beam.floor,
+          remarks: 'Continuous top (hanger) bars', });
+      }
+    }
+    if (beam.supportTopBars && beam.supportTopBars !== 'Nil') {
+      for (const bar of parseBars(beam.supportTopBars)) {
+        const ld = developmentLength(bar.diaMm, result.parameters.steelGrade, result.parameters.concreteGrade);
+        collector.add({ memberType: 'beam', memberId, memberDescription: description, memberIndex, barType: 'tension_top', barDiaMm: bar.diaMm,
+          barShape: 'Straight', barLengthMm: 0.3 * span + ld, numberOfBars: bar.count * 2, floor: beam.floor,
+          remarks: 'Extra top bars over both supports; 0.3L into the span + Ld into the support', });
       }
     }
     const stirrupDia = finitePositive(beam.stirrupDiaMm, 8);

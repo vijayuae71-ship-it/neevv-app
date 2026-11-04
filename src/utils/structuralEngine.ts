@@ -58,6 +58,14 @@ export interface BeamDesignResult {
   tensionBars: string; tensionAreaMm2: number; compressionBars: string; compressionAreaMm2: number;
   stirrupDiaMm: number; stirrupSpacingNearSupportMm: number; stirrupSpacingMidSpanMm: number;
   deflectionCheck: boolean; ptProvided: number; isDoublyReinforced: boolean;
+  /** Beam axis end points (m, same frame as columns). */
+  x1?: number; y1?: number; x2?: number; y2?: number;
+  /** Continuous top bars (hangers, or compression steel when doubly reinforced). */
+  topBars?: string;
+  /** Extra top bars over each support for the hogging moment wu·L²/10 (IS 456 Table 12), 'Nil' when hangers suffice. */
+  supportTopBars?: string; supportMomentKNm?: number;
+  /** Drawing mark, e.g. FB1 (first-floor slab beam) / RB2 (roof beam); identical designs share a mark. */
+  mark?: string;
 }
 
 export interface ColumnDesignResult {
@@ -65,6 +73,8 @@ export interface ColumnDesignResult {
   axialLoadKN: number; momentKNm: number; mainBars: string; mainBarAreaMm2: number;
   steelPercentage: number; tieDiaMm: number; tieSpacingMm: number; isShort: boolean;
   effectiveLength: number; slendernessRatio: number;
+  /** Column mark (C1, C2…) — one mark per plan position, the schedule gives its section per storey. */
+  mark?: string;
 }
 
 export interface FoundationDesignResult {
@@ -412,6 +422,15 @@ function designBeam(line: BeamLine, materialsUsed: MaterialGrades, slabLoad: num
   const calculatedSpacing = vus > 0 ? 0.87 * materialsUsed.fy * asv * d / vus : 300;
   const near = Math.max(75, Math.min(300, roundDown(Math.min(calculatedSpacing, 0.75 * d), 25)));
   const mid = Math.max(100, Math.min(300, roundDown(Math.min(300, 0.75 * d), 25)));
+  // Hogging at the supports of a continuous beam (IS 456 Table 12: wu·L²/10). Two continuous 12 mm
+  // hangers (or the compression steel) run through; extra top bars over each support make up the rest.
+  const supportMoment = wu * span * span / 10;
+  const topRequired = Math.max(minAst, steelAreaForMoment(Math.min(supportMoment, muLim), width, d, materialsUsed.fck, materialsUsed.fy));
+  const hangerDia = compressionDia || 12, hangerCount = compressionCount || 2;
+  const hangerArea = hangerCount * barArea(hangerDia);
+  const extraNeed = Math.max(0, topRequired - hangerArea);
+  const extraDia = extraNeed > 400 ? 16 : 12;
+  const extraCount = extraNeed > 1 ? Math.max(2, Math.ceil(extraNeed / barArea(extraDia))) : 0;
   return {
     id: line.id, floor: line.floor, spanM: span, widthMm: width, depthMm: depth, effectiveDepthMm: d,
     loadKNm: serviceLoad, maxMomentKNm: moment, maxShearKN: shear,
@@ -419,7 +438,26 @@ function designBeam(line: BeamLine, materialsUsed: MaterialGrades, slabLoad: num
     compressionBars: compressionCount ? fmtBars(compressionCount, compressionDia) : 'Nil', compressionAreaMm2: compressionProvided,
     stirrupDiaMm: stirrupDia, stirrupSpacingNearSupportMm: near, stirrupSpacingMidSpanMm: mid,
     deflectionCheck: depth >= span * 1000 / 15, ptProvided: pt, isDoublyReinforced: doubly,
+    x1: line.a.x, y1: line.a.y, x2: line.b.x, y2: line.b.y,
+    topBars: fmtBars(hangerCount, hangerDia), supportTopBars: extraCount ? fmtBars(extraCount, extraDia) : 'Nil', supportMomentKNm: supportMoment,
   };
+}
+/** Identical beam designs on a slab level share one mark: FB1… (floor slabs, numbered per level), RB1… (roof). */
+function markBeams(beams: BeamDesignResult[], floorsCount: number): void {
+  for (let floor = 0; floor < floorsCount; floor++) {
+    const prefix = floor === floorsCount - 1 ? 'RB' : floorsCount > 2 ? `${floor + 1}B` : 'FB';
+    const sig = (b: BeamDesignResult) => [b.widthMm, b.depthMm, b.tensionBars, b.topBars, b.supportTopBars, b.stirrupDiaMm, b.stirrupSpacingNearSupportMm, b.stirrupSpacingMidSpanMm].join('|');
+    const marks = new Map<string, string>();
+    const level = beams.filter((b) => b.floor === floor).sort((a, b) => b.depthMm - a.depthMm || b.spanM - a.spanM);
+    for (const b of level) { const k = sig(b); if (!marks.has(k)) marks.set(k, `${prefix}${marks.size + 1}`); b.mark = marks.get(k); }
+  }
+}
+/** Columns are marked by plan position (C1… left→right, front→rear); the schedule lists their section per storey. */
+function markColumns(columns: ColumnDesignResult[]): void {
+  const keys = [...new Set(columns.map((c) => `${c.y.toFixed(3)}|${c.x.toFixed(3)}`))]
+    .sort((a, b) => Number(a.split('|')[0]) - Number(b.split('|')[0]) || Number(a.split('|')[1]) - Number(b.split('|')[1]));
+  const markOf = new Map(keys.map((k, i) => [k, `C${i + 1}`]));
+  for (const c of columns) c.mark = markOf.get(`${c.y.toFixed(3)}|${c.x.toFixed(3)}`);
 }
 function nearestColumn(point: Point, columns: Point[]): Point {
   let nearest = columns[0]; let best = distance(point, nearest);
@@ -467,7 +505,7 @@ function designColumns(
       const isShort = slenderness <= 12;
       const minEccentricity = Math.max(floorHeight * 1000 / 500 + leastDimension / 30, 20);
       const moment = pu * minEccentricity / 1000 + lateralBaseShear * floorHeight / Math.max(1, allColumns.length * numFloors) * 0.05;
-      const tieDia = Math.max(6, Math.ceil(dia / 4 / 2) * 2);
+      const tieDia = Math.max(8, Math.ceil(dia / 4 / 2) * 2); // 8 mm minimum (IS 13920 practice for seismic zones II–V)
       const tieSpacing = Math.floor(Math.min(300, 16 * dia, leastDimension) / 25) * 25;
       results.push({
         id: `C-F${floor}-${key}`, floor, x: point.x, y: point.y, widthMm: dimensions.width, depthMm: dimensions.depth,
@@ -638,6 +676,7 @@ export function designStructure(input: StructuralDesignInput): StructuralDesignR
 
   const intrinsicBeamAreaLoad = positiveSum(beamIntrinsicByFloor) / Math.max(1, floorsCount * averageFloorArea);
   const columns = designColumns(layout, baseColumns, panelsByFloor, floorsCount, floorHeight, averageSlabServiceLoad + intrinsicBeamAreaLoad, grade, Math.max(baseShear, windForce));
+  markBeams(beams, floorsCount); markColumns(columns);
   const groundColumns = columns.filter((column) => column.floor === 0);
   const foundations = groundColumns.map((column) => designFooting(column, sbc, grade));
   if (columns.some((c) => !c.isShort)) warnings.push('One or more columns are slender (effective-length ratio > 12); slender-column moment magnification must be designed explicitly.');
@@ -659,7 +698,11 @@ export function designStructure(input: StructuralDesignInput): StructuralDesignR
   }));
   const beamSteel = positiveSum(beams.map((b) => {
     const t = parseBarSpec(b.tensionBars); const c = parseBarSpec(b.compressionBars);
-    const longitudinal = (t ? t.count * b.spanM * barWeightKgPerM(t.dia) : 0) + (c ? c.count * b.spanM * barWeightKgPerM(c.dia) : 0);
+    const top = parseBarSpec(b.topBars ?? ''); const extra = parseBarSpec(b.supportTopBars ?? '');
+    const longitudinal = (t ? t.count * b.spanM * barWeightKgPerM(t.dia) : 0)
+      + (top && !b.isDoublyReinforced ? top.count * b.spanM * barWeightKgPerM(top.dia) : 0)
+      + (c ? c.count * b.spanM * barWeightKgPerM(c.dia) : 0)
+      + (extra ? 2 * extra.count * 0.3 * b.spanM * barWeightKgPerM(extra.dia) : 0);
     const stirrups = (b.spanM / ((b.stirrupSpacingMidSpanMm || 200) / 1000) + 2) * 2 * (b.widthMm + b.depthMm) / 1000 * barWeightKgPerM(b.stirrupDiaMm);
     return longitudinal + stirrups;
   }));

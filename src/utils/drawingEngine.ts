@@ -61,7 +61,7 @@ export const DRAFTING_AUDIT: Record<string, DraftingCheck[]> = {};
 
 interface Frame { x: number; y: number; s: number; width: number; height: number; }
 interface ModelRoom { source: Room; x: number; y: number; w: number; d: number; }
-interface ModelColumn { x: number; y: number; w: number; d: number; supplied?: Column; }
+interface ModelColumn { x: number; y: number; w: number; d: number; supplied?: Column; mark?: string; }
 interface OpeningPlacement {
   source: LayoutOpening; floor: number; room: ModelRoom;
   // left/right edges are in model coordinates, along the x or y wall axis.
@@ -106,7 +106,7 @@ const clamp = (n: number, lo: number, hi: number): number => Math.max(lo, Math.m
 const titleFor: Record<DrawingType, string> = {
   excavation: 'EXCAVATION PLAN', column_layout: 'FOUNDATION & COLUMN LAYOUT',
   footing_detail: 'ISOLATED FOOTING DETAIL', beam_slab: 'RCC BEAM & SLAB LAYOUT',
-  column_detail: 'COLUMN & REINFORCEMENT DETAIL', bar_bending: 'BAR BENDING SCHEDULE',
+  column_detail: 'COLUMN SCHEDULE & BEAM DETAIL', bar_bending: 'BAR BENDING SCHEDULE',
   section_aa: 'BUILDING SECTION 1–1', front_elevation: 'FRONT ELEVATION',
   staircase_detail: 'STAIRCASE PLAN & SECTION', water_tank: 'SUMP & OVERHEAD TANK DETAILS',
   waterproofing: 'WATERPROOFING DETAILS', stp_detail: 'STP SCHEMATIC LAYOUT',
@@ -150,6 +150,46 @@ function label(c: CanvasRenderingContext2D, value: string, x: number, y: number,
     AUDIT.labels.push({ x0: Math.min(...pts.map(q => q[0])), x1: Math.max(...pts.map(q => q[0])), y0: Math.min(...pts.map(q => q[1])), y1: Math.max(...pts.map(q => q[1])), t: value });
   }
   c.restore();
+}
+/* ── Deferred ("soft") labels ──
+ * Room names, door/window tags and member marks are queued while a sheet is drawn and placed last,
+ * each at the first candidate position whose box is clear of everything already lettered on the sheet
+ * (dimension text, symbols, schedules, earlier soft labels). Fixed items never move. */
+interface SoftLabel { w: number; h: number; cands: Point[]; draw: (x: number, y: number) => void; optional?: boolean }
+let SOFT: SoftLabel[] | null = null;
+function textWidth(c: CanvasRenderingContext2D, t: string, size: number, bold = false): number {
+  c.save(); c.font = `${bold ? '700 ' : ''}${size}px Arial, sans-serif`; const w = c.measureText(t).width; c.restore(); return w;
+}
+/** optional: the label is left off (it is named in the sheet's schedule) when no clear spot exists. */
+function soft(w: number, h: number, cands: Point[], draw: (x: number, y: number) => void, optional = false): void {
+  if (!SOFT) { draw(cands[0].x, cands[0].y); return; }
+  SOFT.push({ w, h, cands, draw, optional });
+}
+function resolveSoft(): void {
+  if (!SOFT) return;
+  const queue = SOFT; SOFT = null;
+  const boxes: { x0: number; y0: number; x1: number; y1: number }[] = AUDIT ? AUDIT.labels.map(l => ({ ...l })) : [];
+  const overlap = (b: { x0: number; y0: number; x1: number; y1: number }) => boxes.reduce((sum, o) => {
+    const ox = Math.min(b.x1, o.x1) - Math.max(b.x0, o.x0), oy = Math.min(b.y1, o.y1) - Math.max(b.y0, o.y0);
+    return sum + (ox > 0.5 && oy > 0.5 ? ox * oy : 0);
+  }, 0);
+  for (const q of queue) {
+    let best = q.cands[0], bestScore = Infinity;
+    for (const p of q.cands) {
+      const sc = overlap({ x0: p.x - q.w / 2, y0: p.y - q.h / 2, x1: p.x + q.w / 2, y1: p.y + q.h / 2 });
+      if (sc < bestScore - 1e-6) { best = p; bestScore = sc; }
+      if (sc === 0) break;
+    }
+    if (bestScore > 0 && q.optional) continue;
+    q.draw(best.x, best.y);
+    boxes.push({ x0: best.x - q.w / 2, y0: best.y - q.h / 2, x1: best.x + q.w / 2, y1: best.y + q.h / 2 });
+  }
+}
+/** Candidate points around (x, y) in rings of the given steps (first: the point itself). */
+function ringCands(x: number, y: number, sx: number, sy: number, rings = 3): Point[] {
+  const out: Point[] = [{ x, y }];
+  for (let r = 1; r <= rings; r++) for (const [dx, dy] of [[0, -1], [0, 1], [1, 0], [-1, 0], [1, -1], [-1, -1], [1, 1], [-1, 1]]) out.push({ x: x + dx * sx * r, y: y + dy * sy * r });
+  return out;
 }
 function multiline(c: CanvasRenderingContext2D, lines: string[], x: number, y: number, size = 17, step = 26): void {
   lines.forEach((s, i) => label(c, s, x, y + i * step, size));
@@ -222,14 +262,17 @@ export function drawDimensionChain(c: CanvasRenderingContext2D, points: number[]
     const a1 = xy(v - 5, coord + 5), b1 = xy(v + 5, coord - 5);
     drawLine(c, a1.x, a1.y, b1.x, b1.y, 0.8, COLORS.dim);
   });
+  // Narrow segments: smaller figures, and a figure that would run into its neighbour goes to the other side of the line.
+  let lastEnd = -Infinity, lastFlipped = false;
   for (let i = 1; i < p.length; i++) {
     const dim = round((p[i] - p[i - 1]) / Math.max(scaleFactor, 1e-9));
-    const center = (p[i] + p[i - 1]) / 2;
-    if (horizontal) label(c, dim, center, coord - 13, 14, 'center', COLORS.dim);
-    else {
-      c.save(); c.translate(coord - 12, center); c.rotate(-Math.PI / 2);
-      label(c, dim, 0, 0, 14, 'center', COLORS.dim); c.restore();
-    }
+    const center = (p[i] + p[i - 1]) / 2, seg = p[i] - p[i - 1];
+    const size = seg < textWidth(c, dim, 14) + 4 ? 11 : 14, w = textWidth(c, dim, size);
+    const flip: boolean = center - w / 2 < lastEnd + 3 && !lastFlipped;
+    const across = flip ? (horizontal ? coord + 12 : coord + 12) : (horizontal ? coord - 13 : coord - 12);
+    if (horizontal) label(c, dim, center, across, size, 'center', COLORS.dim);
+    else { c.save(); c.translate(across, center); c.rotate(-Math.PI / 2); label(c, dim, 0, 0, size, 'center', COLORS.dim); c.restore(); }
+    lastFlipped = flip; lastEnd = flip ? lastEnd : center + w / 2;
   }
 }
 /** Clipped diagonal hatch; independent of other geometry. */
@@ -359,7 +402,7 @@ function makeGeometry(layout: Layout, req: ProjectRequirements, data: Data): Geo
   const structuralColumns = list(data.columns).map(obj).filter(v => nval(v, 'floor', 0) === 0 &&
     typeof v.x === 'number' && typeof v.y === 'number').map(v => ({
     x: mm(nval(v, 'x', 0)), y: mm(nval(v, 'y', 0)),
-    w: positive(v.widthMm, 300), d: positive(v.depthMm, 300),
+    w: positive(v.widthMm, 300), d: positive(v.depthMm, 300), mark: sval(v, 'mark', '') || undefined,
   }));
   const suppliedGrid = obj(data.grid);
   const usableX = unique(list(suppliedGrid.xPositions).map(v => finite(v, NaN)));
@@ -465,8 +508,8 @@ function drawPlot(k: Context): void {
   const c = k.c, p = box(k, k.g.footprint), b = box(k, k.g.building);
   drawRect(c, p.x, p.y, p.w, p.h, { stroke: COLORS.wall, weight: 2 });
   drawRect(c, b.x, b.y, b.w, b.h, { stroke: COLORS.grid, dash: [10, 6], weight: 1 });
-  label(c, 'PLOT BOUNDARY', p.x + 7, p.y - 12, 14);
-  label(c, 'BUILDING LINE', b.x + 5, b.y - 12, 11, 'left', COLORS.grid);
+  { const w = textWidth(c, 'PLOT BOUNDARY', 14); soft(w, 16, [0, 0.35, 0.7].map(f => ({ x: p.x + 7 + w / 2 + f * Math.max(0, p.w - w - 14), y: p.y - 12 })), (x, y) => label(c, 'PLOT BOUNDARY', x, y, 14, 'center')); }
+  { const w = textWidth(c, 'BUILDING LINE', 11); soft(w, 13, [0, 0.35, 0.7].flatMap(f => [-12, 12].map(dy => ({ x: b.x + 5 + w / 2 + f * Math.max(0, b.w - w - 10), y: b.y + dy }))), (x, y) => label(c, 'BUILDING LINE', x, y, 11, 'center', COLORS.grid)); }
   const s = k.frame.s;
   if (k.g.setbacks.left > 0) drawDimensionChain(c, [p.x, b.x], p.y, -30, 'horizontal', s);
   if (k.g.setbacks.right > 0) drawDimensionChain(c, [b.x + b.w, p.x + p.w], p.y, -30, 'horizontal', s);
@@ -518,10 +561,10 @@ function drawColumns(k: Context): void {
     drawColumnSymbol(k.c, p.x, p.y, Math.max(5, item.w * k.scale), Math.max(5, item.d * k.scale));
   }
 }
-function drawPlanRooms(k: Context, light = false, cornerLabels = false): void {
+function drawPlanRooms(k: Context, light = false, cornerLabels = false, labels = true): void {
   drawPlanWalls(k, light ? 'light' : 'solid');
   for (const o of k.g.openings.filter(v => v.floor === k.level)) planOpening(k.c, k, o);
-  for (const r of selected(k)) if (cornerLabels || r.source.type !== 'staircase') roomLabel(k, r, { corner: cornerLabels });
+  if (labels) for (const r of selected(k)) if (cornerLabels || r.source.type !== 'staircase') roomLabel(k, r, { corner: cornerLabels });
 }
 function drawSectionMark(k: Context): void { sectionMarker(k, sectionCutY(k)); }
 function openingLegend(k: Context, x: number, y: number): void {
@@ -699,9 +742,17 @@ function openingTag(k: Context, o: OpeningPlacement): void {
   const along = o.source.type === 'door' ? mid + (o.b - o.a) * 0.18 : mid;
   const p = h ? at(k, along, across) : at(k, across, along);
   const c = k.c;
-  if (o.source.type === 'door') { drawRect(c, p.x - 15, p.y - 9, 30, 18, { fill: '#fff', stroke: COLORS.wall, weight: PEN.hair }); }
-  else { c.save(); c.beginPath(); c.ellipse(p.x, p.y, 16, 9, 0, 0, Math.PI * 2); c.fillStyle = '#fff'; c.fill(); c.lineWidth = PEN.hair; c.strokeStyle = COLORS.wall; c.stroke(); c.restore(); }
-  label(c, mark, p.x, p.y + 0.5, 11, 'center', COLORS.text, true);
+  const draw = (x: number, y: number) => {
+    if (o.source.type === 'door') { drawRect(c, x - 15, y - 9, 30, 18, { fill: '#fff', stroke: COLORS.wall, weight: PEN.hair }); }
+    else { c.save(); c.beginPath(); c.ellipse(x, y, 16, 9, 0, 0, Math.PI * 2); c.fillStyle = '#fff'; c.fill(); c.lineWidth = PEN.hair; c.strokeStyle = COLORS.wall; c.stroke(); c.restore(); }
+    label(c, mark, x, y + 0.5, 11, 'center', COLORS.text, true);
+  };
+  // slide along the opening first, then further away from the wall
+  const along1 = h ? { x: 1, y: 0 } : { x: 0, y: 1 }, acrossDir = h ? { x: 0, y: 1 } : { x: 1, y: 0 };
+  const cands: Point[] = [p];
+  for (const t of [18, -18, 34, -34]) cands.push({ x: p.x + along1.x * t, y: p.y + along1.y * t });
+  for (const t of [20, -20]) for (const u of [0, 18, -18]) cands.push({ x: p.x + acrossDir.x * t + along1.x * u, y: p.y + acrossDir.y * t + along1.y * u });
+  soft(32, 18, cands, draw);
 }
 /** Room label fitted inside the clear rectangle: NAME / clear size / area (/ FFL). Never crosses a wall. */
 function roomLabel(k: Context, r: ModelRoom, opts: { area?: boolean; ffl?: string; corner?: boolean; color?: string } = {}): void {
@@ -719,17 +770,32 @@ function roomLabel(k: Context, r: ModelRoom, opts: { area?: boolean; ffl?: strin
     lines = [lines.join(' ').split(' ')[0]];
     if (!fits(lines[0], size)) { if (AUDIT) AUDIT.checks.push({ item: 'Room label fits room', status: 'WARNING', detail: `${r.source.name}: room too small at this scale; named in schedule` }); return; }
   }
-  if (opts.corner) { lines.forEach((l, i) => label(c, l, q.x + 6, q.y + 11 + i * (size + 2), size, 'left', opts.color ?? COLORS.dim, true)); return; }
+  if (opts.corner) {
+    const bw0 = Math.max(...lines.map(l => textWidth(c, l, size, true))), bh0 = lines.length * (size + 2);
+    const at0 = (cx: number, cy: number) => ({ x: cx, y: cy });
+    const cands = [at0(q.x + 6 + bw0 / 2, q.y + 5 + bh0 / 2), at0(q.x + q.w - 6 - bw0 / 2, q.y + 5 + bh0 / 2), at0(q.x + 6 + bw0 / 2, q.y + q.h - 5 - bh0 / 2), at0(q.x + q.w - 6 - bw0 / 2, q.y + q.h - 5 - bh0 / 2), at0(q.x + q.w / 2, q.y + q.h / 2)];
+    soft(bw0, bh0, cands, (cx, cy) => lines.forEach((l, i) => label(c, l, cx - bw0 / 2, cy - bh0 / 2 + (size + 2) / 2 + i * (size + 2), size, 'left', opts.color ?? COLORS.dim, true)), true);
+    return;
+  }
   const sub: string[] = [];
   const dims = `${round(cr.w)} × ${round(cr.h)}`;
   if (fits(dims, size * 0.8, false)) sub.push(dims);
   if (opts.area) { const a = `${(cr.w * cr.h / 1e6).toFixed(2)} m²`; if (fits(a, size * 0.8, false)) sub.push(a); }
   if (opts.ffl && fits(opts.ffl, size * 0.75, false)) sub.push(opts.ffl);
-  const lh = size + 3, sh = size * 0.8 + 3, total = lines.length * lh + sub.length * sh;
+  const lh = size + 3, sh = size * 0.8 + 3;
   const room = q.h - 8; while (sub.length && lines.length * lh + sub.length * sh > room) sub.pop();
-  let y = q.y + q.h / 2 - Math.min(total, room) / 2 + lh / 2;
-  for (const l of lines) { label(c, l, q.x + q.w / 2, y, size, 'center', opts.color ?? COLORS.text, true); y += lh; }
-  for (const s2 of sub) { label(c, s2, q.x + q.w / 2, y - 1, size * 0.8, 'center', COLORS.dim); y += sh; }
+  const total = Math.min(lines.length * lh + sub.length * sh, room);
+  const bw = Math.max(...lines.map(l => textWidth(c, l, size, true)), ...sub.map(s2 => textWidth(c, s2, size * 0.8)));
+  const draw = (cx: number, cy: number) => {
+    let y = cy - total / 2 + lh / 2;
+    for (const l of lines) { label(c, l, cx, y, size, 'center', opts.color ?? COLORS.text, true); y += lh; }
+    for (const s2 of sub) { label(c, s2, cx, y - 1, size * 0.8, 'center', COLORS.dim); y += sh; }
+  };
+  // candidates stay inside the room's clear rectangle
+  const mx = Math.max(0, (q.w - bw) / 2 - 4), my = Math.max(0, (q.h - total) / 2 - 4), cx0 = q.x + q.w / 2, cy0 = q.y + q.h / 2;
+  const cands: Point[] = [{ x: cx0, y: cy0 }];
+  for (const f of [0.5, 1]) for (const [dx, dy] of [[0, -1], [0, 1], [-1, 0], [1, 0], [-1, -1], [1, -1], [-1, 1], [1, 1]]) cands.push({ x: cx0 + dx * mx * f, y: cy0 + dy * my * f });
+  soft(bw, total, cands, draw);
 }
 /** Dimension string with labels taken from model millimetres, so the parts always add up to the total. */
 function dimMm(k: Context, pts: number[], axis: 'x' | 'y', fixedPx: number, offsetPx: number, tier: string): void {
@@ -1024,7 +1090,7 @@ function excavation(k: Context): void {
   }
   const bm = at(k, k.g.footprint.x, k.g.footprint.y + k.g.footprint.h);
   circle(c, bm.x, bm.y, 7, COLORS.green, COLORS.green);
-  label(c, 'BM ±0.000 (VERIFY SURVEY DATUM)', bm.x + 13, bm.y + 24, 14);
+  { const t = 'BM ±0.000 (VERIFY SURVEY DATUM)', w = textWidth(c, t, 14); soft(w, 16, ringCands(bm.x + 13 + w / 2, bm.y + 24, 0.6 * w, 22, 2), (x, y) => label(c, t, x, y, 14, 'center')); }
   const f = footingSpec(k, 0);
   legend(c, 1600, 250, 'EXCAVATION NOTES', [
     'All dimensions in mm; not for setting out without survey.',
@@ -1109,7 +1175,7 @@ function columnLayout(k: Context): void {
     const f = box(k, { x: col.x - spec.w / 2, y: col.y - spec.d / 2, w: spec.w, h: spec.d });
     ring(c, f);
     drawColumnSymbol(c, p.x, p.y, Math.max(5, col.w * k.scale), Math.max(5, col.d * k.scale));
-    if (i < 20) label(c, `F${i + 1}`, f.x + f.w + 3, f.y - 6, 12);
+    if (i < 40) { const t = `F${i + 1}`, w = textWidth(c, t, 12); soft(w, 14, [{ x: f.x + f.w + 3 + w / 2, y: f.y - 6 }, { x: f.x - 3 - w / 2, y: f.y - 6 }, { x: f.x + f.w + 3 + w / 2, y: f.y + f.h + 6 }, { x: f.x - 3 - w / 2, y: f.y + f.h + 6 }], (x, y) => label(c, t, x, y, 12, 'center')); }
   }
   gridDimensions(k); drawSectionMark(k);
   const spec = footingSpec(k, 0), beam = firstBeam(k);
@@ -1243,107 +1309,191 @@ function beamCrossSection(k: Context, x: number, y: number): void {
   label(c, `Ø${round(positive(beam.stirrupDiaMm, 8))} stirrups @ ${round(positive(beam.stirrupSpacingMidSpanMm, 200))} mm`,
     x - slabW / 2, y + beamDPx + 99, 13);
 }
+function beamsAt(k: Context, floor: number): Data[] {
+  return structuralRows(k, 'beams').filter(b => nval(b, 'floor', -1) === floor && typeof b.x1 === 'number' && typeof b.y2 === 'number');
+}
+const sameAxis = (p: Data, q: Data) => Math.abs(nval(p, 'x1', 0) - nval(q, 'x1', 0)) + Math.abs(nval(p, 'y1', 0) - nval(q, 'y1', 0)) + Math.abs(nval(p, 'x2', 0) - nval(q, 'x2', 0)) + Math.abs(nval(p, 'y2', 0) - nval(q, 'y2', 0)) < 0.02;
+/** Unique beam marks across all slab levels, one schedule row each. */
+function beamScheduleRows(k: Context): string[][] {
+  const seen = new Map<string, { b: Data; n: number }>();
+  for (const b of structuralRows(k, 'beams')) {
+    const m = sval(b, 'mark', ''); if (!m) continue;
+    const e = seen.get(m); if (e) e.n++; else seen.set(m, { b, n: 1 });
+  }
+  const order = (m: string) => (m.startsWith('RB') ? 9 : 0) + Number(m.replace(/\D/g, '')) / 100;
+  return [...seen.entries()].sort((p, q) => order(p[0]) - order(q[0])).map(([m, { b, n }]) => [
+    m, `${round(nval(b, 'widthMm', 230))}×${round(nval(b, 'depthMm', 300))}`, sval(b, 'tensionBars', '—').replace('mm', ''),
+    sval(b, 'topBars', '2-12mm').replace('mm', ''), sval(b, 'supportTopBars', 'Nil').replace('mm', ''),
+    `Ø${round(nval(b, 'stirrupDiaMm', 8))}@${round(nval(b, 'stirrupSpacingNearSupportMm', 150))}/${round(nval(b, 'stirrupSpacingMidSpanMm', 200))}`, `${n}`,
+  ]);
+}
 function beamSlab(k: Context): void {
-  setFrame(k, k.g.building, { x: 160, y: 145, w: 1480, h: 865 }, 90);
-  const c = k.c, b = box(k, k.g.building);
-  drawPlanRooms(k, true);
+  setFrame(k, k.g.building, { x: 80, y: 140, w: 1170, h: 960 }, 95);
+  const c = k.c;
+  drawPlanRooms(k, true, false, false); // structural plan: slab marks only, room names are on the A-sheets
   grid(k);
-  for (const segment of gridSegments(k.g)) {
+  const lvl0 = beamsAt(k, 0), roof = k.g.floors > 1 ? beamsAt(k, k.g.floors - 1) : [];
+  if (lvl0.length) {
+    for (const bm of lvl0) {
+      const a = at(k, nval(bm, 'x1', 0) * 1000, nval(bm, 'y1', 0) * 1000), z = at(k, nval(bm, 'x2', 0) * 1000, nval(bm, 'y2', 0) * 1000);
+      drawDoubleLineWall(c, a.x, a.y, z.x, z.y, Math.max(4, nval(bm, 'widthMm', 230) * k.scale), 2);
+    }
+  } else for (const segment of gridSegments(k.g)) {
     const a = at(k, segment.a.x, segment.a.y), z = at(k, segment.b.x, segment.b.y);
     drawDoubleLineWall(c, a.x, a.y, z.x, z.y, Math.max(4, positive(firstBeam(k).widthMm, 230) * k.scale), 2);
   }
   for (const [i, r] of selected(k).entries()) {
+    if (isNiche(r.source)) continue;
     const p = at(k, r.x + r.w / 2, r.y + r.d / 2);
     const slab = structuralRows(k, 'slabs').find(s => sval(s, 'id', '').endsWith(r.source.id)) ?? firstSlab(k);
-    const oneWay = sval(slab, 'slabType', r.w / r.d > 2 || r.d / r.w > 2 ? 'one-way' : 'two-way') === 'one-way';
-    const horizontal = r.w <= r.d;
-    const length = Math.min(65, (horizontal ? r.w : r.d) * k.scale / 3);
-    if (horizontal) arrow(c, p.x - length, p.y + 27, p.x + length, p.y + 27, COLORS.green, 9);
-    else arrow(c, p.x + 35, p.y - length, p.x + 35, p.y + length, COLORS.green, 9);
-    if (!oneWay) {
-      if (horizontal) arrow(c, p.x + 35, p.y - 45, p.x + 35, p.y + 45, COLORS.green, 9);
-      else arrow(c, p.x - 55, p.y + 25, p.x + 55, p.y + 25, COLORS.green, 9);
-    }
-    label(c, `S${i + 1} ${oneWay ? '1W' : '2W'} / ${round(positive(slab.thicknessMm, 150))} THK`,
-      p.x, p.y + 52, 12, 'center', COLORS.green);
     if (r.source.type === 'staircase') {
       const q = box(k, { x: r.x, y: r.y, w: r.w, h: r.d });
-      drawRect(c, q.x, q.y, q.w, q.h, { stroke: COLORS.wall, dash: [6, 4], weight: 2 });
-      label(c, 'STAIR OPENING', p.x, p.y, 16, 'center', COLORS.green, true);
+      drawLine(c, q.x, q.y, q.x + q.w, q.y + q.h, PEN.thin, COLORS.grid); drawLine(c, q.x + q.w, q.y, q.x, q.y + q.h, PEN.thin, COLORS.grid);
+      label(c, 'STAIR OPENING', p.x, p.y - 10, 12, 'center', COLORS.green, true);
+      continue;
     }
+    const oneWay = sval(slab, 'slabType', r.w / r.d > 2 || r.d / r.w > 2 ? 'one-way' : 'two-way') === 'one-way';
+    const small = Math.min(r.w, r.d) * k.scale < 90;
+    const sub = `${oneWay ? '1-WAY' : '2-WAY'} ${round(positive(slab.thicknessMm, 150))}`;
+    soft(small ? 22 : 62, small ? 12 : 30, ringCands(p.x, p.y, 20, 16, 3), (x, y) => {
+      label(c, `S${i + 1}`, x, y - (small ? 0 : 8), small ? 10 : 13, 'center', COLORS.green, true);
+      if (!small) label(c, sub, x, y + 9, 10, 'center', COLORS.green);
+    });
   }
-  drawColumns(k); gridDimensions(k); drawSectionMark(k);
-  const slab = firstSlab(k), beam = firstBeam(k);
-  legend(c, 1670, 215, 'RCC DESIGN KEY', [
-    `Typical slab thickness: ${round(positive(slab.thicknessMm, 150))} mm`,
-    `Short direction: Ø${round(positive(slab.shortSpanBarDiaMm ?? slab.mainBarDiaMm, 10))} @ ${round(positive(slab.shortSpanSpacingMm ?? slab.mainBarSpacingMm, 150))} c/c`,
-    `Other direction: Ø${round(positive(slab.longSpanBarDiaMm ?? slab.distBarDiaMm, 8))} @ ${round(positive(slab.longSpanSpacingMm ?? slab.distBarSpacingMm, 200))} c/c`,
-    `Typical beam: ${round(positive(beam.widthMm, 230))} × ${round(positive(beam.depthMm, 400))} mm`,
-    `Bottom steel: ${sval(beam, 'tensionBars', sval(beam, 'bottomBars', 'BY ENGINEER'))}`,
-    `Top steel: ${sval(beam, 'compressionBars', sval(beam, 'topBars', 'BY ENGINEER'))}`,
-    `${concrete(k)} concrete, ${steel(k)} reinforcement`,
-    'Room lines in light grey = coordinated floor plan.',
+  drawColumns(k);
+  // beam marks at mid-span, offset off the beam line
+  for (const bm of (lvl0.length ? lvl0 : [])) {
+    const x1 = nval(bm, 'x1', 0) * 1000, y1 = nval(bm, 'y1', 0) * 1000, x2 = nval(bm, 'x2', 0) * 1000, y2 = nval(bm, 'y2', 0) * 1000;
+    const horiz = Math.abs(y2 - y1) < 1, m = at(k, (x1 + x2) / 2, (y1 + y2) / 2);
+    const rm = roof.find(r => sameAxis(r, bm));
+    const t = `${sval(bm, 'mark', '')}${rm ? '/' + sval(rm, 'mark', '') : ''}`;
+    const tw = textWidth(c, t, 10.5, true) + 8;
+    const cands = horiz ? [{ x: m.x, y: m.y - 12 }, { x: m.x, y: m.y + 12 }, { x: m.x - 40, y: m.y - 12 }, { x: m.x + 40, y: m.y - 12 }, { x: m.x - 40, y: m.y + 12 }, { x: m.x + 40, y: m.y + 12 }]
+      : [{ x: m.x - tw / 2 - 6, y: m.y }, { x: m.x + tw / 2 + 6, y: m.y }, { x: m.x - tw / 2 - 6, y: m.y - 30 }, { x: m.x - tw / 2 - 6, y: m.y + 30 }, { x: m.x + tw / 2 + 6, y: m.y - 30 }, { x: m.x + tw / 2 + 6, y: m.y + 30 }];
+    soft(tw, 15, cands, (x, y) => { drawRect(c, x - tw / 2, y - 7.5, tw, 15, { fill: '#fff', stroke: COLORS.wall, weight: 0.6 }); label(c, t, x, y + 0.5, 10.5, 'center', COLORS.text, true); });
+  }
+  gridDimensions(k); drawSectionMark(k);
+  const rows = beamScheduleRows(k);
+  let y = table(c, 1290, 140, [{ h: 'MARK', w: 58 }, { h: 'b × D', w: 74 }, { h: 'BOTTOM', w: 70 }, { h: 'TOP CONT.', w: 76 }, { h: 'EXTRA TOP', w: 76 }, { h: 'STIRRUPS', w: 108 }, { h: 'NOS', w: 40 }],
+    rows.length ? rows : [['—', 'Beams designed by engineer', '', '', '', '', '']], 'BEAM SCHEDULE');
+  const slabs = structuralRows(k, 'slabs'), thk = slabs.map(s => nval(s, 'thicknessMm', 150));
+  const slab = firstSlab(k);
+  legend(c, 1290, y + 36, 'NOTES', [
+    `Marks: ${k.g.floors > 1 ? 'FB = first-floor slab beam, ' : ''}RB = roof beam${k.g.floors > 1 ? '; label FBn/RBn at one position' : ''}.`,
+    'EXTRA TOP: over each support, 0.3L into each span + Ld.',
+    'Stirrups: near-support spacing over L/4 each end / mid-span.',
+    `Slabs ${thk.length ? Math.min(...thk) : 150}–${thk.length ? Math.max(...thk) : 150} mm; main Ø${round(positive(slab.mainBarDiaMm, 8))} @ ${round(positive(slab.mainBarSpacingMm, 150))}, dist. Ø${round(positive(slab.distBarDiaMm, 8))} @ ${round(positive(slab.distBarSpacingMm, 200))}.`,
+    'Slab top bars at supports: 0.3L strip (see BBS S-106).',
+    `${concrete(k)} / ${steel(k)}; cover: slab 20, beam 25 mm.`,
+    `Beam detail and column schedule: ${sheetNumber('column_detail', 0)}.`,
   ]);
-  openingLegend(k, 1670, 540);
-  beamCrossSection(k, 1850, 770);
-  label(c, `BUILDING FOOTPRINT ${round(k.g.building.w)} × ${round(k.g.building.h)} mm • ${k.g.floors > 1 ? 'TYPICAL SLAB — ALL FLOORS (GF room names shown)' : 'ROOF SLAB'}`,
-    b.x, 1154, 15);
-  drawScaleBar(c, 200, 1180, k.scale);
+  viewTitle(k, `BEAM & SLAB LAYOUT — ${k.g.floors > 1 ? 'TYPICAL (ALL SLABS)' : 'ROOF SLAB'}`, 80, 130);
 }
 
-/* 5. Column cross-section, elevation and ties. */
+/* S-105: column schedule (per storey), sections at 1:10 and a typical continuous-beam detail. */
 function columnDetail(k: Context): void {
-  const c = k.c, column = firstColumn(k);
-  const w = positive(column.widthMm, k.g.columns[0]?.w ?? 300);
-  const d = positive(column.depthMm, k.g.columns[0]?.d ?? 300);
-  const spec = sval(column, 'mainBars', '4-16mm');
-  const count = Math.max(4, Number(/^\d+/.exec(spec)?.[0] ?? 4));
-  const dia = positive(Number(/-(\d+)mm/.exec(spec)?.[1]), 16);
-  const tie = positive(column.tieDiaMm, 8), spacing = positive(column.tieSpacingMm, 150);
-  const cover = 40, scale = Math.min(1.13, 425 / Math.max(w, d));
-  const x = 390, y = 475, cw = w * scale, ch = d * scale;
-  hatchBox(c, { x, y, w: cw, h: ch }, '#e7e9e7', -45, 20);
-  drawRect(c, x + cover * scale, y + cover * scale,
-    cw - 2 * cover * scale, ch - 2 * cover * scale, { stroke: COLORS.wall, weight: 2 });
-  // Bar positions: four corners, with remaining bars distributed on perimeter.
-  const inset = (cover + tie + dia / 2) * scale;
-  const x0 = x + inset, x1 = x + cw - inset, y0 = y + inset, y1 = y + ch - inset;
-  const perimeter = 2 * ((x1 - x0) + (y1 - y0));
-  for (let i = 0; i < count; i++) {
-    const dist = i * perimeter / count;
-    const dx = x1 - x0, dy = y1 - y0;
-    const p = dist < dx ? { x: x0 + dist, y: y0 } :
-      dist < dx + dy ? { x: x1, y: y0 + dist - dx } :
-      dist < 2 * dx + dy ? { x: x1 - (dist - dx - dy), y: y1 } :
-      { x: x0, y: y1 - (dist - 2 * dx - dy) };
-    circle(c, p.x, p.y, Math.max(4, dia * scale / 2), COLORS.wall, COLORS.wall);
+  const c = k.c, cols = structuralRows(k, 'columns');
+  const storeys = Math.max(1, k.g.floors);
+  // group plan positions whose section/bars are identical on every storey into column types
+  const byMark = new Map<string, Data[]>();
+  for (const col of cols) { const m = sval(col, 'mark', ''); if (m) byMark.set(m, [...(byMark.get(m) ?? []), col]); }
+  const spec = (cl: Data | undefined) => cl ? `${round(nval(cl, 'widthMm', 230))}×${round(nval(cl, 'depthMm', 300))} ${sval(cl, 'mainBars', '4-12mm').replace('mm', '')}` : '—';
+  const types = new Map<string, { marks: string[]; per: (Data | undefined)[] }>();
+  const markNo = (m: string) => Number(m.replace(/\D/g, ''));
+  for (const [m, list0] of [...byMark.entries()].sort((p, q) => markNo(p[0]) - markNo(q[0]))) {
+    const per = Array.from({ length: storeys }, (_, f) => list0.find(cl => nval(cl, 'floor', -1) === f));
+    const key = per.map(spec).join('|') + `|${nval(per[0] ?? {}, 'tieDiaMm', 8)}@${nval(per[0] ?? {}, 'tieSpacingMm', 150)}`;
+    const t = types.get(key); if (t) t.marks.push(m); else types.set(key, { marks: [m], per });
   }
-  label(c, 'COLUMN CROSS-SECTION', 250, 265, 23, 'left', COLORS.green, true);
-  drawDimensionChain(c, [x, x + cw], y + ch, 60, 'horizontal', scale);
-  drawDimensionChain(c, [y, y + ch], x, -60, 'vertical', scale);
-  note(c, `${spec} MAIN BARS`, 240, 930, x + cw - inset, y + inset);
-  note(c, `Ø${round(tie)} CLOSED TIES @ ${round(spacing)} c/c`, 240, 980, x + inset, y + ch / 2);
-  label(c, `CLEAR COVER ${round(cover)} mm`, 240, 1025, 16);
-  // 3 m side elevation from same member shape.
-  const ex = 1300, ey = 325, eh = 730, ew = Math.max(100, w * 0.43);
-  hatchBox(c, { x: ex, y: ey, w: ew, h: eh }, '#e7e9e7', -45, 23);
-  drawLine(c, ex + 23, ey + 10, ex + 23, ey + eh - 10, 2);
-  drawLine(c, ex + ew - 23, ey + 10, ex + ew - 23, ey + eh - 10, 2);
-  const pitch = eh * spacing / 3000;
-  for (let yy = ey + pitch / 2; yy < ey + eh; yy += Math.max(10, pitch))
-    drawRect(c, ex + 14, yy, ew - 28, 6, { stroke: COLORS.wall, weight: 1.2 });
-  hatchBox(c, { x: ex - 105, y: ey - 40, w: ew + 210, h: 38 }, COLORS.concrete, 45, 12);
-  hatchBox(c, { x: ex - 105, y: ey + eh + 3, w: ew + 210, h: 38 }, COLORS.concrete, 45, 12);
-  drawDimensionChain(c, [ey, ey + eh], ex + ew, 105, 'vertical', eh / 3000);
-  label(c, 'COLUMN SIDE ELEVATION', 1200, 265, 23, 'left', COLORS.green, true);
-  note(c, `TIES @ ${round(spacing)} c/c`, 1520, 532, ex + ew - 7, 565);
-  multiline(c, ['Seismic joint / confinement lengths to engineer detail.',
-    `Concrete ${concrete(k)}; reinforcement ${steel(k)}.`,
-    'Bar laps, development and hooks require design review.'], 1090, 1130, 15, 23);
+  const ranges = (ms: string[]) => { const n = ms.map(markNo).sort((p, q) => p - q); const out: string[] = []; for (let i = 0; i < n.length; ) { let j = i; while (j + 1 < n.length && n[j + 1] === n[j] + 1) j++; out.push(j > i ? `C${n[i]}–C${n[j]}` : `C${n[i]}`); i = j + 1; } return out.join(', '); };
+  const rowsOut = [...types.values()].map((t, i) => [`CT${i + 1}`, ranges(t.marks), ...t.per.map(spec),
+    `Ø${round(nval(t.per[0] ?? {}, 'tieDiaMm', 8))}@${round(nval(t.per[0] ?? {}, 'tieSpacingMm', 150))}`]);
+  const cw = storeys > 1 ? [{ h: 'TYPE', w: 56 }, { h: 'COLUMNS', w: 330 }, { h: 'GF (to FF slab)', w: 170 }, { h: 'FF (to roof)', w: 170 }, { h: 'TIES', w: 90 }]
+    : [{ h: 'TYPE', w: 56 }, { h: 'COLUMNS', w: 420 }, { h: 'GF (to roof)', w: 200 }, { h: 'TIES', w: 90 }];
+  let y = table(c, 80, 140, cw, rowsOut.length ? rowsOut : [['—', 'Columns by engineer', '', '', '']], 'COLUMN SCHEDULE', 24);
+  // sections of each type (lowest storey, which governs) at 1:10
+  const S = PX_PER_PAPER_MM / 10; k.views.push(10);
+  let x = 110; y += 80;
+  label(c, 'COLUMN SECTIONS (GROUND STOREY)', 80, y - 50, 16, 'left', COLORS.green, true);
+  label(c, 'SCALE 1:10', 80, y - 32, 11, 'left', COLORS.dim);
+  for (const [i, t] of [...types.values()].slice(0, 5).entries()) {
+    const cl = t.per[0]; if (!cl) continue;
+    const w = nval(cl, 'widthMm', 230), d = nval(cl, 'depthMm', 300), tie = nval(cl, 'tieDiaMm', 8), cover = 40;
+    const bars = sval(cl, 'mainBars', '4-12mm'), n = Math.max(4, Number(/^\d+/.exec(bars)?.[0] ?? 4)), dia = positive(Number(/-(\d+)mm/.exec(bars)?.[1]), 12);
+    const bw = w * S, bh = d * S;
+    hatchBox(c, { x, y, w: bw, h: bh }, '#e7e9e7', -45, 14, PEN.cut);
+    drawRect(c, x + cover * S, y + cover * S, bw - 2 * cover * S, bh - 2 * cover * S, { stroke: COLORS.wall, weight: 1.4 });
+    const ins = (cover + tie + dia / 2) * S, xs = [x + ins, x + bw - ins], ys = [y + ins, y + bh - ins];
+    const pts: Point[] = [{ x: xs[0], y: ys[0] }, { x: xs[1], y: ys[0] }, { x: xs[1], y: ys[1] }, { x: xs[0], y: ys[1] }];
+    const extra = n - 4;
+    for (let j = 0; j < extra; j++) { const side = j % 2 === 0; const k2 = Math.floor(j / 2) + 1, m2 = Math.ceil(extra / 2) + 1; pts.push(side ? { x: xs[0], y: ys[0] + (ys[1] - ys[0]) * k2 / m2 } : { x: xs[1], y: ys[0] + (ys[1] - ys[0]) * k2 / m2 }); }
+    for (const p of pts) circle(c, p.x, p.y, Math.max(3, dia * S / 2), COLORS.wall, COLORS.wall);
+    drawDimensionChain(c, [x, x + bw], y + bh, 22, 'horizontal', S);
+    drawDimensionChain(c, [y, y + bh], x, -22, 'vertical', S);
+    label(c, `CT${i + 1}`, x + bw / 2, y - 14, 14, 'center', COLORS.text, true);
+    label(c, `${bars.replace('mm', '')} + Ø${round(tie)} ties`, x + bw / 2, y + bh + 50, 11, 'center', COLORS.dim);
+    x += Math.max(bw + 120, 220);
+  }
+  // typical continuous beam: elevation (largest preferred scale that fits) + sections at support and mid-span (1:10)
+  const beams = structuralRows(k, 'beams');
+  const bm = [...beams].sort((p, q) => nval(q, 'depthMm', 0) - nval(p, 'depthMm', 0))[0] ?? {};
+  const span = nval(bm, 'spanM', 4) * 1000, D = nval(bm, 'depthMm', 300), Bw = nval(bm, 'widthMm', 230);
+  const den = STD_SCALES.find(dd => (span + 900) * PX_PER_PAPER_MM / dd <= 1180) ?? 100; const s = PX_PER_PAPER_MM / den;
+  k.views.push(den);
+  const ox = 80, oy = 700, colW = 300 * s;
+  label(c, `TYPICAL BEAM DETAIL — ${sval(bm, 'mark', 'B')} (${round(Bw)}×${round(D)}, span ${round(span)})`, ox, oy - 90, 16, 'left', COLORS.green, true);
+  label(c, `SCALE 1:${den}`, ox, oy - 72, 11, 'left', COLORS.dim);
+  const L = span * s, H = Math.max(24, D * s), bx0 = ox + colW, by0 = oy;
+  hatchBox(c, { x: ox, y: by0 - 40, w: colW, h: H + 100 }, '#e7e9e7', 45, 10, PEN.medium);
+  hatchBox(c, { x: bx0 + L, y: by0 - 40, w: colW, h: H + 100 }, '#e7e9e7', 45, 10, PEN.medium);
+  drawRect(c, bx0, by0, L, H, { fill: '#fafafa', stroke: COLORS.wall, weight: PEN.cut });
+  const cv = Math.max(4, 25 * s);
+  drawLine(c, ox + 6, by0 + H - cv, bx0 + L + colW - 6, by0 + H - cv, 2.2, '#b03a2e');
+  drawLine(c, ox + 6, by0 + H - cv, ox + 6, by0 + H - cv - Math.min(H * 0.6, 12 * 16 * s), 2.2, '#b03a2e');
+  drawLine(c, bx0 + L + colW - 6, by0 + H - cv, bx0 + L + colW - 6, by0 + H - cv - Math.min(H * 0.6, 12 * 16 * s), 2.2, '#b03a2e');
+  drawLine(c, ox + 6, by0 + cv, bx0 + L + colW - 6, by0 + cv, 1.6, '#1f5f99');
+  const ext = 0.3 * span * s;
+  drawLine(c, ox + 6, by0 + cv + 6, bx0 + ext, by0 + cv + 6, 2.4, '#1f5f99');
+  drawLine(c, bx0 + L - ext, by0 + cv + 6, bx0 + L + colW - 6, by0 + cv + 6, 2.4, '#1f5f99');
+  const near = nval(bm, 'stirrupSpacingNearSupportMm', 150) * s, mid = nval(bm, 'stirrupSpacingMidSpanMm', 200) * s;
+  for (let xx = bx0 + 50 * s; xx < bx0 + L - 25 * s; ) { drawLine(c, xx, by0 + 3, xx, by0 + H - 3, 0.7, COLORS.dim); const inEnd = xx - bx0 < L / 4 || bx0 + L - xx < L / 4; xx += Math.max(3, inEnd ? near : mid); }
+  drawDimensionChain(c, [bx0, bx0 + ext, bx0 + L - ext, bx0 + L], by0, -30, 'horizontal', s);
+  drawDimensionChain(c, [bx0, bx0 + L / 4, bx0 + L * 3 / 4, bx0 + L], by0 + H, 34, 'horizontal', s);
+  drawDimensionChain(c, [by0, by0 + H], bx0 + L + colW, 24, 'vertical', s);
+  label(c, 'EXTRA TOP 0.3L', bx0 + ext / 2, by0 - 66, 10, 'center', '#1f5f99', true);
+  label(c, 'STIRRUP ZONES L/4 – L/2 – L/4', bx0 + L / 2, by0 + H + 66, 10, 'center', COLORS.dim, true);
+  // cross-sections at 1:10: at support (top = hangers + extra) and at mid-span (top = hangers)
+  const bars = (t: string) => { const m = /^(\d+)-(\d+)mm$/.exec(t); return m ? { n: Number(m[1]), d: Number(m[2]) } : null; };
+  const bot = bars(sval(bm, 'tensionBars', '2-12mm')), top = bars(sval(bm, 'topBars', '2-12mm')), xt = bars(sval(bm, 'supportTopBars', 'Nil'));
+  const sec = (sx: number, title: string, withExtra: boolean) => {
+    const bw = Bw * S, bh = D * S;
+    hatchBox(c, { x: sx, y: oy - 40, w: bw, h: bh }, '#e7e9e7', -45, 14, PEN.cut);
+    drawRect(c, sx + 25 * S, oy - 40 + 25 * S, bw - 50 * S, bh - 50 * S, { stroke: COLORS.wall, weight: 1.2 });
+    const row = (n: number, d: number, yy: number, col: string) => { for (let j = 0; j < n; j++) circle(c, sx + 25 * S + 8 * S + d * S / 2 + (bw - 50 * S - 16 * S - d * S) * (n > 1 ? j / (n - 1) : 0.5), yy, Math.max(3, d * S / 2), col, col); };
+    if (bot) row(bot.n, bot.d, oy - 40 + bh - 25 * S - 8 * S - bot.d * S / 2, '#b03a2e');
+    if (top) row(top.n, top.d, oy - 40 + 25 * S + 8 * S + top.d * S / 2, '#1f5f99');
+    if (withExtra && xt) row(xt.n, xt.d, oy - 40 + 25 * S + 8 * S + 2 * Math.max(12, top?.d ?? 12) * S, '#1f5f99');
+    drawDimensionChain(c, [sx, sx + bw], oy - 40 + bh, 20, 'horizontal', S);
+    drawDimensionChain(c, [oy - 40, oy - 40 + bh], sx + bw, 20, 'vertical', S);
+    label(c, title, sx + bw / 2, oy - 62, 12, 'center', COLORS.text, true);
+  };
+  sec(1330, 'AT SUPPORT 1:10', true); sec(1560, 'AT MID-SPAN 1:10', false);
+  const by1 = Math.max(by0 + H + 110, oy + D * S + 30);
+  legend(c, ox, by1, 'BAR KEY', [
+    `Bottom (red): ${sval(bm, 'tensionBars', '—')} continuous, Ld into supports`,
+    `Top (blue): ${sval(bm, 'topBars', '2-12mm')} continuous`,
+    `Extra top over supports: ${sval(bm, 'supportTopBars', 'Nil')}, 0.3L + Ld`,
+    `Stirrups Ø${round(nval(bm, 'stirrupDiaMm', 8))} @ ${round(nval(bm, 'stirrupSpacingNearSupportMm', 150))} in L/4 ends, @ ${round(nval(bm, 'stirrupSpacingMidSpanMm', 200))} mid`,
+  ]);
+  legend(c, 1330, 140, 'DETAILING NOTES', [
+    'Clear cover: column 40, beam 25, slab 20, footing 50 mm.',
+    'Laps: column bars in the middle half of the storey, ≤ 50% at one section.',
+    'Ties at 100 mm c/c over max(D, L/6, 450 mm) at each end and through joints (IS 13920).',
+    '135° hooks on ties and stirrups, extension 6d ≥ 65 mm.',
+    'Beam bars anchored Ld into end columns with 90° bend.',
+    `${concrete(k)} / ${steel(k)}. Schedule = BBS ${sheetNumber('bar_bending', 0)}.`,
+  ]);
 }
-
-
-/** Map bbsGenerator.ts field names to drawingEngine conventions. */
 function normalizeBBSRow(r: Data): Data {
   const totalLenMm = typeof r.totalLengthM === 'number' ? r.totalLengthM * 1000 : undefined;
   return { ...r,
@@ -2400,15 +2550,18 @@ function plumbing(k: Context): void {
     const stack = at(k, stackModel.x, stackModel.y);
     for (const m of pts) { const p = at(k, m.x, m.y); ortho(c, p, stack, SVC.drain, 1.4, [7, 4]); }
     circle(c, stack.x, stack.y, 9, SVC.drain, SVC.drain);
-    label(c, k.level === 0 ? 'SWR' : 'SVP ↓', stack.x + 12, stack.y - 14, 11, 'left', SVC.drain, true);
+    { const t = k.level === 0 ? 'SWR' : 'SVP ↓', w = textWidth(c, t, 11, true); soft(w, 13, ringCands(stack.x + 12 + w / 2, stack.y - 14, 18, 14, 2), (x, y) => label(c, t, x, y, 11, 'center', SVC.drain, true)); }
     if (k.level === 0) {
       const o = outSide ?? ((['front', 'rear', 'left', 'right'] as Side[]).map(sd => ({ sd, d: sd === 'front' ? stackModel.y - b0.y : sd === 'rear' ? b0.y + b0.h - stackModel.y : sd === 'left' ? stackModel.x - b0.x : b0.x + b0.w - stackModel.x })).sort((p, q) => p.d - q.d)[0].sd);
       const ic = outPt(stackModel, o, 700);
       const icp = at(k, ic.x, ic.y);
       ortho(c, stack, icp, SVC.drain, 2, [9, 4]);
-      drawRect(c, icp.x - 12, icp.y - 12, 24, 24, { fill: '#fff', stroke: SVC.drain, weight: 2 });
-      label(c, 'IC', icp.x, icp.y + 1, 10, 'center', SVC.drain, true);
-      exits.push(ic);
+      // stacks that share a chamber position are connected to ONE inspection chamber
+      if (!exits.some(e => Math.hypot(e.x - ic.x, e.y - ic.y) < 400)) {
+        drawRect(c, icp.x - 12, icp.y - 12, 24, 24, { fill: '#fff', stroke: SVC.drain, weight: 2 });
+        label(c, 'IC', icp.x, icp.y + 1, 10, 'center', SVC.drain, true);
+        exits.push(ic);
+      }
     }
   }
   if (k.level === 0 && exits.length) {
@@ -2429,7 +2582,8 @@ function plumbing(k: Context): void {
   }
   // Rainwater pipes at the four building corners.
   for (const [x, y, dx] of [[b.x - 200, b.y + 300, -1], [b.x + b.w + 200, b.y + 300, 1], [b.x - 200, b.y + b.h - 300, -1], [b.x + b.w + 200, b.y + b.h - 300, 1]]) {
-    const p = at(k, x, y); circle(c, p.x, p.y, 7, '#fff', SVC.water, 1.5); label(c, 'RWP', p.x + dx * 10, p.y - 12, 10, dx < 0 ? 'right' : 'left', SVC.water);
+    const p = at(k, x, y); circle(c, p.x, p.y, 7, '#fff', SVC.water, 1.5);
+    soft(24, 12, ringCands(p.x + dx * 22, p.y - 12, 14, 14, 2), (lx, ly) => label(c, 'RWP', lx, ly, 10, 'center', SVC.water));
   }
   circle(c, down.x, down.y, 10, SVC.water, SVC.water);
   label(c, 'DOWN-TAKE FROM OHT', down.x + 14, down.y - 12, 11, 'left', SVC.water, true);
@@ -2629,6 +2783,7 @@ export function generateProgrammaticDrawing(
     title: titleFor[drawing], views: [], type: drawing, sheetNo: sheetNumber(drawing, level),
     rev: Math.max(1, Math.round(finite((layout as Layout & { revision?: number }).revision, 1))) };
   AUDIT = { labels: [], checks: [], scales: [] };
+  SOFT = [];
   try {
   c.fillStyle = '#fff'; c.fillRect(0, 0, SHEET_W, SHEET_H);
   header(k);
@@ -2656,6 +2811,7 @@ export function generateProgrammaticDrawing(
     case 'terrace_plan': terracePlan(k); break;
     case 'side_elevation': sideElevations(k); break;
   }
+  resolveSoft();
   c.restore();
   titleBlock(k);
   // ── drafting audit: preferred scales, overlapping text ──
@@ -2674,5 +2830,5 @@ export function generateProgrammaticDrawing(
   a.checks.push({ item: 'No overlapping text', status: clashes.length ? 'WARNING' : 'PASS', detail: clashes.length ? `${clashes.length}: ${clashes.slice(0, 6).join('; ')}` : `${L.length} labels clear` });
   DRAFTING_AUDIT[`${drawing}-${level === 0 ? 'GF' : 'FF'}`] = a.checks;
   return canvas.toDataURL('image/png');
-  } finally { AUDIT = null; }
+  } finally { AUDIT = null; SOFT = null; }
 }
