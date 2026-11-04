@@ -568,7 +568,8 @@ function drawPlanRooms(k: Context, light = false, cornerLabels = false, labels =
   for (const o of k.g.openings.filter(v => v.floor === k.level)) planOpening(k.c, k, o);
   if (labels) for (const r of selected(k)) if (cornerLabels || r.source.type !== 'staircase') roomLabel(k, r, { corner: cornerLabels });
 }
-function drawSectionMark(k: Context): void { sectionMarker(k, sectionCutY(k)); }
+// at small scales the default 900 mm stand-off is only a few pixels: keep the marker clear of the dimension strings
+function drawSectionMark(k: Context): void { sectionMarker(k, sectionCutY(k), '1', sheetNumber('section_aa', 0), Math.max(900 * k.scale, 120)); }
 function openingLegend(k: Context, x: number, y: number): void {
   const counts = k.g.openings.filter(o => o.floor === k.level);
   legend(k.c, x, y, 'OPENINGS / PLAN REFERENCE', [
@@ -997,8 +998,9 @@ function workingPlan(k: Context): void {
   dimMm(k, k.g.gridY, 'y', B.x, -(out + 34), `grid 1–${k.g.gridY.length}`);
   gridBubbles(k, out + 66, ['top', 'left']);
   sectionMarker(k, sectionCutY(k), '1', sheetNumber('section_aa', 0), out + 40);
-  sectionMarkerV(k, sectionCutX(k), '2', sheetNumber('section_bb', 0), out + 80);
-  label(c, 'FRONT / ROAD SIDE', B.x + B.w / 2, B.y - out - 100, 12, 'center', COLORS.dim, true);
+  sectionMarkerV(k, sectionCutX(k), '2', sheetNumber('section_bb', 0), out + 112);  // beyond the grid bubbles
+  { const t = 'FRONT / ROAD SIDE', w = textWidth(c, t, 12, true), cx = at(k, sectionCutX(k), 0).x;
+    soft(w, 14, [0.5, 0.2, 0.8].map(f => ({ x: B.x + B.w * f, y: B.y - out - 100 })).filter(p => Math.abs(p.x - cx) > w / 2 + 24).concat([{ x: B.x + B.w / 2, y: B.y - out - 100 }]), (x, y) => label(c, t, x, y, 12, 'center', COLORS.dim, true)); }
   viewTitle(k, `${floorName(k)} WORKING PLAN`, 80, 140);
   // room area schedule
   const rooms = selected(k).filter(r => !isNiche(r.source));
@@ -1956,7 +1958,7 @@ function wetAreas(k: Context): void {
       }
       fx(onSide(r, kc.long, 0.5, 115), 900, 450, q => { drawRect(c, q.x + 4, q.y + 4, q.w - 8, q.h - 8, { fill: '#fff', stroke: SVC.water, weight: 1.4 }); label(c, 'SINK', q.x + q.w / 2, q.y + q.h / 2, 10, 'center', SVC.water, true); }, kc.long);
       fx(onSide(r, kc.long, 0.8, 115), 600, 500, q => { drawRect(c, q.x + 4, q.y + 4, q.w - 8, q.h - 8, { fill: '#fff', stroke: COLORS.wall, weight: 1.2 }); for (const [a2, b2] of [[0.3, 0.3], [0.7, 0.3], [0.3, 0.7], [0.7, 0.7]]) circle(c, q.x + q.w * a2, q.y + q.h * b2, 5, '#fff', COLORS.wall, 1); label(c, 'HOB', q.x + q.w / 2, q.y + q.h / 2, 9, 'center', COLORS.text, true); }, kc.long);
-      label(c, 'COUNTER 600 DEEP, 820 HIGH (GRANITE ON RCC/SS FRAME)', P(r.x + r.w / 2, r.y + r.d / 2).x, P(r.x + r.w / 2, r.y + r.d / 2).y, 10, 'center', COLORS.dim, true);
+      { const t = 'COUNTER 600 DEEP, 820 HIGH', q = P(r.x + r.w / 2, r.y + r.d / 2), w = textWidth(c, t, 10, true); soft(w, 12, ringCands(q.x, q.y, 30, 22, 3), (x, y) => label(c, t, x, y, 10, 'center', COLORS.dim, true)); }
     }
     // clear room dimensions
     const cr = clearRect(k, r);
@@ -2261,7 +2263,7 @@ function sitePlan(k: Context): void {
     const dw = Math.min(gateW, 3000), dx = clamp(gateC - dw / 2, fp.x + cw, fp.x + fp.w - cw - dw);
     const d = box(k, { x: dx, y: fp.y + cw, w: dw, h: Math.max(0, b.y - fp.y - cw) });
     drawRect(c, d.x, d.y, d.w, d.h, { fill: '#f3efe6', stroke: COLORS.grid, weight: 1, dash: [6, 4] });
-    label(c, frontOpen >= 5000 ? 'CAR PARKING' : 'TWO-WHEELER / PAVED', d.x + d.w / 2, d.y + d.h / 2, 12, 'center', COLORS.dim, true);
+    { const t = frontOpen >= 5000 ? 'CAR PARKING' : 'TWO-WHEELER / PAVED', w = textWidth(c, t, 12, true); soft(w, 14, ringCands(d.x + d.w / 2, d.y + d.h / 2, 0, Math.max(14, d.h / 4), 2).filter((_, i) => i < 3 || i === 0), (x, y) => label(c, t, x, y, 12, 'center', COLORS.dim, true)); }
   }
   // building footprint with ground-floor rooms (light) and main entry
   const B = box(k, b);
@@ -2270,7 +2272,7 @@ function sitePlan(k: Context): void {
   label(c, `PROPOSED ${g.floors > 1 ? 'G+1' : 'GROUND'} RESIDENCE`, B.x + B.w / 2, B.y + B.h + 18, 13, 'center', COLORS.text, true);
   label(c, `FFL +${(PLINTH_HEIGHT_MM / 1000).toFixed(3)}  •  ${round(b.w)} × ${round(b.h)} mm`, B.x + B.w / 2, B.y + B.h + 36, 11, 'center', COLORS.dim);
   const md = mainDoorCentreM(L);
-  if (md !== undefined) { const e = at(k, md * 1000, b.y); arrow(c, e.x, e.y - 46, e.x, e.y - 4, COLORS.green); label(c, 'ENTRY', e.x + 8, e.y - 40, 11, 'left', COLORS.green, true); }
+  if (md !== undefined) { const e = at(k, md * 1000, b.y); arrow(c, e.x, e.y - 46, e.x, e.y - 4, COLORS.green); { const w = textWidth(c, 'ENTRY', 11, true); soft(w, 13, [{ x: e.x + 8 + w / 2, y: e.y - 40 }, { x: e.x - 8 - w / 2, y: e.y - 40 }, { x: e.x + 8 + w / 2, y: e.y - 18 }, { x: e.x - 8 - w / 2, y: e.y - 18 }], (x, y) => label(c, 'ENTRY', x, y, 11, 'center', COLORS.green, true)); } }
   // services: sump, RWPs, inspection chambers to the road
   const sp = sumpPlacement(L), sm = box(k, { x: sp.cx * 1000 - sp.l * 500, y: sp.cy * 1000 - sp.w * 500, w: sp.l * 1000, h: sp.w * 1000 });
   drawRect(c, sm.x, sm.y, sm.w, sm.h, { fill: '#e8f3f8', stroke: '#4b9eb3', weight: 1.5 });
