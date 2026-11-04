@@ -1,5 +1,6 @@
 import type { BOQ, BOQLineItem, DoorScheduleItem, WindowScheduleItem, Layout, MaterialRate, CustomRateSheet, BudgetRange } from '../types';
 import { computeTakeoff, type Takeoff } from './quantityTakeoff';
+import { COMPOUND_WALL_HEIGHT_MM, gateWidthM, waterStorage } from './buildingModel';
 import { cityRateFactor, specFactor } from './marketRates';
 import { electricalPoints as electricalPointsFor, plumbingPoints as plumbingPointsFor, electricalTotals, fixtureTotals, isNiche, ASSUMED_FOUNDING_DEPTH_M, PARAPET_HEIGHT_MM, WALL_EXTERNAL_MM, WALL_INTERNAL_MM } from './quantityRules';
 
@@ -387,9 +388,8 @@ export function calculateBOQ(
   add('Mosquito Mesh Screens', glazedWindows.reduce((s, w) => s + w.qty, 0), 'nos', 2500, 'doors_windows', 'SS mesh, aluminium frame');
 
   // I. PLUMBING & SANITARY
-  const persons = bedrooms.length * 2 + 1;
-  const sumpL = Math.max(5000, Math.ceil((persons * 135 * 1.5) / 1000) * 1000);
-  const ohtL = Math.max(1000, Math.ceil((persons * 135) / 500) * 500);
+  // Same storage sizes as the tank sheet, terrace plan, site plan and 3D model.
+  const { persons, sumpL, ohtL } = waterStorage(layout);
   add('Plumbing – Supply Lines (CPVC)', plumbingPoints, 'points', 2400, 'mep', 'CPVC concealed');
   add('Plumbing – Drainage Lines (SWR)', plumbingPoints, 'points', 1800, 'mep', '110mm & 75mm SWR');
   const fx = fixtureTotals(allRooms);
@@ -423,8 +423,9 @@ export function calculateBOQ(
   // K. EXTERNAL WORKS (site works — reported separately from the building cost)
   const siteStart = lineItems.length;
   const plotPerimeter = 2 * ((layout.plotWidthM || layout.buildableWidthM) + (layout.plotDepthM || layout.buildableDepthM));
-  add('Compound Wall (1.5m height)', +Math.max(0, plotPerimeter - 4).toFixed(1), 'Rmt', 4000, 'misc', 'Plot boundary less gate opening');
-  add('MS Main Gate (4 m)', 1, 'nos', 45000, 'misc', 'Powder-coated');
+  const gateW = gateWidthM(layout.plotWidthM || layout.buildableWidthM);
+  add(`Compound Wall (${COMPOUND_WALL_HEIGHT_MM / 1000}m height)`, +Math.max(0, plotPerimeter - gateW).toFixed(1), 'Rmt', 4000, 'misc', 'Plot boundary less gate opening (site plan A-001)');
+  add(`MS Main Gate (${gateW} m)`, 1, 'nos', Math.round(45000 * gateW / 4), 'misc', 'Powder-coated');
   add('Staircase Railing', +(takeoff.floorFinish.stairTreads * 0.25 * 1.2).toFixed(1), 'Rmt', 3500, 'misc', 'MS + wooden/SS top rail');
   add('Balcony Railing', +takeoff.floors.reduce((s, f) => s + f.balconyEdgeLenM, 0).toFixed(1), 'Rmt', 4500, 'misc', 'MS / glass');
   add('Driveway / Front Paving', +((layout.setbacks?.front ?? 1.5) * Math.min(3.5, layout.plotWidthM || 3.5)).toFixed(1), 'm²', 1100, 'misc', 'Paver blocks');

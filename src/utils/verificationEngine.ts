@@ -108,7 +108,7 @@ export interface VerificationReport {
 const NON_FLOOR_SPECIFIC_TYPES = [
   'doorWindow', 'excavation', 'foundation', 'footingDetail', 'rccDetail',
   'reinforcement', 'barBending', 'section', 'elevation', 'staircase',
-  'waterTank', 'waterproofing', 'stp',
+  'waterTank', 'waterproofing', 'stp', 'sitePlan', 'terracePlan', 'sideElevation',
 ] as const;
 
 /**
@@ -118,7 +118,7 @@ const NON_FLOOR_SPECIFIC_TYPES = [
  */
 const FLOOR_SPECIFIC_TYPES = ['workingPlan', 'electrical', 'plumbing', 'tiling', 'brickwork'] as const;
 
-/** All 18 known base drawing type names (matches OVERLAY_DRAWING_TYPES exactly). */
+/** All 21 known base drawing type names (matches OVERLAY_DRAWING_TYPES exactly). */
 const ALL_DRAWING_BASE_TYPES: string[] = [...NON_FLOOR_SPECIFIC_TYPES, ...FLOOR_SPECIFIC_TYPES];
 
 /**

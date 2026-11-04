@@ -2,6 +2,7 @@
 
 import type { Layout, Room, ProjectRequirements, BOQ, Column, Setbacks, LayoutOpening } from '../types';
 import { ASSUMED_FOUNDING_DEPTH_M, PARAPET_HEIGHT_MM, ELEC_KINDS, electricalBreakdown, electricalPoints, fixturesFor, fixtureTotals, isNiche, WALL_EXTERNAL_MM, WALL_INTERNAL_MM } from './quantityRules';
+import { COMPOUND_WALL_HEIGHT_MM, COMPOUND_WALL_THICKNESS_MM, FLOOR_TO_FLOOR_MM, PLINTH_HEIGHT_MM, STAIR_HEAD_ROOM_MM, floorLevelMm, gateCentreM, gateWidthM, mainDoorCentreM, ohtPlacement, ohtTanks, rainwaterPipes, roofLevelMm, sumpPlacement, sumpSizeM, waterStorage } from './buildingModel';
 import { computeTakeoff, bathWallTileSqM, kitchenCounterRmt, KITCHEN_DADO_HEIGHT_M, type Takeoff } from './quantityTakeoff';
 
 /**
@@ -41,7 +42,7 @@ type DrawingType = 'excavation' | 'column_layout' | 'footing_detail' | 'beam_sla
   'column_detail' | 'bar_bending' | 'section_aa' | 'front_elevation' |
   'staircase_detail' | 'water_tank' | 'waterproofing' | 'stp_detail' |
   'electrical' | 'plumbing' | 'tiling_layout' | 'brickwork_detail' |
-  'working_plan' | 'door_window_schedule';
+  'working_plan' | 'door_window_schedule' | 'site_plan' | 'terrace_plan' | 'side_elevation';
 
 /* ── neevv Drafting Standard v1 (IS 962 / SP 46) ──
  * Sheet = A3 landscape (420 × 297 mm) rendered at 5 px per paper-mm.
@@ -112,6 +113,7 @@ const titleFor: Record<DrawingType, string> = {
   electrical: 'ELECTRICAL LAYOUT', plumbing: 'PLUMBING & DRAINAGE LAYOUT',
   tiling_layout: 'FLOOR & WALL TILING LAYOUT', brickwork_detail: 'MASONRY & LINTEL LAYOUT',
   working_plan: 'WORKING PLAN', door_window_schedule: 'DOOR & WINDOW SCHEDULE',
+  site_plan: 'SITE PLAN', terrace_plan: 'TERRACE / ROOF PLAN', side_elevation: 'SIDE & REAR ELEVATIONS',
 };
 
 /** Thin, dimensioned CAD-like primitives. Coordinates are canvas pixels. */
@@ -252,8 +254,9 @@ export function drawColumnSymbol(c: CanvasRenderingContext2D, x: number, y: numb
 }
 export function drawNorthArrow(c: CanvasRenderingContext2D, x: number, y: number,
   facing: ProjectRequirements['facing']): void {
-  // On a plan, the frontage is at the bottom. North follows the given road/front orientation.
-  const a = facing === 'North' ? Math.PI / 2 : facing === 'South' ? -Math.PI / 2 :
+  // Plans are drawn with the frontage (road) at the TOP of the sheet, viewed from above.
+  // Road on the north → north points up; road on the east → east is up, so north points left.
+  const a = facing === 'North' ? -Math.PI / 2 : facing === 'South' ? Math.PI / 2 :
     facing === 'East' ? Math.PI : 0;
   const dx = Math.cos(a) * 50, dy = Math.sin(a) * 50;
   arrow(c, x - dx * 0.6, y - dy * 0.6, x + dx, y + dy, COLORS.green, 17);
@@ -791,7 +794,7 @@ function sectionCutY(k: Context): number {
 }
 /* Sheet numbering (A architecture, S structure, M masonry, E electrical, P plumbing, F finishes, D details). */
 const SHEET_BASE: Record<DrawingType, string> = {
-  working_plan: 'A-101', front_elevation: 'A-201', section_aa: 'A-301', door_window_schedule: 'A-401', staircase_detail: 'A-501',
+  site_plan: 'A-001', working_plan: 'A-101', terrace_plan: 'A-109', front_elevation: 'A-201', side_elevation: 'A-202', section_aa: 'A-301', door_window_schedule: 'A-401', staircase_detail: 'A-501',
   excavation: 'S-101', column_layout: 'S-102', footing_detail: 'S-103', beam_slab: 'S-104', column_detail: 'S-105', bar_bending: 'S-106',
   brickwork_detail: 'M-101', electrical: 'E-101', plumbing: 'P-101', water_tank: 'P-201', stp_detail: 'P-202',
   tiling_layout: 'F-101', waterproofing: 'D-101',
@@ -1457,37 +1460,6 @@ function sectionRooms(k: Context, floor: number, cutY: number): ModelRoom[] {
 function intervalCuts(rooms: ModelRoom[], building: Bounds): number[] {
   return unique([building.x, ...rooms.flatMap(r => [r.x, r.x + r.w]), building.x + building.w]);
 }
-function projectVerticalOpening(k: Context, o: OpeningPlacement, transform: (x: number, z: number) => Point,
-  story: number, s: number, visible: boolean): void {
-  if (!visible || o.axis !== 'horizontal') return;
-  const z = 450 + story * 3000 + Math.max(0, finite(o.source.sillHeightMm, o.source.type === 'door' ? 0 : 900));
-  const h = Math.min(2700, positive(o.source.heightMm, o.source.type === 'door' ? 2100 : 1200));
-  const left = transform(o.a, z + h), right = transform(o.b, z);
-  const x = Math.min(left.x, right.x), y = Math.min(left.y, right.y);
-  const w = Math.abs(right.x - left.x), ht = Math.abs(right.y - left.y);
-  if (w < 2 || ht < 2) return;
-  drawRect(k.c, x, y, w, ht, { fill: '#fff', stroke: COLORS.wall, weight: 1.8 });
-  if (o.source.type === 'door') {
-    drawLine(k.c, x + w / 2, y, x + w / 2, y + ht, 0.8);
-    circle(k.c, x + Math.min(10, w / 4), y + ht * 0.53,
-      2.2, COLORS.wall, COLORS.wall);
-    drawLine(k.c, x + 5, y + 5, x + w - 5, y + 5, 0.6, COLORS.dim);
-  } else {
-    drawLine(k.c, x + 3, y + ht / 2, x + w - 3, y + ht / 2,
-      0.9, COLORS.dim);
-    if (w > 45) drawLine(k.c, x + w / 2, y + 2,
-      x + w / 2, y + ht - 2, 0.8, COLORS.dim);
-    // External sill and lintel project beyond the scheduled clear opening.
-    drawLine(k.c, x - 4, y + ht, x + w + 4, y + ht, 1.6);
-    drawLine(k.c, x - 3, y - 5, x + w + 3, y - 5, 1.1);
-    if (o.source.type === 'ventilator') {
-      for (let yy = y + 7; yy < y + ht - 4; yy += 9)
-        drawLine(k.c, x + 5, yy, x + w - 5, yy, 0.5, COLORS.dim);
-    }
-  }
-  if (w > 48) label(k.c, `${round(o.b - o.a)}`, x + w / 2, y - 11, 11, 'center', COLORS.dim);
-  void s;
-}
 function levelMark(c: CanvasRenderingContext2D, x: number, y: number, textValue: string): void {
   // ▽ level symbol on the line, value written above the line (never struck through)
   drawLine(c, x - 34, y, x + 200, y, PEN.hair, COLORS.dim);
@@ -1497,12 +1469,12 @@ function levelMark(c: CanvasRenderingContext2D, x: number, y: number, textValue:
 const fmtLvl = (mm: number) => `${mm >= 0 ? '+' : '−'}${(Math.abs(mm) / 1000).toFixed(3)}`;
 function sectionAA(k: Context): void {
   const c = k.c, b = k.g.building, floors = Math.min(k.g.floors, 5);
-  const FD = ASSUMED_FOUNDING_DEPTH_M * 1000, H = 3000, PL = 450;
+  const FD = ASSUMED_FOUNDING_DEPTH_M * 1000, H = FLOOR_TO_FLOOR_MM, PL = PLINTH_HEIGHT_MM;
   const found = footingSpec(k, 0);
   const cutY = sectionCutY(k);
   const stairRooms = Array.from({ length: floors }, (_, f) => (k.g.rooms[f] ?? []).find(r => r.source.type === 'staircase' && cutY >= r.y && cutY <= r.y + r.d));
   const st0 = stairRooms[0];
-  const roofZ = PL + floors * H, mumtyZ = roofZ + 2700;
+  const roofZ = PL + floors * H, mumtyZ = roofZ + STAIR_HEAD_ROOM_MM;
   const top = (st0 ? mumtyZ + 150 : roofZ + PARAPET_HEIGHT_MM) + 400, bottom = -FD - found.pcc - 500;
   setFrame(k, { x: b.x - 600, y: bottom, w: b.w + 1200, h: top - bottom }, { x: 110, y: 120, w: 1220, h: 1120 }, 60);
   const project = (x: number, z: number): Point => at(k, x, top - z + bottom);
@@ -1581,9 +1553,9 @@ function sectionAA(k: Context): void {
   if (stTop) {
     const mx0 = project(stTop.x, 0).x, mx1 = project(stTop.x + stTop.w, 0).x, my = project(0, mumtyZ).y;
     for (const x of [mx0, mx1 - wallE]) hatchBox(c, { x, y: my, w: wallE, h: roofY - my }, '#eeeae4', -45, 9, PEN.cut);
-    hatchBox(c, { x: mx0 - 6, y: my - 120 * s, w: mx1 - mx0 + 12, h: 120 * s }, '#cfd3d0', 45, 6, PEN.cut);
+    hatchBox(c, { x: mx0 - 6, y: my - 150 * s, w: mx1 - mx0 + 12, h: 150 * s }, '#cfd3d0', 45, 6, PEN.cut);
     label(c, 'STAIR HEAD ROOM', (mx0 + mx1) / 2, (my + roofY) / 2, 12, 'center', COLORS.text, true);
-    levelMark(c, right + 70, my - 120 * s, `TOP OF HEAD ROOM ${fmtLvl(mumtyZ + 120)}`);
+    levelMark(c, right + 70, my - 150 * s, `TOP OF HEAD ROOM ${fmtLvl(mumtyZ + 150)}`);
   }
   levelMark(c, right + 70, ngl, 'NGL ±0.000');
   levelMark(c, right + 70, project(0, -FD).y, `FOUNDING LEVEL ${fmtLvl(-FD)} (ASSUMED — VERIFY BY SOIL REPORT)`);
@@ -1605,72 +1577,307 @@ function sectionAA(k: Context): void {
     `Cut shown on plans ${sheetNumber('working_plan', 0)}${k.g.floors > 1 ? '/' + sheetNumber('working_plan', 1) : ''}.`,
   ]);
 }
-function frontElevation(k: Context): void {
-  const c = k.c, b = k.g.building, floors = Math.min(k.g.floors, 5);
-  const maxZ = 450 + floors * 3000 + 900;
-  setFrame(k, { x: b.x - 300, y: -250, w: b.w + 1700, h: maxZ + 600 },
-    { x: 135, y: 140, w: 1540, h: 930 }, 60);
-  const project = (x: number, z: number): Point => at(k, x, maxZ - z - 250);
-  const s = k.scale, left = project(b.x, 0).x, right = project(b.x + b.w, 0).x;
-  const ngl = project(0, 0).y, plinth = project(0, 450).y;
-  drawLine(c, 145, ngl, 1690, ngl, 1.5);
-  hatchBox(c, { x: left, y: plinth, w: right - left, h: ngl - plinth },
-    '#e6e8e5', 45, 12);
+type ElevSide = 'front' | 'rear' | 'left' | 'right';
+/** Elevation geometry for one side, viewed from OUTSIDE the building (so the front elevation reads as seen from the road). */
+function elevAxis(k: Context, side: ElevSide): { len: number; u: (along: number) => number; line: number; axis: Axis } {
+  const b = k.g.building;
+  if (side === 'front') return { len: b.w, u: x => b.x + b.w - x, line: b.y, axis: 'horizontal' };
+  if (side === 'rear') return { len: b.w, u: x => x - b.x, line: b.y + b.h, axis: 'horizontal' };
+  if (side === 'left') return { len: b.h, u: y => y - b.y, line: b.x, axis: 'vertical' };
+  return { len: b.h, u: y => b.y + b.h - y, line: b.x + b.w, axis: 'vertical' };
+}
+function elevOpenings(k: Context, side: ElevSide): OpeningPlacement[] {
+  const ax = elevAxis(k, side);
+  return k.g.openings.filter(o => o.face === side && o.axis === ax.axis && Math.abs(o.fixed - ax.line) < 500);
+}
+/** Elevation of one side into `target`; `den` forces a common scale for several views on one sheet. */
+function elevationView(k: Context, side: ElevSide, target: Bounds, title: string, den?: number, levels = true): { right: number; ngl: number } {
+  const c = k.c, floors = Math.min(k.g.floors, 5), ax = elevAxis(k, side);
+  const roofZ = roofLevelMm(floors);
+  const stTop = (k.g.rooms[floors - 1] ?? []).find(r => r.source.type === 'staircase');
+  const tanks = ohtPlacement(k.layout);
+  const tankTop = Math.max(0, ...tanks.map(t => (t.baseM + t.heightM) * 1000));
+  const maxZ = Math.max(roofZ + PARAPET_HEIGHT_MM, stTop ? roofZ + STAIR_HEAD_ROOM_MM + 150 : 0, tankTop) + 300;
+  const geo = { x: -300, y: -250, w: ax.len + 1700, h: maxZ + 600 };
+  if (den) { const s0 = PX_PER_PAPER_MM / den; k.frame = { x: target.x + 300 * s0, y: target.y + target.h - geo.h * s0, s: s0, width: geo.x, height: geo.y }; k.scale = s0; k.views.push(den); }
+  else setFrame(k, geo, target, 50);
+  const project = (u: number, z: number): Point => at(k, u, maxZ - z - 250);
+  const s = k.scale, left = project(0, 0).x, right = project(ax.len, 0).x;
+  const ngl = project(0, 0).y, plinth = project(0, PLINTH_HEIGHT_MM).y;
+  drawLine(c, left - 120, ngl, right + 160, ngl, 1.5);
+  hatchBox(c, { x: left, y: plinth, w: right - left, h: ngl - plinth }, '#e6e8e5', 45, 12);
+  const marks = openingTypes(k.g).markOf;
+  const ops = elevOpenings(k, side);
   for (let story = 0; story < floors; story++) {
-    const z = 450 + story * 3000, roofZ = z + 3000, slab = storyThickness(k, story);
-    const topY = project(0, roofZ).y, baseY = project(0, z).y;
-    drawRect(c, left, topY, right - left, baseY - topY,
-      { fill: story % 2 ? '#f7f7f6' : '#fafafa', stroke: COLORS.wall, weight: 2 });
-    const floorOpenings = k.g.openings.filter(o => o.floor === story && o.face === 'front' &&
-      Math.abs(o.fixed - b.y) < 500);
-    for (const opening of floorOpenings) projectVerticalOpening(k, opening, project, story, s, true);
-    // Reveal slab band at elevation, supported by exactly the structural slab thickness.
-    hatchBox(c, { x: left, y: topY, w: right - left, h: Math.max(5, slab * s) },
-      '#e2e4e2', 45, 14, 2);
-    const beam = positive(firstBeam(k).depthMm, 400);
-    drawRect(c, left, topY + slab * s, right - left, Math.max(2, (beam - slab) * s),
-      { stroke: COLORS.grid, weight: 0.8 });
-    levelMark(c, right + 74, baseY, `FFL ${story === 0 ? 'GF' : `F${story}`} ${fmtLvl(z)}`);
+    const z = floorLevelMm(story), topZ = z + FLOOR_TO_FLOOR_MM, slab = storyThickness(k, story);
+    const topY = project(0, topZ).y, baseY = project(0, z).y;
+    drawRect(c, left, topY, right - left, baseY - topY, { fill: story % 2 ? '#f7f7f6' : '#fafafa', stroke: COLORS.wall, weight: 2 });
+    hatchBox(c, { x: left, y: topY, w: right - left, h: Math.max(5, slab * s) }, '#e2e4e2', 45, 14, 2);
+    // open balconies on this face: recessed (shaded) wall behind a 1000 mm railing, as in the plans and 3D
+    for (const r of (k.g.rooms[story] ?? []).filter(rr => rr.source.type === 'balcony')) {
+      const onFace = side === 'front' ? Math.abs(r.y - k.g.building.y) < 40 : side === 'rear' ? Math.abs(r.y + r.d - k.g.building.y - k.g.building.h) < 40
+        : side === 'left' ? Math.abs(r.x - k.g.building.x) < 40 : Math.abs(r.x + r.w - k.g.building.x - k.g.building.w) < 40;
+      if (!onFace) continue;
+      const ua = ax.axis === 'horizontal' ? [ax.u(r.x), ax.u(r.x + r.w)] : [ax.u(r.y), ax.u(r.y + r.d)];
+      const p0 = project(Math.min(...ua), topZ), p1 = project(Math.max(...ua), z);
+      const yTop = p0.y + slab * s;
+      drawRect(c, p0.x + 1, yTop, p1.x - p0.x - 2, p1.y - yTop, { fill: '#e9ebe8', stroke: COLORS.grid, weight: 0.6 });
+      const rail = project(0, z + 1000).y;
+      drawLine(c, p0.x, rail, p1.x, rail, PEN.medium, COLORS.wall);
+      drawLine(c, p0.x, rail + 4, p1.x, rail + 4, PEN.hair, COLORS.wall);
+      for (let xx = p0.x + 6; xx < p1.x - 2; xx += Math.max(5, 120 * s)) drawLine(c, xx, rail, xx, p1.y, PEN.hair, COLORS.dim);
+      if (p1.x - p0.x > 60) label(c, 'BALCONY', (p0.x + p1.x) / 2, (yTop + rail) / 2, 10, 'center', COLORS.dim, true);
+    }
+    if (levels) levelMark(c, right + 60, baseY, `FFL ${story === 0 ? 'GF' : `F${story}`} ${fmtLvl(z)}`);
+    for (const o of ops.filter(v => v.floor === story)) {
+      const u0 = Math.min(ax.u(o.a), ax.u(o.b)), u1 = Math.max(ax.u(o.a), ax.u(o.b));
+      const sill = Math.max(0, finite(o.source.sillHeightMm, o.source.type === 'door' ? 0 : 900));
+      const h = Math.min(2700, positive(o.source.heightMm, o.source.type === 'door' ? 2100 : 1200));
+      const p0 = project(u0, z + sill + h), p1 = project(u1, z + sill);
+      const x = p0.x, y = p0.y, w = p1.x - p0.x, ht = p1.y - p0.y;
+      if (w < 2 || ht < 2) continue;
+      if (o.source.type !== 'door') { // chajja 450 mm over windows, drawn first so marks stay readable
+        const l0 = project(u0 - 150, z + sill + h + 250), l1 = project(u1 + 150, z + sill + h + 150);
+        hatchBox(c, { x: l0.x, y: l0.y, w: l1.x - l0.x, h: Math.max(3, l1.y - l0.y) }, '#e2e4e2', 45, 6, PEN.thin);
+      }
+      drawRect(c, x, y, w, ht, { fill: '#fff', stroke: COLORS.wall, weight: 1.8 });
+      if (o.source.type === 'door') {
+        drawLine(c, x + w / 2, y, x + w / 2, y + ht, 0.8);
+        circle(c, x + Math.min(10, w / 4), y + ht * 0.53, 2.2, COLORS.wall, COLORS.wall);
+      } else {
+        drawLine(c, x + 3, y + ht / 2, x + w - 3, y + ht / 2, 0.9, COLORS.dim);
+        if (w > 45) drawLine(c, x + w / 2, y + 2, x + w / 2, y + ht - 2, 0.8, COLORS.dim);
+        drawLine(c, x - 4, y + ht, x + w + 4, y + ht, 1.6);
+        if (o.source.type === 'ventilator') for (let yy = y + 7; yy < y + ht - 4; yy += 9) drawLine(c, x + 5, yy, x + w - 5, yy, 0.5, COLORS.dim);
+      }
+      const m = marks.get(o);
+      const tagY = o.source.type === 'door' ? y - 12 : project(0, z + sill + h + 250).y - 12;
+      if (m) label(c, m, x + w / 2, tagY, 11, 'center', COLORS.text, true);
+    }
   }
-  const roofZ = 450 + floors * 3000;
+  // stair head room and overhead tank(s) above the terrace (same as the section and the 3D model)
+  if (stTop) {
+    const ua = ax.axis === 'horizontal' ? [ax.u(stTop.x), ax.u(stTop.x + stTop.w)] : [ax.u(stTop.y), ax.u(stTop.y + stTop.d)];
+    const p0 = project(Math.min(...ua), roofZ + STAIR_HEAD_ROOM_MM + 150), p1 = project(Math.max(...ua), roofZ);
+    drawRect(c, p0.x, p0.y, p1.x - p0.x, p1.y - p0.y, { fill: '#f2f2f0', stroke: COLORS.wall, weight: 1.6 });
+    hatchBox(c, { x: p0.x - 4, y: p0.y, w: p1.x - p0.x + 8, h: Math.max(3, 150 * s) }, '#e2e4e2', 45, 6, PEN.thin);
+    if (levels) levelMark(c, right + 60, p0.y, `TOP OF HEAD ROOM ${fmtLvl(roofZ + STAIR_HEAD_ROOM_MM + 150)}`);
+  }
+  for (const t of tanks) {
+    const cu = ax.axis === 'horizontal' ? ax.u(t.cx * 1000) : ax.u(t.cy * 1000), r = t.diaM * 500;
+    const p0 = project(cu - r, (t.baseM + t.heightM) * 1000), p1 = project(cu + r, t.baseM * 1000);
+    drawRect(c, p0.x, p0.y, p1.x - p0.x, p1.y - p0.y, { fill: '#e8f3f8', stroke: '#4b9eb3', weight: 1.2 });
+    label(c, 'OHT', (p0.x + p1.x) / 2, (p0.y + p1.y) / 2, 10, 'center', '#2e7d8f', true);
+  }
   const ry = project(0, roofZ).y, py = project(0, roofZ + PARAPET_HEIGHT_MM).y;
   hatchBox(c, { x: left, y: py, w: right - left, h: ry - py }, '#f0eee9', 45, 17);
-  drawRect(c, left - 5, py - 10, right - left + 10, 10,
-    { fill: '#d6d6d3', stroke: COLORS.wall, weight: 1 });
-  levelMark(c, right + 74, ngl, 'NGL ±0.000');
-  levelMark(c, right + 74, ry, `TOS ROOF ${fmtLvl(roofZ)}`);
-  levelMark(c, right + 74, py, `TOP OF COPING ${fmtLvl(roofZ + PARAPET_HEIGHT_MM)}`);
-  drawDimensionChain(c, [left, right], ngl, 56, 'horizontal', s);
-  const frontX = unique([b.x, ...k.g.openings.filter(o => o.face === 'front' && o.floor === 0)
-    .flatMap(o => [o.a, o.b]), b.x + b.w]).map(x => project(x, 0).x);
-  drawDimensionChain(c, frontX, ngl, 96, 'horizontal', s);
-  viewTitle(k, 'FRONT ELEVATION (ROAD SIDE)', 150, 150);
+  drawRect(c, left - 5, py - 10, right - left + 10, 10, { fill: '#d6d6d3', stroke: COLORS.wall, weight: 1 });
+  if (levels) levelMark(c, right + 60, ngl, 'NGL ±0.000');
+  if (levels) levelMark(c, right + 60, ry, `TOS ROOF ${fmtLvl(roofZ)}`);
+  if (levels) levelMark(c, right + 60, py, `TOP OF COPING ${fmtLvl(roofZ + PARAPET_HEIGHT_MM)}`);
+  drawDimensionChain(c, [left, right], ngl, 40, 'horizontal', s);
+  const gf = ops.filter(o => o.floor === 0);
+  const us = unique([0, ...gf.flatMap(o => [ax.u(o.a), ax.u(o.b)]), ax.len]).map(u => project(u, 0).x);
+  if (us.length > 2) drawDimensionChain(c, us, ngl, 72, 'horizontal', s);
+  viewTitle(k, title, target.x + 10, target.y + 10);
+  return { right, ngl };
+}
+function frontElevation(k: Context): void {
+  const c = k.c, b = k.g.building;
+  elevationView(k, 'front', { x: 135, y: 130, w: 1540, h: 960 }, 'FRONT ELEVATION (AS SEEN FROM THE ROAD)');
   legend(c, 1715, 285, 'ELEVATION KEY', [
     `Building width ${round(b.w)} mm`,
-    `Post-setback buildable ${round(positive(mm(k.layout.buildableWidthM), b.w))} mm`,
     `Front setback ${round(k.g.setbacks.front)} mm`,
-    `Sill: per opening schedule`,
-    `Plinth: +450 mm; storeys: 3000 mm`,
-    `Parapet: ${PARAPET_HEIGHT_MM} mm; coping shown`,
-    'Opening positions from the locked plan;',
-    `marks as per ${sheetNumber('door_window_schedule', 0)}. Chajja over windows.`,
+    `Plinth +${PLINTH_HEIGHT_MM} mm; storeys ${FLOOR_TO_FLOOR_MM} mm`,
+    `Parapet ${PARAPET_HEIGHT_MM} mm; coping shown`,
+    'Openings, sills and heights from the',
+    `locked plan; marks as per ${sheetNumber('door_window_schedule', 0)}.`,
+    'Chajja 450 mm over every window.',
+    `Side elevations: ${sheetNumber('side_elevation', 0)}.`,
   ]);
-  const front = k.g.openings.filter(o => o.face === 'front' &&
-    Math.abs(o.fixed - b.y) < 500 && o.floor === 0);
-  label(c, 'FRONT OPENING SET-OUT (GF)', 1715, 575, 17,
-    'left', COLORS.green, true);
-  if (!front.length) label(c, 'No front-wall entries in schedule.', 1715, 604, 14);
+  const ax = elevAxis(k, 'front');
+  const front = elevOpenings(k, 'front').filter(o => o.floor === 0).sort((p, q) => Math.min(ax.u(p.a), ax.u(p.b)) - Math.min(ax.u(q.a), ax.u(q.b)));
+  label(c, 'FRONT OPENING SET-OUT (GF)', 1715, 575, 17, 'left', COLORS.green, true);
+  label(c, 'measured from the left corner as seen from the road', 1715, 596, 11, 'left', COLORS.dim);
+  if (!front.length) label(c, 'No front-wall entries in schedule.', 1715, 620, 14);
   const marks = openingTypes(k.g).markOf;
   front.slice(0, 9).forEach((o, i) => {
     const elevRoomName = o.room.source.name.replace(/\s*\(.*?\)\s*/g, '').trim().slice(0, 14);
-    label(c, `${marks.get(o) ?? '—'}  ${elevRoomName}: ${round(o.a - b.x)}–${round(o.b - b.x)} mm`, 1715, 605 + i * 38, 13);
-    label(c, `sill ${round(o.source.sillHeightMm)} • height ${round(o.source.heightMm)} mm`, 1740, 623 + i * 38, 11, 'left', COLORS.dim);
+    const u0 = Math.min(ax.u(o.a), ax.u(o.b)), u1 = Math.max(ax.u(o.a), ax.u(o.b));
+    label(c, `${marks.get(o) ?? '—'}  ${elevRoomName}: ${round(u0)}–${round(u1)} mm`, 1715, 625 + i * 38, 13);
+    label(c, `sill ${round(o.source.sillHeightMm)} • height ${round(o.source.heightMm)} mm`, 1740, 643 + i * 38, 11, 'left', COLORS.dim);
   });
-  if (front.length > 9) label(c, `${front.length - 9} more — see ${sheetNumber('door_window_schedule', 0)}.`, 1715, 605 + 9 * 38, 13);
-  for (const o of k.g.openings.filter(o2 => o2.face === 'front' && Math.abs(o2.fixed - b.y) < 500)) { const m = marks.get(o); if (!m) continue; const z = 450 + o.floor * 3000 + finite(o.source.sillHeightMm, 0) + positive(o.source.heightMm, 1200); const p = project((o.a + o.b) / 2, z); label(c, m, p.x, p.y - 22, 11, 'center', COLORS.text, true);
-    if (o.source.type === 'window') { const l0 = project(o.a - 150, z + 150), l1 = project(o.b + 150, z + 100 + 150); hatchBox(c, { x: l0.x, y: Math.min(l0.y, l1.y), w: l1.x - l0.x, h: Math.max(3, Math.abs(l1.y - l0.y)) }, '#e2e4e2', 45, 6, PEN.thin); } }
+  if (front.length > 9) label(c, `${front.length - 9} more — see ${sheetNumber('door_window_schedule', 0)}.`, 1715, 625 + 9 * 38, 13);
+}
+/* A-202: Left, right and rear elevations at one common scale. */
+function sideElevations(k: Context): void {
+  const c = k.c, b = k.g.building, floors = Math.min(k.g.floors, 5);
+  const tanks = ohtPlacement(k.layout);
+  const st = (k.g.rooms[floors - 1] ?? []).find(r => r.source.type === 'staircase');
+  const maxZ = Math.max(roofLevelMm(floors) + PARAPET_HEIGHT_MM, st ? roofLevelMm(floors) + STAIR_HEAD_ROOM_MM + 150 : 0, ...tanks.map(t => (t.baseM + t.heightM) * 1000)) + 300;
+  // all three views in one row on a common ground line and scale; levels once, on the right
+  const GAP = 2000, total = b.h + b.w + b.h + 2 * GAP + 600;
+  const den = STD_SCALES.find(d => total * PX_PER_PAPER_MM / d + 300 <= 1960 && (maxZ + 600) * PX_PER_PAPER_MM / d <= 700) ?? 500;
+  const s0 = PX_PER_PAPER_MM / den, top = 150, h = 780;
+  let x = 70;
+  const views: [ElevSide, string, number][] = [['left', 'LEFT SIDE ELEVATION', b.h], ['rear', 'REAR ELEVATION', b.w], ['right', 'RIGHT SIDE ELEVATION', b.h]];
+  views.forEach(([side, title, len], i) => {
+    elevationView(k, side, { x, y: top, w: len * s0 + 600, h }, title, den, i === views.length - 1);
+    x += (len + GAP) * s0;
+  });
+  legend(c, 90, 1070, 'ELEVATION NOTES', [
+    'Each view is drawn as seen from outside that side; left/right as seen from the road.',
+    `Plinth +${PLINTH_HEIGHT_MM}; storeys ${FLOOR_TO_FLOOR_MM}; parapet ${PARAPET_HEIGHT_MM} mm with coping.`,
+    `Stair head room ${STAIR_HEAD_ROOM_MM} mm above terrace; OHT on its roof (capacity as BOQ / ${sheetNumber('water_tank', 0)}).`,
+    `Opening marks as per ${sheetNumber('door_window_schedule', 0)}; chajja 450 mm over windows. Front elevation: ${sheetNumber('front_elevation', 0)}.`,
+    `RWPs at the four corners (see ${sheetNumber('terrace_plan', 0)}).`,
+  ]);
 }
 
+/* A-001: Site plan — plot, setbacks, building, gate, parking, sump, drainage and area statement. */
+function sitePlan(k: Context): void {
+  const c = k.c, g = k.g, b = g.building, fp = g.footprint, L = k.layout;
+  // Largest preferred scale at which road + plot fit the drawing area (road strip above, clear of the dimension strings).
+  const GAP = 82, TOP = 110, AVAIL_H = DRAW_BOTTOM - TOP - 10, AVAIL_W = 1180;
+  const roadPx = (sc: number) => Math.max(50, 1500 * sc);
+  const den = STD_SCALES.find(d => { const sc = PX_PER_PAPER_MM / d; return fp.h * sc + GAP + roadPx(sc) + 20 <= AVAIL_H && fp.w * sc + 260 <= AVAIL_W; }) ?? 500;
+  const s = PX_PER_PAPER_MM / den, roadH = roadPx(s);
+  const slack = AVAIL_H - (fp.h * s + GAP + roadH + 20);
+  k.frame = { x: 70 + (AVAIL_W - fp.w * s) / 2 + 40, y: TOP + roadH + GAP + slack / 2, s, width: fp.x, height: fp.y };
+  k.scale = s; k.views.push(den);
+  const P0 = box(k, fp);
+  const road = { x: P0.x - 140, y: P0.y - GAP - roadH, w: P0.w + 280, h: roadH };
+  drawRect(c, road.x, road.y, road.w, road.h, { fill: '#ececec', stroke: COLORS.grid, weight: 1 });
+  dashed(c, { x: road.x, y: road.y + road.h / 2 }, { x: road.x + road.w, y: road.y + road.h / 2 }, '#fff', 3, [24, 16]);
+  label(c, `ROAD (${k.req.facing.toUpperCase()} SIDE) — WIDTH TO BE CONFIRMED`, road.x + road.w / 2, road.y + road.h / 2 - 16, 13, 'center', COLORS.dim, true);
+  // compound wall with gate opening
+  const cw = COMPOUND_WALL_THICKNESS_MM;
+  const gateW = gateWidthM(L.plotWidthM) * 1000;
+  const gateC = fp.x + gateCentreM(L, mainDoorCentreM(L)) * 1000;
+  const P = box(k, fp);
+  hatchBox(c, { x: P.x, y: P.y + P.h - cw * s, w: P.w, h: cw * s }, '#d9d4cc', 45, 5, PEN.thin);
+  hatchBox(c, { x: P.x, y: P.y, w: cw * s, h: P.h }, '#d9d4cc', 45, 5, PEN.thin);
+  hatchBox(c, { x: P.x + P.w - cw * s, y: P.y, w: cw * s, h: P.h }, '#d9d4cc', 45, 5, PEN.thin);
+  const g0 = at(k, gateC - gateW / 2, fp.y).x, g1 = at(k, gateC + gateW / 2, fp.y).x;
+  hatchBox(c, { x: P.x, y: P.y, w: g0 - P.x, h: cw * s }, '#d9d4cc', 45, 5, PEN.thin);
+  hatchBox(c, { x: g1, y: P.y, w: P.x + P.w - g1, h: cw * s }, '#d9d4cc', 45, 5, PEN.thin);
+  c.save(); c.strokeStyle = COLORS.wall; c.lineWidth = PEN.thin; c.beginPath();
+  c.arc(g0, P.y, (g1 - g0) / 2, 0, Math.PI / 2); c.moveTo(g1, P.y); c.arc(g1, P.y, (g1 - g0) / 2, Math.PI, Math.PI / 2, true); c.stroke(); c.restore();
+  label(c, `MAIN GATE ${gateW / 1000} m`, g1 + 8, P.y + 16, 12, 'left', COLORS.text, true);
+  // driveway / parking in the front open space
+  const frontOpen = g.setbacks.front;
+  if (frontOpen >= 1200) {
+    const dw = Math.min(gateW, 3000), dx = clamp(gateC - dw / 2, fp.x + cw, fp.x + fp.w - cw - dw);
+    const d = box(k, { x: dx, y: fp.y + cw, w: dw, h: Math.max(0, b.y - fp.y - cw) });
+    drawRect(c, d.x, d.y, d.w, d.h, { fill: '#f3efe6', stroke: COLORS.grid, weight: 1, dash: [6, 4] });
+    label(c, frontOpen >= 5000 ? 'CAR PARKING' : 'TWO-WHEELER / PAVED', d.x + d.w / 2, d.y + d.h / 2, 12, 'center', COLORS.dim, true);
+  }
+  // building footprint with ground-floor rooms (light) and main entry
+  const B = box(k, b);
+  drawRect(c, B.x, B.y, B.w, B.h, { fill: '#f4f4f2', stroke: COLORS.wall, weight: PEN.cut });
+  for (const r of (g.rooms[0] ?? []).filter(rr => !isNiche(rr.source))) { const R = box(k, { x: r.x, y: r.y, w: r.w, h: r.d }); drawRect(c, R.x, R.y, R.w, R.h, { stroke: COLORS.grid, weight: 0.6 }); if (R.w > 60 && R.h > 30) label(c, r.source.name.replace(/\s*\(.*?\)\s*/g, '').toUpperCase().slice(0, 16), R.x + R.w / 2, R.y + R.h / 2, 10, 'center', COLORS.dim); }
+  label(c, `PROPOSED ${g.floors > 1 ? 'G+1' : 'GROUND'} RESIDENCE`, B.x + B.w / 2, B.y + B.h + 18, 13, 'center', COLORS.text, true);
+  label(c, `FFL +${(PLINTH_HEIGHT_MM / 1000).toFixed(3)}  •  ${round(b.w)} × ${round(b.h)} mm`, B.x + B.w / 2, B.y + B.h + 36, 11, 'center', COLORS.dim);
+  const md = mainDoorCentreM(L);
+  if (md !== undefined) { const e = at(k, md * 1000, b.y); arrow(c, e.x, e.y - 46, e.x, e.y - 4, COLORS.green); label(c, 'ENTRY', e.x + 8, e.y - 40, 11, 'left', COLORS.green, true); }
+  // services: sump, RWPs, inspection chambers to the road
+  const sp = sumpPlacement(L), sm = box(k, { x: sp.cx * 1000 - sp.l * 500, y: sp.cy * 1000 - sp.w * 500, w: sp.l * 1000, h: sp.w * 1000 });
+  drawRect(c, sm.x, sm.y, sm.w, sm.h, { fill: '#e8f3f8', stroke: '#4b9eb3', weight: 1.5 });
+  label(c, `UG SUMP ${waterStorage(L).sumpL} L`, sm.x + sm.w / 2, sm.y - 10, 11, 'center', '#2e7d8f', true);
+  for (const r of rainwaterPipes(L)) { const p = at(k, r.x * 1000, r.y * 1000); circle(c, p.x, p.y, 6, '#fff', '#4b9eb3', 1.4); }
+  const mh = at(k, b.x + b.w + 600, b.y - Math.max(600, g.setbacks.front * 0.6));
+  drawRect(c, mh.x - 12, mh.y - 9, 24, 18, { fill: '#fff', stroke: '#8e5a2b', weight: 1.6 });
+  label(c, 'MH', mh.x, mh.y + 1, 9, 'center', '#8e5a2b', true);
+  dashed(c, mh, { x: mh.x, y: road.y + road.h - 6 }, '#8e5a2b', 1.4, [7, 4]);
+  label(c, 'TO SEWER', mh.x + 8, road.y + road.h - 12, 10, 'left', '#8e5a2b');
+  // setback and plot dimensions
+  drawPlot(k);
+  // area statement (same numbers as the planner, validation and BOQ)
+  const plotSqm = (g.plotW * g.plotD) / 1e6, gfSqm = (b.w * b.h) / 1e6;
+  const bua = finite(L.totalBuiltUpSqM, gfSqm * g.floors), fsiCap = finite(L.fsiValue, 1);
+  const rs = L.requiredSetbacks;
+  const rowsOut: string[][] = [
+    ['Plot area', `${plotSqm.toFixed(2)} m²`, `${Math.round(plotSqm * 10.7639)} sqft`],
+    ['Ground coverage', `${gfSqm.toFixed(2)} m²`, `${((gfSqm / plotSqm) * 100).toFixed(1)} %`],
+    ['Total built-up area', `${bua.toFixed(2)} m²`, `${Math.round(bua * 10.7639)} sqft`],
+    ['FSI / FAR used', `${(bua / plotSqm).toFixed(2)}`, `allowed ${fsiCap} (${L.fsiSource ?? 'assumed'})`],
+    ['Floors', g.floors > 1 ? 'G+1' : 'Ground', `height ${(roofLevelMm(g.floors) + PARAPET_HEIGHT_MM) / 1000} m to coping`],
+    ['Setback front (req./prov.)', `${rs ? rs.front : '—'} / ${(g.setbacks.front / 1000).toFixed(2)} m`, ''],
+    ['Setback rear (req./prov.)', `${rs ? rs.rear : '—'} / ${(g.setbacks.rear / 1000).toFixed(2)} m`, ''],
+    ['Setback left (req./prov.)', `${rs ? rs.left : '—'} / ${(g.setbacks.left / 1000).toFixed(2)} m`, ''],
+    ['Setback right (req./prov.)', `${rs ? rs.right : '—'} / ${(g.setbacks.right / 1000).toFixed(2)} m`, ''],
+  ];
+  const y = table(c, 1420, 150, [{ h: 'ITEM', w: 220 }, { h: 'VALUE', w: 150 }, { h: 'NOTE', w: 160 }], rowsOut, 'AREA STATEMENT');
+  legend(c, 1420, y + 40, 'SITE NOTES', [
+    `Compound wall ${cw} mm, ${COMPOUND_WALL_HEIGHT_MM / 1000} m high; gate ${gateW / 1000} m (= BOQ).`,
+    `Sump ${waterStorage(L).sumpL} L, OHT ${waterStorage(L).ohtL} L for ~${waterStorage(L).persons} persons (= BOQ).`,
+    'RWPs at four corners to soak pit / recharge well.',
+    'Drainage via ICs to manhole and municipal sewer',
+    '  (septic tank + soak pit where no sewer).',
+    `Setbacks/FSI ${L.setbackSource ?? 'assumed'} — confirm with local authority.`,
+    'Levels: NGL ±0.000 assumed; survey to confirm.',
+  ]);
+  viewTitle(k, 'SITE PLAN', 80, 130);
+}
+
+/* A-109: Terrace / roof plan — parapet, head room, OHT, slopes to RWPs. */
+function terracePlan(k: Context): void {
+  const c = k.c, g = k.g, b = g.building, L = k.layout; planFrame(k);
+  const s = k.scale, B = box(k, b), pt = 115 * s;
+  drawRect(c, B.x, B.y, B.w, B.h, { fill: '#fbfbf9', stroke: COLORS.wall, weight: PEN.cut });
+  drawRect(c, B.x + pt, B.y + pt, B.w - 2 * pt, B.h - 2 * pt, { stroke: COLORS.wall, weight: PEN.medium });
+  label(c, `PARAPET 115 mm × ${PARAPET_HEIGHT_MM} mm WITH COPING`, B.x + B.w / 2, B.y - 18, 11, 'center', COLORS.dim);
+  const top = g.rooms[g.floors - 1] ?? [];
+  const st = top.find(r => r.source.type === 'staircase');
+  const tanks = ohtPlacement(L);
+  if (st) {
+    const S = box(k, { x: st.x, y: st.y, w: st.w, h: st.d });
+    hatchBox(c, S, '#eceae4', 45, 10, PEN.cut);
+    label(c, 'STAIR HEAD ROOM', S.x + S.w / 2, S.y + 18, 12, 'center', COLORS.text, true);
+    label(c, `ROOF +${((roofLevelMm(g.floors) + STAIR_HEAD_ROOM_MM + 150) / 1000).toFixed(3)}`, S.x + S.w / 2, S.y + 34, 10, 'center', COLORS.dim);
+    const door = box(k, { x: st.x + st.w / 2 - 450, y: st.y - 60, w: 900, h: 120 });
+    drawRect(c, door.x, door.y, door.w, door.h, { fill: '#fff', stroke: COLORS.wall, weight: 1 });
+    label(c, 'DOOR 900', door.x + door.w / 2, door.y - 10, 10, 'center', COLORS.dim);
+  }
+  for (const t of tanks) {
+    const p = at(k, t.cx * 1000, t.cy * 1000);
+    circle(c, p.x, p.y, (t.diaM * 500) * s, '#e8f3f8', '#4b9eb3', 1.6);
+    label(c, `OHT ${t.eachL} L`, p.x, p.y + 1, 10, 'center', '#2e7d8f', true);
+  }
+  // slopes: 1:100 falls from the ridge to the four corner RWPs
+  const cx = B.x + B.w / 2, cy = B.y + B.h / 2;
+  for (const r of rainwaterPipes(L)) {
+    const p = at(k, clamp(r.x * 1000, b.x + 300, b.x + b.w - 300), clamp(r.y * 1000, b.y + 300, b.y + b.h - 300));
+    const stB = st ? box(k, { x: st.x, y: st.y, w: st.w, h: st.d }) : null;
+    const hits = (t: number) => !!stB && cx + (p.x - cx) * t > stB.x && cx + (p.x - cx) * t < stB.x + stB.w && cy + (p.y - cy) * t > stB.y && cy + (p.y - cy) * t < stB.y + stB.h;
+    if (![0.35, 0.5, 0.65, 0.8].some(hits)) arrow(c, cx + (p.x - cx) * 0.35, cy + (p.y - cy) * 0.35, cx + (p.x - cx) * 0.8, cy + (p.y - cy) * 0.8, COLORS.green);
+    circle(c, p.x, p.y, 7, '#fff', '#4b9eb3', 1.5);
+    label(c, 'RWP Ø110', p.x + (r.side === 'left' ? 10 : -10), p.y + (p.y < cy ? 18 : -14), 10, r.side === 'left' ? 'left' : 'right', '#2e7d8f', true);
+  }
+  label(c, 'FALL 1:100 TO RWPs', cx, cy - 8, 12, 'center', COLORS.green, true);
+  label(c, `TERRACE +${(roofLevelMm(g.floors) / 1000).toFixed(3)}`, cx, cy + 12, 11, 'center', COLORS.dim);
+  planDimensions(k, false);
+  const wpSqm = ((b.w - 230) * (b.h - 230)) / 1e6 - (st ? (st.w * st.d) / 1e6 : 0);
+  const rowsOut: string[][] = [
+    ['Terrace slab level', `+${(roofLevelMm(g.floors) / 1000).toFixed(3)} m`],
+    ['Open terrace (waterproofed)', `${wpSqm.toFixed(2)} m²`],
+    ['Parapet length (= BOQ)', `${(2 * (b.w + b.h) / 1000).toFixed(2)} m`],
+    ['Parapet height', `${PARAPET_HEIGHT_MM} mm`],
+    ['Stair head room', st ? `${round(st.w)} × ${round(st.d)} mm` : 'none'],
+    ['Overhead tank(s) (= BOQ)', `${tanks.length} × ${tanks[0]?.eachL ?? 0} L = ${waterStorage(L).ohtL} L`],
+    ['Rain-water pipes', `${rainwaterPipes(L).length} nos Ø110 mm`],
+  ];
+  const y = table(c, 1420, 150, [{ h: 'ITEM', w: 260 }, { h: 'VALUE', w: 250 }], rowsOut, 'TERRACE SCHEDULE');
+  legend(c, 1420, y + 40, 'NOTES', [
+    `Waterproofing build-up as ${sheetNumber('waterproofing', 0)} (membrane + screed to falls).`,
+    'Upstand 300 mm at parapet and head-room walls.',
+    'Khurrami / spout at each RWP with grating.',
+    `OHT on 300 mm stand over the down-take (${sheetNumber('plumbing', 0)}).`,
+    'Lightning conductor where required by local rules.',
+  ]);
+  northAndScale(k, 1450, y + 270);
+  viewTitle(k, 'TERRACE / ROOF PLAN', 80, 140);
+}
 /* 9. Stair plan and dimensioned side view. */
 function staircaseDetail(k: Context): void {
   const c = k.c, st = stair(k);
@@ -1802,14 +2009,11 @@ function waterTank(k: Context): void {
     label(c, 'SCHEMATIC MAT Ø12 @ 150 c/c BOTH FACES — ENGINEER TO VERIFY',
       r.x + r.w / 2, r.y + r.h + 157, 12, 'center');
   }
-  const assumptionDepth = 2000; // transverse internal dimension not present in layout
-  const sumpWaterHeight = (sump.h - 57 - 100) / 0.2;
-  const ohtWaterHeight = (tank.h - 57 - 100) / 0.2;
-  const sumpLitres = (sump.w - 84) / 0.2 * assumptionDepth * sumpWaterHeight / 1e6;
-  const ohtLitres = (tank.w - 84) / 0.2 * assumptionDepth * ohtWaterHeight / 1e6;
-  legend(c, 155, 1140, 'DESIGN BASIS (SCHEMATIC ONLY)', [
-    `Indicative capacities: sump ${round(sumpLitres)} L / OHT ${round(ohtLitres)} L, assuming ${assumptionDepth} mm transverse clear dimension.`,
-    'Demand, transverse dimension, support reactions, seismic anchorage and potable-water hygiene require project-specific design.',
+  const ws = waterStorage(k.layout), ss = sumpSizeM(ws.sumpL), tk = ohtTanks(ws.ohtL);
+  legend(c, 155, 1110, 'DESIGN BASIS (SAME AS BOQ, SITE PLAN AND TERRACE PLAN)', [
+    `Occupancy ~${ws.persons} persons @ 135 lpcd. UG sump ${ws.sumpL} L (1.5 days): internal ${ss.l.toFixed(2)} × ${ss.w.toFixed(2)} m, water depth ${ss.waterDepth} m + 300 mm freeboard.`,
+    `Overhead storage ${ws.ohtL} L (1 day): ${tk.count} × ${tk.eachL} L loft tank(s) Ø${Math.round(tk.diaM * 1000)} mm on a 300 mm stand${ohtPlacement(k.layout)[0]?.onHeadRoom ? ' over the stair head room' : ' on the terrace'} (${sheetNumber('terrace_plan', 0)}).`,
+    'RCC section shown is typical; support reactions, seismic anchorage and potable-water hygiene need project-specific design.',
   ]);
 }
 
@@ -2401,6 +2605,7 @@ export const PROGRAMMATIC_TYPES = [
   'staircase_detail', 'water_tank', 'waterproofing', 'stp_detail',
   'electrical', 'plumbing', 'tiling_layout', 'brickwork_detail',
   'working_plan', 'door_window_schedule',
+  'site_plan', 'terrace_plan', 'side_elevation',
 ] as const;
 
 /** Render a coordinated A3 landscape construction drawing and return a PNG data URL. */
@@ -2447,6 +2652,9 @@ export function generateProgrammaticDrawing(
     case 'brickwork_detail': brickwork(k); break;
     case 'working_plan': workingPlan(k); break;
     case 'door_window_schedule': doorWindowSchedule(k); break;
+    case 'site_plan': sitePlan(k); break;
+    case 'terrace_plan': terracePlan(k); break;
+    case 'side_elevation': sideElevations(k); break;
   }
   c.restore();
   titleBlock(k);

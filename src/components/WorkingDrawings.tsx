@@ -5,7 +5,7 @@ import { Layout, ProjectRequirements, BOQ } from '../types';
 import {
   Layers, Grid3x3, ArrowUpDown, Building, Shovel, Columns3,
   BarChart3, BrickWall, Zap, Droplets, Grid2x2, Ruler, Download,
-  Footprints, Container, ShieldCheck, Pipette, Sparkles, Loader2,
+  Footprints, Container, ShieldCheck, Pipette, Sparkles, Loader2, Map as MapIcon,
   CheckCircle2, PlayCircle, ZoomIn, ZoomOut, RotateCcw
 } from 'lucide-react';
 import { exportAIPDF, ExportProgress } from '../utils/pdfExport';
@@ -44,7 +44,10 @@ type DrawingType =
   | 'staircase'
   | 'waterTank'
   | 'waterproofing'
-  | 'stp';
+  | 'stp'
+  | 'sitePlan'
+  | 'terracePlan'
+  | 'sideElevation';
 
 /* Map internal drawing types to API drawing types */
 const aiDrawingMap: Record<DrawingType, string> = {
@@ -66,6 +69,9 @@ const aiDrawingMap: Record<DrawingType, string> = {
   waterproofing: 'waterproofing',
   stp: 'stp_detail',
   tiling: 'tiling_layout',
+  sitePlan: 'site_plan',
+  terracePlan: 'terrace_plan',
+  sideElevation: 'side_elevation',
 };
 
 /* Drawing types that differ between Ground Floor and First Floor and need separate generation/caching */
@@ -129,7 +135,7 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq, on
   const [exportResult, setExportResult] = useState<string | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
 
-  const drawingsStorageKey = `neevv-drawings-v3-${requirements.plotWidthFt}x${requirements.plotDepthFt}-${layout.designSeed?.seedId || layout.id || 'default'}-${requirements.city || 'city'}`;
+  const drawingsStorageKey = `neevv-drawings-v4-${requirements.plotWidthFt}x${requirements.plotDepthFt}-${layout.designSeed?.seedId || layout.id || 'default'}-${requirements.city || 'city'}`;
 
   const saveDrawingToCache = useCallback(async (cacheKey: string, imageData: string) => {
     try {
@@ -352,7 +358,9 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq, on
   const totalDrawings = Object.keys(aiDrawingMap).length + (isMultiFloor ? FLOOR_SPECIFIC.length : 0);
 
   const tabs: { id: DrawingType; label: string; icon: React.ReactNode; group: string }[] = [
+    { id: 'sitePlan', label: 'Site Plan', icon: <MapIcon size={12} />, group: 'Architecture' },
     { id: 'workingPlan', label: 'Working Plan', icon: <Ruler size={12} />, group: 'Architecture' },
+    { id: 'terracePlan', label: 'Terrace Plan', icon: <Layers size={12} />, group: 'Architecture' },
     { id: 'doorWindow', label: 'Door & Window Schedule', icon: <Columns3 size={12} />, group: 'Architecture' },
     { id: 'excavation', label: 'Excavation', icon: <Shovel size={12} />, group: 'Site' },
     { id: 'foundation', label: 'Foundation Plan', icon: <Grid3x3 size={12} />, group: 'Structure' },
@@ -361,7 +369,8 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq, on
     { id: 'reinforcement', label: 'Rebar Details', icon: <Ruler size={12} />, group: 'Structure' },
     { id: 'barBending', label: 'BBS', icon: <BarChart3 size={12} />, group: 'Structure' },
     { id: 'section', label: 'Section 1-1', icon: <ArrowUpDown size={12} />, group: 'Architecture' },
-    { id: 'elevation', label: 'Elevation', icon: <Building size={12} />, group: 'Architecture' },
+    { id: 'elevation', label: 'Front Elevation', icon: <Building size={12} />, group: 'Architecture' },
+    { id: 'sideElevation', label: 'Side & Rear Elevations', icon: <Building size={12} />, group: 'Architecture' },
     { id: 'brickwork', label: 'Brickwork', icon: <BrickWall size={12} />, group: 'Finishes' },
     { id: 'electrical', label: 'Electrical', icon: <Zap size={12} />, group: 'MEP' },
     { id: 'plumbing', label: 'Plumbing', icon: <Droplets size={12} />, group: 'MEP' },
@@ -383,8 +392,11 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq, on
     doorWindow: 'Door, window and ventilator schedule: marks, sizes, sills, lintel levels, materials and counts per floor (matching the BOQ), with type elevations at 1:50.',
     reinforcement: 'Detailed reinforcement sections for footing, column, beam, slab, and lintel with bar sizes, spacing, cover, and stirrup details.',
     barBending: 'Bar Bending Schedule per IS 2502. All members quantified with bar mark, diameter, shape code, cutting length, and total weight.',
-    section: `Cross-section showing foundation system, RCC frame, infill masonry, and lintels. Floor-to-floor: 3000mm.`,
-    elevation: `Front elevation (${requirements.facing} facing). Plinth, DPC, windows, main door, balcony, slab bands, parapet with coping.`,
+    section: `Cross-section through the stair: foundation at the assumed founding depth, RCC frame, slabs, stair flights, parapet and stair head room. Plinth 450 mm; floor-to-floor 3000 mm.`,
+    elevation: `Front elevation as seen from the road (${requirements.facing} facing): openings, sills and chajjas from the locked plan, plinth, slab bands, parapet, stair head room and overhead tank.`,
+    sideElevation: 'Left, right and rear elevations at one common scale, each as seen from outside that side: openings from the locked plan, levels, stair head room and overhead tank.',
+    sitePlan: 'Site plan: plot, setbacks (required vs provided), building footprint, main gate, parking, sump, manhole, rain-water pipes and an area statement (coverage, built-up, FSI) matching the planner and BOQ.',
+    terracePlan: 'Terrace / roof plan: parapet, stair head room with door, overhead tank(s) sized as in the BOQ, falls to the four rain-water pipes and a terrace schedule.',
     brickwork: 'Masonry layout from the locked plan: 230 mm external and 115 mm internal walls, balcony railings, openings with lintels, wall lengths and masonry quantities matching the BOQ.',
     electrical: 'Electrical layout from the locked plan: room-wise light, fan, exhaust, socket, 16A and AC points, switch boards, DB and circuit runs, with a point schedule matching the BOQ.',
     plumbing: 'Plumbing layout from the locked plan: WC, basin, shower, sink and floor traps in each wet room, supply from the OHT, SWR drainage, stacks, inspection chambers, sump and RWPs, with a fixture schedule matching the BOQ.',

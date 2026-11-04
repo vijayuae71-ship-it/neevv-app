@@ -64,6 +64,11 @@ export async function exportAIPDF(
     waterTank: 'WATER TANK DETAIL',
     waterproofing: 'WATERPROOFING DETAIL',
     stp: 'STP LAYOUT',
+    sitePlan: 'SITE PLAN',
+    terracePlan: 'TERRACE / ROOF PLAN',
+    sideElevation: 'SIDE & REAR ELEVATIONS',
+    workingPlan: 'WORKING PLAN',
+    doorWindow: 'DOOR & WINDOW SCHEDULE',
   };
 
   // Write each AI image as a PNG file
