@@ -1231,7 +1231,8 @@ function columnLayout(k: Context): void {
     drawColumnSymbol(c, p.x, p.y, Math.max(5, col.w * k.scale), Math.max(5, col.d * k.scale));
     if (col.mark) { const w = textWidth(c, col.mark, 10); soft(w, 12, ringCands(p.x + 10 + w / 2, p.y + 12, 14, 12, 2), (x, y) => label(c, col.mark!, x, y, 10, 'center', COLORS.dim)); }
   }
-  gridDimensions(k); drawSectionMark(k);
+  // the plot boundary and its dimension strings sit outside the building here: the marker goes beyond them
+  gridDimensions(k); sectionMarker(k, sectionCutY(k), '1', sheetNumber('section_aa', 0), (k.g.building.x - k.g.footprint.x) * k.scale + 130);
   // schedule: one row per distinct pad (identical isolated pads grouped)
   const groups = new Map<string, PadMm[]>();
   for (const p of pads) { const key = p.type === 'isolated' ? `${round(p.w)}|${round(p.d)}|${round(p.depth)}|${p.bar}|${p.sp}` : p.mark; groups.set(key, [...(groups.get(key) ?? []), p]); }
@@ -2646,11 +2647,22 @@ function stpDetail(k: Context): void {
 type Side = 'front' | 'rear' | 'left' | 'right';
 const SVC = { power: '#b5651d', light: '#2f5d8a', water: '#1f78b4', hot: '#c0392b', drain: '#7a5230', brick: '#e7c4ae', tileA: '#e9eef2', tileB: '#dfe9df', wetTile: '#cfe3ea' };
 function svcRooms(k: Context): ModelRoom[] { return selected(k).filter(r => !isNiche(r.source)); }
-function svcFrame(k: Context, withPlot = false): void {
+/** Services frame. withPlot: show the whole plot if it fits at 1:100; otherwise the building + 3 m of the site
+ * (sump, inspection chambers, manhole) at 1:100 — the full plot is on the site plan. Returns whether the plot is framed. */
+function svcFrame(k: Context, withPlot = false): boolean {
   const b = k.g.building, m = 450; // tight margin so small houses reach 1:50
-  setFrame(k, withPlot ? k.g.footprint : { x: b.x - m, y: b.y - m, w: b.w + 2 * m, h: b.h + 2 * m }, { x: 80, y: 120, w: 1300, h: 1060 }, 40);
+  const target = { x: 80, y: 120, w: 1300, h: 1060 }, pad = 40;
+  let plot = false;
+  if (withPlot) {
+    const fp = k.g.footprint, sAt100 = PX_PER_PAPER_MM / 100;
+    plot = fp.w * sAt100 <= target.w - 2 * pad && fp.h * sAt100 <= target.h - 2 * pad;
+    const M = 3000, site = { x: Math.max(fp.x, b.x - M), y: Math.max(fp.y, b.y - M), w: 0, h: 0 };
+    site.w = Math.min(fp.x + fp.w, b.x + b.w + M) - site.x; site.h = Math.min(fp.y + fp.h, b.y + b.h + M) - site.y;
+    setFrame(k, plot ? fp : site, target, pad);
+  } else setFrame(k, { x: b.x - m, y: b.y - m, w: b.w + 2 * m, h: b.h + 2 * m }, target, pad);
   // Service symbols shrink with the drawing scale so small wet rooms stay legible (full size at 1:50).
   SYM_SCALE = Math.max(0.62, Math.min(1, k.scale / 0.1));
+  return plot;
 }
 let SYM_SCALE = 1;
 function externalSides(k: Context, r: ModelRoom): Side[] {
@@ -2739,6 +2751,15 @@ function wetLayout(k: Context, r: ModelRoom): { service: Side; tEnd: 0 | 1; ext:
   if (ext.includes(endSides[0]) && !ext.includes(endSides[1])) tEnd = 0;
   else if (ext.includes(endSides[1]) && !ext.includes(endSides[0])) tEnd = 1;
   else tEnd = awayFromDoor(r, service, door) < 0.5 ? 0 : 1;
+  // back-to-back baths on one internal wall: the second bath (further right / rear) anchors from the opposite end,
+  // so the two sets of fixtures are staggered along the shared wall instead of sitting point-for-point opposite
+  if (!ext.includes(service)) {
+    const e = 5, nb = selected(k).find(o => o !== r && o.source.type === 'toilet' && (
+      service === 'right' ? Math.abs(o.x - (r.x + r.w)) < e : service === 'left' ? Math.abs(o.x + o.w - r.x) < e
+        : service === 'rear' ? Math.abs(o.y - (r.y + r.d)) < e : Math.abs(o.y + o.d - r.y) < e)
+      && (horizontal ? Math.min(o.x + o.w, r.x + r.w) - Math.max(o.x, r.x) : Math.min(o.y + o.d, r.y + r.d) - Math.max(o.y, r.y)) > 600);
+    if (nb && r.x + r.y > nb.x + nb.y) tEnd = tEnd === 0 ? 1 : 0;
+  }
   const outSide = ext.includes(service) ? service : ext.includes(endSides[tEnd]) ? endSides[tEnd] : ext[0] ?? null;
   return { service, tEnd, ext, outSide };
 }
@@ -2851,7 +2872,8 @@ function electrical(k: Context): void {
 
 /* 14. Plumbing & drainage layout. */
 function plumbing(k: Context): void {
-  const c = k.c; svcFrame(k, k.level === 0); if (k.level === 0) drawPlot(k); servicesBase(k);
+  const c = k.c; const plotShown = svcFrame(k, k.level === 0); if (plotShown) drawPlot(k); servicesBase(k);
+  if (k.level === 0 && !plotShown) label(c, `Site services shown within 3 m of the building; full plot on ${sheetNumber('site_plan', 0)}.`, 100, 1190, 12, 'left', COLORS.dim);
   const rooms = svcRooms(k);
   const b = k.g.building;
   const stairRoom = rooms.find(r => r.source.type === 'staircase');
@@ -2917,7 +2939,7 @@ function plumbing(k: Context): void {
       const icp = at(k, ic.x, ic.y);
       ortho(c, stack, icp, SVC.drain, 2, [9, 4]);
       // stacks that share a chamber position are connected to ONE inspection chamber
-      if (!exits.some(e => Math.hypot(e.x - ic.x, e.y - ic.y) < 400)) {
+      if (!exits.some(e => Math.hypot(e.x - ic.x, e.y - ic.y) < 900)) {
         drawRect(c, icp.x - 12, icp.y - 12, 24, 24, { fill: '#fff', stroke: SVC.drain, weight: 2 });
         label(c, 'IC', icp.x, icp.y + 1, 10, 'center', SVC.drain, true);
         exits.push(ic);

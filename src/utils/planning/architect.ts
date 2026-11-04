@@ -18,6 +18,7 @@
  */
 import type { Facing, Room, RoomType } from '../../types';
 import { calculateVastuScore } from '../vastuEngine';
+import { MAX_COLUMN_SPAN_M } from '../quantityRules';
 
 export const ARCHITECT_PLANNER_VERSION = 'neevv-architect-planner v1.1 (2026-11-01, distinct schemes)';
 const FT = 0.3048;
@@ -591,7 +592,7 @@ function structuralGrid(bt: Built): { xs: number[]; ys: number[] } {
       const opts = cs.filter((v) => v > prev + 1.2 && v <= prev + 5.0 + 1e-6);
       if (!opts.length) {
         // a last bay just over 5 m (≤ 5.1 m) stays on the outer wall — never a sliver bay 50 mm from the wall
-        if (len - prev <= 5.1 + 1e-6) break;
+        if (len - prev <= MAX_COLUMN_SPAN_M + 1e-6) break;
         // otherwise split what is left evenly rather than leaving a short end bay
         const n = Math.ceil((len - prev) / 5.0 - 1e-6);
         prev = r2(prev + (len - prev) / n); out.push(prev); continue;

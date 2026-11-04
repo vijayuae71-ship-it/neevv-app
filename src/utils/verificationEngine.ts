@@ -24,7 +24,7 @@
  */
 
 import { Layout, ProjectRequirements, BOQ, Room, Column, FloorLayout, DoorScheduleItem, WindowScheduleItem } from '../types';
-import { PARAPET_HEIGHT_MM, ELECTRICAL_POINT_MAP, electricalPoints as sharedElectricalPoints, plumbingPoints as sharedPlumbingPoints, isNiche, bedroomOpeningIds } from './quantityRules';
+import { MAX_COLUMN_SPAN_M, PARAPET_HEIGHT_MM, ELECTRICAL_POINT_MAP, electricalPoints as sharedElectricalPoints, plumbingPoints as sharedPlumbingPoints, isNiche, bedroomOpeningIds } from './quantityRules';
 import { computeTakeoff } from './quantityTakeoff';
 
 /* =============================================================================
@@ -914,14 +914,14 @@ function validateStructural(ctx: Ctx, idGen: () => string): CategoryResult {
     );
   }
 
-  // 3 & 4. Column spacing (<=5.0m) / beam span (>4.5m) heuristic on ground floor grid
+  // 3 & 4. Column spacing (<= MAX_COLUMN_SPAN_M, shared with the planner and the engine) / beam span (>4.5m) heuristic
   if (groundColumns.length >= 2) {
     const xs = uniqueSorted(groundColumns.map(c => c.x));
     const ys = uniqueSorted(groundColumns.map(c => c.y));
     const maxGap = Math.max(maxConsecutiveGap(xs), maxConsecutiveGap(ys));
     if (maxGap <= 4.5) {
       b.pass();
-    } else if (maxGap <= 5.0) {
+    } else if (maxGap <= MAX_COLUMN_SPAN_M + 1e-6) {
       b.fail(
         'WARNING', 'Beam span exceeds 4.5m',
         `The largest column grid gap is ${maxGap.toFixed(2)}m, exceeding the recommended 4.5m beam span. This will require a deeper beam section. Requires structural engineer review.`,
@@ -932,10 +932,10 @@ function validateStructural(ctx: Ctx, idGen: () => string): CategoryResult {
       );
     } else {
       b.fail(
-        'ERROR', 'Column spacing exceeds 5.0m',
-        `The largest column grid gap is ${maxGap.toFixed(2)}m, exceeding the maximum recommended span of 5.0m without intermediate support. Requires structural engineer review.`,
+        'ERROR', `Column spacing exceeds ${MAX_COLUMN_SPAN_M}m`,
+        `The largest column grid gap is ${maxGap.toFixed(2)}m, exceeding the maximum span of ${MAX_COLUMN_SPAN_M}m without intermediate support. Requires structural engineer review.`,
         'Structural Drawing', 'Column Spacing',
-        '<= 5.0m',
+        `<= ${MAX_COLUMN_SPAN_M}m`,
         `${maxGap.toFixed(2)}m`,
         'Add an intermediate column to break up the long span.',
       );

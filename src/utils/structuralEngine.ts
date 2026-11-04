@@ -3,6 +3,8 @@
  * Units: geometry is metres unless stated otherwise; forces are kN and moments kN-m.
  * This module deliberately has no project imports so it can be integrated independently.
  */
+/** Maximum column-to-column span (m). Keep equal to MAX_COLUMN_SPAN_M in quantityRules.ts (planner + validation). */
+const MAX_COLUMN_SPAN_M = 5.1;
 
 export interface Room { id: string; name: string; type: string; x: number; y: number; width: number; depth: number; floor: number; }
 export interface Column { x: number; y: number; widthMM: number; depthMM: number; }
@@ -276,7 +278,7 @@ function generateColumns(layout: Layout, floor: number, geometry: ReturnType<typ
   // rational 5 m grid only when no planner grid is present (legacy saved projects).
   const plannerGrid = layout.structuralGridM;
   const validLines = (v: unknown, len: number): v is number[] => Array.isArray(v) && v.length >= 2 && v.every((n) => typeof n === 'number' && Number.isFinite(n))
-    && v.every((n, i, arr) => i === 0 || (n - arr[i - 1] > 0.5 && n - arr[i - 1] <= 5.1 + EPS)) && Math.abs(v[0]) < EPS && Math.abs(v[v.length - 1] - len) < 0.06;
+    && v.every((n, i, arr) => i === 0 || (n - arr[i - 1] > 0.5 && n - arr[i - 1] <= MAX_COLUMN_SPAN_M + EPS)) && Math.abs(v[0]) < EPS && Math.abs(v[v.length - 1] - len) < 0.06;
   const usePlanner = !!plannerGrid && validLines(plannerGrid.xs, geometry.width) && validLines(plannerGrid.ys, geometry.depth);
   const xs = usePlanner ? plannerGrid!.xs.map((x) => geometry.originX + x) : gridCoordinates(geometry.width, geometry.originX);
   const ys = usePlanner ? plannerGrid!.ys.map((y) => geometry.originY + y) : gridCoordinates(geometry.depth, geometry.originY);
@@ -300,7 +302,7 @@ function makeBeamGrid(columns: Point[], floor: number, panels: Panel[], geometry
   const seen = new Set<string>();
   const lines = wallLines(panels, geometry);
   const add = (a: Point, b: Point, tributaryWidth: number, wallThicknessM: number): void => {
-    if (distance(a, b) < 0.75 || distance(a, b) > 5.15) return; // planner wall-line grid allows a last bay up to 5.1 m
+    if (distance(a, b) < 0.75 || distance(a, b) > MAX_COLUMN_SPAN_M + 0.05) return; // planner wall-line grid: bays up to MAX_COLUMN_SPAN_M
     const key = keyOf(a) < keyOf(b) ? `${keyOf(a)}|${keyOf(b)}` : `${keyOf(b)}|${keyOf(a)}`;
     if (seen.has(key)) return;
     seen.add(key);

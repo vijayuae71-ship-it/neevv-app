@@ -4,6 +4,10 @@
  */
 import type { Layout, Room } from '../types';
 
+/** Maximum column-to-column span (m) — the planner's wall-line grid, the structural engine and validation share it.
+ * 5.0 m is the target; a last bay up to 5.1 m is accepted when that keeps every column on a wall line. */
+export const MAX_COLUMN_SPAN_M = 5.1;
+
 /** Wall thicknesses used by every drawing and by the BOQ (mm). */
 export const WALL_EXTERNAL_MM = 230;
 export const WALL_INTERNAL_MM = 115;
