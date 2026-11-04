@@ -295,20 +295,27 @@ export function calculateBOQ(
   };
 
   // Footing-derived earthwork when the structural engine has designed footings
-  const footings = (structuralResult as (StructuralResultLike & { foundations?: Array<{ footingSizeMm: number; footingDepthMm: number; pccSizeMm?: number; pccThicknessMm?: number }> }) | undefined)?.foundations ?? [];
+  // The ADOPTED foundation (isolated pads / combined footings / raft) drives excavation, PCC and backfill.
+  type Pad = { mark: string; type: string; lengthMm: number; widthMm: number; depthMm: number; pccThicknessMm: number };
+  const fsys = (structuralResult as (StructuralResultLike & { foundationSystem?: { type: string; pads: Pad[] } }) | undefined)?.foundationSystem;
+  const footings = (fsys?.pads?.length ? fsys.pads : ((structuralResult as (StructuralResultLike & { foundations?: Array<{ footingSizeMm: number; footingDepthMm: number; pccThicknessMm?: number }> }) | undefined)?.foundations ?? [])
+    .map((f, i) => ({ mark: `F${i + 1}`, type: 'isolated', lengthMm: f.footingSizeMm, widthMm: f.footingSizeMm, depthMm: f.footingDepthMm, pccThicknessMm: f.pccThicknessMm ?? 75 })));
+  const raft = footings.some((f) => f.type === 'raft');
   const foundingDepthM = ASSUMED_FOUNDING_DEPTH_M;
   const gfInternalLen = takeoff.floors[0]?.internalWallLenM ?? 0;
   const gfExternalLen = takeoff.floors[0]?.externalWallLenM ?? perimeter;
+  // pits: pad + 300 mm working space each side; a raft is one open excavation, so no separate plinth-beam trench
   const excavationM3 = footings.length
-    ? footings.reduce((s, f) => s + ((f.footingSizeMm / 1000 + 0.6) ** 2) * foundingDepthM, 0) + (perimeter + gfInternalLen * 0.5) * 0.6 * 0.6
+    ? footings.reduce((s, f) => s + (f.lengthMm / 1000 + 0.6) * (f.widthMm / 1000 + 0.6) * foundingDepthM, 0) + (raft ? 0 : (perimeter + gfInternalLen * 0.5) * 0.6 * 0.6)
     : builtUpPerFloor * 1.2;
   const pccM3 = footings.length
-    ? footings.reduce((s, f) => s + ((f.pccSizeMm ?? f.footingSizeMm + 150) / 1000) ** 2 * ((f.pccThicknessMm ?? 75) / 1000), 0)
+    ? footings.reduce((s, f) => s + (f.lengthMm / 1000 + 0.15) * (f.widthMm / 1000 + 0.15) * (f.pccThicknessMm / 1000), 0)
     : builtUpPerFloor * 0.075;
-  const footingVolM3 = footings.reduce((s, f) => s + (f.footingSizeMm / 1000) ** 2 * (f.footingDepthMm / 1000), 0);
+  const footingVolM3 = footings.reduce((s, f) => s + f.lengthMm / 1000 * f.widthMm / 1000 * f.depthMm / 1000, 0);
   const backfillM3 = Math.max(0, excavationM3 - pccM3 - (footings.length ? footingVolM3 : excavationM3 * 0.4));
   const groundFloorArea = layout.buildableWidthM * layout.buildableDepthM;
-  const earthBasis = footings.length ? `From ${footings.length} designed footing(s) at ${foundingDepthM} m founding depth + plinth-beam trench` : 'Allowance — footings not yet designed';
+  const fType = raft ? 'raft' : footings.some((f) => f.type === 'combined') ? 'isolated + combined footings' : 'isolated footings';
+  const earthBasis = footings.length ? `From the designed ${fType} (${footings.length}) at ${foundingDepthM} m founding depth${raft ? '' : ' + plinth-beam trench'}` : 'Allowance — footings not yet designed';
 
   // A. SITE PREPARATION & EARTHWORK
   add('Site Clearing & Levelling', groundFloorArea, 'm²', 30, 'structural', 'Remove debris, level ground');
@@ -321,7 +328,7 @@ export function calculateBOQ(
 
   // B. CONCRETE & RCC (rates include formwork; steel billed separately)
   add('PCC (1:4:8) – Footing Bed', +pccM3.toFixed(2), 'm³', 6000, 'structural', footings.length ? 'Under designed footings' : '75mm allowance');
-  add('RCC Foundation / Footings (M25)', foundationConcrete, 'm³', 8000, 'structural', quantityBasis === 'engineered' ? `Engineered: ${actualColumnCount ?? 0} designed footing(s), IS 456` : 'Isolated footings, IS 456');
+  add(raft ? 'RCC Raft Foundation (M25)' : 'RCC Foundation / Footings (M25)', foundationConcrete, 'm³', 8000, 'structural', quantityBasis === 'engineered' ? `Engineered: ${fType} (${footings.length}), IS 456` : 'Isolated footings, IS 456');
   add('RCC Plinth Beam (M25)', +((gfExternalLen + gfInternalLen) * 0.23 * 0.30).toFixed(2), 'm³', 9500, 'structural', '230×300mm under ground-floor wall lines');
   add('DPC (40mm CC 1:2:4 + waterproofing compound)', +(gfExternalLen * WALL_EXTERNAL_MM / 1000 + gfInternalLen * WALL_INTERNAL_MM / 1000).toFixed(2), 'm²', 450, 'structural', 'At plinth level');
   add('RCC Columns (M25)', columnConcrete, 'm³', 11000, 'structural', quantityBasis === 'engineered' ? `Engineered: ${actualColumnCount ?? 0} actual column member(s), IS 456` : '230×300mm, IS 456');

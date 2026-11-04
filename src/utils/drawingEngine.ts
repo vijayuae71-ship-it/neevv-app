@@ -105,7 +105,7 @@ const unique = (v: number[]): number[] => [...new Set(v.filter(Number.isFinite).
 const clamp = (n: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, n));
 const titleFor: Record<DrawingType, string> = {
   excavation: 'EXCAVATION PLAN', column_layout: 'FOUNDATION & COLUMN LAYOUT',
-  footing_detail: 'ISOLATED FOOTING DETAIL', beam_slab: 'RCC BEAM & SLAB LAYOUT',
+  footing_detail: 'FOUNDATION DETAILS', beam_slab: 'RCC BEAM & SLAB LAYOUT',
   column_detail: 'COLUMN SCHEDULE & BEAM DETAIL', bar_bending: 'BAR BENDING SCHEDULE',
   section_aa: 'BUILDING SECTION 1–1', front_elevation: 'FRONT ELEVATION',
   staircase_detail: 'STAIRCASE PLAN & SECTION', water_tank: 'SUMP & OVERHEAD TANK DETAILS',
@@ -1048,26 +1048,50 @@ function doorWindowSchedule(k: Context): void {
 }
 
 /* 1. Excavation plan. */
+/* ── Adopted foundation (isolated / combined / raft) in model millimetres ── */
+interface PadMm { mark: string; type: string; x: number; y: number; w: number; d: number; depth: number; bar: number; sp: number; topMesh: boolean; pcc: number; cols: ModelColumn[]; load: number }
+function foundationSys(k: Context): Data { return obj(k.data.foundationSystem); }
+function padsMm(k: Context): PadMm[] {
+  const raw = list(foundationSys(k).pads).map(obj);
+  const colsData = structuralRows(k, 'columns');
+  if (raw.length) return raw.map(p => {
+    const L = nval(p, 'lengthMm', 1200), B = nval(p, 'widthMm', 1200), cx = nval(p, 'cx', 0) * 1000, cy = nval(p, 'cy', 0) * 1000;
+    const ids = list(p.columnIds).map(v => text(v));
+    const pts = colsData.filter(cl => ids.includes(sval(cl, 'id', ''))).map(cl => ({ x: nval(cl, 'x', 0) * 1000, y: nval(cl, 'y', 0) * 1000 }));
+    const cols = k.g.columns.filter(col => pts.some(q => Math.abs(q.x - col.x) < 2 && Math.abs(q.y - col.y) < 2));
+    return { mark: sval(p, 'mark', 'F'), type: sval(p, 'type', 'isolated'), x: cx - L / 2, y: cy - B / 2, w: L, d: B, depth: nval(p, 'depthMm', 450),
+      bar: nval(p, 'barDiaMm', 12), sp: nval(p, 'barSpacingMm', 150), topMesh: p.topMesh === true, pcc: nval(p, 'pccThicknessMm', 150), cols, load: nval(p, 'loadKN', 0) };
+  });
+  return k.g.columns.map((col, i) => { const f = footingSpec(k, i), fr = structuralRows(k, 'foundations')[i] ?? {};
+    return { mark: `F${i + 1}`, type: 'isolated', x: col.x - f.w / 2, y: col.y - f.d / 2, w: f.w, d: f.d, depth: f.depth, bar: nval(fr, 'barDiaMm', 12), sp: nval(fr, 'barSpacingMm', 150), topMesh: false, pcc: f.pcc, cols: [col], load: nval(fr, 'columnLoadKN', 0) }; });
+}
+function foundationType(k: Context): string { return sval(foundationSys(k), 'type', 'isolated'); }
+function foundationName(t: string): string { return t === 'raft' ? 'RAFT FOUNDATION' : t === 'combined' ? 'ISOLATED + COMBINED FOOTINGS' : 'ISOLATED FOOTINGS'; }
+/** Short lines of the foundation basis, for sheet notes. */
+function foundationBasis(k: Context, width = 58): string[] {
+  const wrap = (t: string) => { const out: string[] = []; let line = ''; for (const w of t.split(' ')) { if ((line + ' ' + w).trim().length > width) { out.push(line.trim()); line = w; } else line += ' ' + w; } if (line.trim()) out.push(line.trim()); return out; };
+  const sys = foundationSys(k);
+  return [...wrap(sval(sys, 'reason', 'Isolated pads under each column.')), ...(sval(sys, 'soilNote', '') ? wrap('CAUTION: ' + sval(sys, 'soilNote', '')) : [])];
+}
+
 function excavation(k: Context): void {
   setFrame(k, k.g.footprint, { x: 115, y: 140, w: 1450, h: 900 }, 90);
   drawPlot(k); grid(k);
   const c = k.c;
   const trenches: Bounds[] = [];
-  for (const [i, col] of k.g.columns.entries()) {
-    const spec = footingSpec(k, i);
-    const trench = { x: col.x - (spec.w + 600) / 2, y: col.y - (spec.d + 600) / 2,
-      w: spec.w + 600, h: spec.d + 600 };
+  const pads = padsMm(k), raft = foundationType(k) === 'raft';
+  for (const pad of pads) {
+    const trench = { x: pad.x - 300, y: pad.y - 300, w: pad.w + 600, h: pad.d + 600 };
     trenches.push(trench);
     const r = box(k, trench);
     drawRect(c, r.x, r.y, r.w, r.h, { fill: '#f8f5ee', stroke: COLORS.wall, weight: 1.4, dash: [7, 4] });
-    const f = box(k, { x: col.x - spec.w / 2, y: col.y - spec.d / 2, w: spec.w, h: spec.d });
+    const f = box(k, { x: pad.x, y: pad.y, w: pad.w, h: pad.d });
     drawRect(c, f.x, f.y, f.w, f.h, { stroke: COLORS.dim, weight: 1 });
-    drawColumnSymbol(c, at(k, col.x, col.y).x, at(k, col.x, col.y).y,
-      Math.max(5, col.w * k.scale), Math.max(5, col.d * k.scale));
   }
+  for (const col of k.g.columns) drawColumnSymbol(c, at(k, col.x, col.y).x, at(k, col.x, col.y).y, Math.max(5, col.w * k.scale), Math.max(5, col.d * k.scale));
   const beamW = positive(firstBeam(k).widthMm, 230);
   const trenchWidth = beamW + 600;
-  for (const segment of gridSegments(k.g)) {
+  for (const segment of raft ? [] : gridSegments(k.g)) {
     const p = at(k, segment.a.x, segment.a.y), q = at(k, segment.b.x, segment.b.y);
     // Continuous beam trenches are two parallel excavated cut edges. The
     // central chain line remains visible for the setting-out surveyor.
@@ -1091,16 +1115,17 @@ function excavation(k: Context): void {
   const bm = at(k, k.g.footprint.x, k.g.footprint.y + k.g.footprint.h);
   circle(c, bm.x, bm.y, 7, COLORS.green, COLORS.green);
   { const t = 'BM ±0.000 (VERIFY SURVEY DATUM)', w = textWidth(c, t, 14); soft(w, 16, ringCands(bm.x + 13 + w / 2, bm.y + 24, 0.6 * w, 22, 2), (x, y) => label(c, t, x, y, 14, 'center')); }
-  const f = footingSpec(k, 0);
+  const p0 = pads.find(p => p.type === (raft ? 'raft' : 'isolated')) ?? pads[0];
+  const f = { w: p0?.w ?? 1200, d: p0?.d ?? 1200, depth: p0?.depth ?? 450, pcc: p0?.pcc ?? 150 };
   legend(c, 1600, 250, 'EXCAVATION NOTES', [
-    'All dimensions in mm; not for setting out without survey.',
-    `Typical footing: ${round(f.w)} × ${round(f.d)} mm`,
+    `Foundation: ${foundationName(foundationType(k)).toLowerCase()} (${pads.length}).`,
+    raft ? `Raft pit: ${round(f.w + 600)} × ${round(f.d + 600)} mm` : `Typical pad ${p0?.mark ?? 'F1'}: ${round(f.w)} × ${round(f.d)} mm`,
     `Working space: 300 mm each side`,
-    `Typical trench: ${round(f.w + 600)} × ${round(f.d + 600)} mm`,
-    `Beam trench width: ${round(beamW + 600)} mm`,
-    `Excavate to underside PCC: verify founding depth`,
-    `PCC: ${round(f.pcc)} mm; pad: ${round(f.depth)} mm`,
+    raft ? 'One open excavation; no separate beam trenches.' : `Beam trench width: ${round(beamW + 600)} mm`,
+    `Excavate to underside PCC at ${fmtLvl(-ASSUMED_FOUNDING_DEPTH_M * 1000)} (assumed)`,
+    `PCC: ${round(f.pcc)} mm; ${raft ? 'raft' : 'pad'}: ${round(f.depth)} mm`,
     'Founding level / shoring subject to geotechnical report.',
+    ...(sval(foundationSys(k), 'soilNote', '') ? ['SOIL: see caution on ' + sheetNumber('column_layout', 0) + '.'] : []),
   ]);
   // Typical trench cross-section below the note panel. Both footing and
   // working-space dimensions are the very same values shown in the plan.
@@ -1163,118 +1188,114 @@ function foundationSchedule(k: Context, x: number, y: number): void {
     y + 61 + shown.length * 23, 12, 'left', COLORS.dim);
 }
 function columnLayout(k: Context): void {
-  setFrame(k, k.g.footprint, { x: 120, y: 140, w: 1490, h: 900 }, 95);
+  setFrame(k, k.g.footprint, { x: 90, y: 140, w: 1180, h: 960 }, 95);
   drawPlot(k); grid(k);
-  const c = k.c;
+  const c = k.c, pads = padsMm(k), t = foundationType(k);
   for (const seg of gridSegments(k.g)) {
     const a = at(k, seg.a.x, seg.a.y), b = at(k, seg.b.x, seg.b.y);
     drawDoubleLineWall(c, a.x, a.y, b.x, b.y, Math.max(3, 230 * k.scale), 1.3);
   }
-  for (const [i, col] of k.g.columns.entries()) {
-    const spec = footingSpec(k, i), p = at(k, col.x, col.y);
-    const f = box(k, { x: col.x - spec.w / 2, y: col.y - spec.d / 2, w: spec.w, h: spec.d });
-    ring(c, f);
+  for (const pad of pads) {
+    const f = box(k, { x: pad.x, y: pad.y, w: pad.w, h: pad.d });
+    if (pad.type === 'raft') drawRect(c, f.x, f.y, f.w, f.h, { fill: 'rgba(200,205,200,0.18)', stroke: COLORS.wall, weight: 1.6, dash: [10, 5] });
+    else ring(c, f);
+    const w = textWidth(c, pad.mark, 12, true);
+    soft(w, 14, pad.type === 'raft' ? [{ x: f.x + 14 + w / 2, y: f.y + 14 }] : [{ x: f.x + f.w + 3 + w / 2, y: f.y - 6 }, { x: f.x - 3 - w / 2, y: f.y - 6 }, { x: f.x + f.w + 3 + w / 2, y: f.y + f.h + 6 }, { x: f.x - 3 - w / 2, y: f.y + f.h + 6 }],
+      (x, y) => label(c, pad.mark, x, y, 12, 'center', COLORS.text, true));
+  }
+  for (const col of k.g.columns) {
+    const p = at(k, col.x, col.y);
     drawColumnSymbol(c, p.x, p.y, Math.max(5, col.w * k.scale), Math.max(5, col.d * k.scale));
-    if (i < 40) { const t = `F${i + 1}`, w = textWidth(c, t, 12); soft(w, 14, [{ x: f.x + f.w + 3 + w / 2, y: f.y - 6 }, { x: f.x - 3 - w / 2, y: f.y - 6 }, { x: f.x + f.w + 3 + w / 2, y: f.y + f.h + 6 }, { x: f.x - 3 - w / 2, y: f.y + f.h + 6 }], (x, y) => label(c, t, x, y, 12, 'center')); }
+    if (col.mark) { const w = textWidth(c, col.mark, 10); soft(w, 12, ringCands(p.x + 10 + w / 2, p.y + 12, 14, 12, 2), (x, y) => label(c, col.mark!, x, y, 10, 'center', COLORS.dim)); }
   }
   gridDimensions(k); drawSectionMark(k);
-  const spec = footingSpec(k, 0), beam = firstBeam(k);
-  legend(c, 1640, 240, 'FOUNDATION KEY', [
-    `Isolated footings: ${k.g.columns.length} nos.`,
-    `Typical pad: ${round(spec.w)} × ${round(spec.d)} × ${round(spec.depth)} mm`,
-    `Column: ${round(k.g.columns[0]?.w ?? 300)} × ${round(k.g.columns[0]?.d ?? 300)} mm`,
-    `Plinth beam (typ.): ${round(positive(beam.widthMm, 230))} × ${round(positive(beam.depthMm, 400))} mm`,
-    'Dashed outline: footing; solid double line: beam.',
-    'Grid positions taken from structural design where supplied.',
-    `Grade: ${concrete(k)} / ${steel(k)}`,
+  // schedule: one row per distinct pad (identical isolated pads grouped)
+  const groups = new Map<string, PadMm[]>();
+  for (const p of pads) { const key = p.type === 'isolated' ? `${round(p.w)}|${round(p.d)}|${round(p.depth)}|${p.bar}|${p.sp}` : p.mark; groups.set(key, [...(groups.get(key) ?? []), p]); }
+  const colMarks = (ps: PadMm[]) => ps.flatMap(p => p.cols.map(cl => cl.mark ?? '')).filter(Boolean).join(', ');
+  const rowsOut = [...groups.values()].map(ps => { const p = ps[0]; return [
+    ps.length > 1 ? `${ps[0].mark}–${ps[ps.length - 1].mark}` : p.mark,
+    p.type === 'raft' ? 'Raft' : p.type === 'combined' ? 'Combined' : 'Isolated',
+    p.type === 'raft' ? `all (${p.cols.length})` : colMarks(ps),
+    `${round(p.w)}×${round(p.d)}×${round(p.depth)}`,
+    `Ø${p.bar}@${p.sp} ${p.topMesh ? 'T&B' : 'B'}`,
+    `${ps.length}`]; });
+  const y = table(c, 1300, 140, [{ h: 'MARK', w: 70 }, { h: 'TYPE', w: 72 }, { h: 'COLUMNS', w: 150 }, { h: 'L×B×D mm', w: 120 }, { h: 'MESH', w: 92 }, { h: 'NOS', w: 40 }], rowsOut, 'FOUNDATION SCHEDULE');
+  legend(c, 1300, y + 36, foundationName(t), [
+    ...foundationBasis(k, 62),
+    `PCC ${round(pads[0]?.pcc ?? 150)} mm under ${t === 'raft' ? 'the raft' : 'all pads'}; cover 50 mm.`,
+    `Founding ${fmtLvl(-ASSUMED_FOUNDING_DEPTH_M * 1000)} (ASSUMED — soil test).`,
+    `Plinth beams on all grid lines; ${concrete(k)} / ${steel(k)}.`,
+    `Details: ${sheetNumber('footing_detail', 0)}; excavation: ${sheetNumber('excavation', 0)}.`,
   ]);
-  foundationSchedule(k, 1640, 520);
-  drawScaleBar(c, 160, 1160, k.scale);
+  viewTitle(k, 'FOUNDATION & COLUMN LAYOUT', 80, 130);
 }
 
 /* 3. Footing pad in section AND bar layout in plan. */
 function footingDetail(k: Context): void {
-  const c = k.c, f = footing(k), spec = footingSpec(k, 0);
-  const colW = positive(firstColumn(k).widthMm, 300);
-  const colD = positive(firstColumn(k).depthMm, 300);
-  const side = spec.w, depth = spec.depth, pcc = spec.pcc;
-  const cover = 50, barDia = positive(f.barDiaMm, 12), spacing = positive(f.barSpacingMm, 150);
-  const nBars = Math.max(2, Math.round(positive(f.barsEachWay, Math.ceil((side - 100) / spacing) + 1)));
-  const yGround = 555, s = Math.min(0.42, 640 / Math.max(side, 1100));
-  const center = 500, footingTop = yGround + 115, footingBottom = footingTop + depth * s;
-  const fx = center - side * s / 2;
-  const pccSize = positive(f.pccSizeMm, side + 300);
-  drawLine(c, 115, yGround, 965, yGround, 1.5, COLORS.wall);
-  drawHatch(c, 120, yGround + 4, 840, 350, 45, 15);
-  drawRect(c, 120, yGround + 8, 840, 350, { fill: 'rgba(240,235,226,0.38)' });
-  hatchBox(c, { x: center - pccSize * s / 2, y: footingBottom, w: pccSize * s, h: pcc * s }, '#d7d7d7', -45, 8);
-  hatchBox(c, { x: fx, y: footingTop, w: side * s, h: depth * s }, COLORS.concrete, 45, 12);
-  hatchBox(c, { x: center - colW * s / 2, y: 318, w: colW * s, h: footingTop - 318 }, COLORS.concrete, -45, 12);
-  // Four column starters are anchored into the pad. The available anchorage
-  // is only schematic: the structural engineer must verify actual development.
-  const starterSpacing = Math.max(8, (colW - 90) * s);
-  const starterX = [center - starterSpacing / 2, center + starterSpacing / 2];
-  for (const xx of starterX) {
-    drawLine(c, xx, 323, xx, footingBottom - 72 * s, 2, COLORS.wall);
-    const hookDirection = xx < center ? -1 : 1;
-    drawLine(c, xx, footingBottom - 72 * s,
-      xx + hookDirection * 100 * s, footingBottom - 72 * s, 2, COLORS.wall);
+  const c = k.c, pads = padsMm(k), t = foundationType(k);
+  const pick = (t === 'raft' ? pads.find(p => p.type === 'raft') : t === 'combined' ? pads.find(p => p.type === 'combined') : pads.find(p => p.type === 'isolated')) ?? pads[0];
+  if (!pick) return;
+  const col0 = pick.cols[0] ?? k.g.columns[0] ?? { x: pick.x + pick.w / 2, y: pick.y + pick.d / 2, w: 300, d: 300 };
+  // section A–A along the pad length (raft: a 3.6 m edge strip through the first column)
+  const raft = pick.type === 'raft';
+  const x0 = raft ? pick.x : pick.x, len = raft ? Math.min(pick.w, 3600) : pick.w;
+  const colsIn = (raft ? k.g.columns.filter(cl => Math.abs(cl.y - col0.y) < 2 && cl.x < pick.x + len) : pick.cols).map(cl => cl.x);
+  const stub = 700, FD = 450;
+  const geoW = len + 1000, geoH = stub + pick.depth + pick.pcc + FD;
+  const den = STD_SCALES.find(d => geoW * PX_PER_PAPER_MM / d <= 1000 && geoH * PX_PER_PAPER_MM / d <= 520) ?? 100, s = PX_PER_PAPER_MM / den;
+  k.views.push(den);
+  const ox = 90 + (1000 - geoW * s) / 2 + 500 * s, top = 250;
+  const X = (mm: number) => ox + (mm - x0) * s;
+  const padTop = top + stub * s, padBot = padTop + pick.depth * s, pccBot = padBot + pick.pcc * s;
+  label(c, raft ? `A–A  TYPICAL RAFT EDGE SECTION (${pick.mark})` : `A–A  SECTION THROUGH ${pick.mark} (${pick.type.toUpperCase()})`, 90, 150, 18, 'left', COLORS.green, true);
+  label(c, `SCALE 1:${den}`, 90, 170, 11, 'left', COLORS.dim);
+  drawHatch(c, X(x0) - 400 * s, padTop - 40, (len + 800) * s, pccBot - padTop + 140, 45, 15);
+  drawRect(c, X(x0) - 400 * s, padTop - 40, (len + 800) * s, pccBot - padTop + 140, { fill: 'rgba(240,235,226,0.45)' });
+  hatchBox(c, { x: X(x0) - 75 * s, y: padBot, w: (len + 150) * s, h: pick.pcc * s }, '#d7d7d7', -45, 8, PEN.thin);
+  hatchBox(c, { x: X(x0), y: padTop, w: len * s, h: pick.depth * s }, COLORS.concrete, 45, 12, PEN.cut);
+  const cover = 50 * s, barR = Math.max(2.2, pick.bar * s / 2);
+  drawLine(c, X(x0) + cover, padBot - cover, X(x0 + len) - cover, padBot - cover, 2.2, '#b03a2e');
+  for (let xx = X(x0) + cover; xx <= X(x0 + len) - cover + 0.1; xx += Math.max(6, pick.sp * s)) circle(c, xx, padBot - cover - barR - 1, barR, '#b03a2e', '#b03a2e');
+  if (pick.topMesh) {
+    drawLine(c, X(x0) + cover, padTop + cover, X(x0 + len) - cover, padTop + cover, 2.2, '#1f5f99');
+    for (let xx = X(x0) + cover; xx <= X(x0 + len) - cover + 0.1; xx += Math.max(6, pick.sp * s)) circle(c, xx, padTop + cover + barR + 1, barR, '#1f5f99', '#1f5f99');
   }
-  for (let yy = 340; yy < footingTop - 12; yy += Math.max(15, 150 * s))
-    drawLine(c, starterX[0] - 4, yy, starterX[1] + 4, yy,
-      0.8, COLORS.wall);
-  note(c, 'COLUMN STARTERS / HOOKS: DESIGN DEVELOPMENT LENGTH',
-    145, 282, starterX[0], footingTop + 30);
-  // Actual longitudinal reinforcement at cover, with bend/anchorage schematic.
-  const rebarY = footingBottom - cover * s;
-  drawLine(c, fx + cover * s, rebarY, fx + (side - cover) * s, rebarY, 2.2, COLORS.wall);
-  for (let i = 0; i < nBars; i++) {
-    const x = fx + (cover + i * (side - 2 * cover) / Math.max(1, nBars - 1)) * s;
-    circle(c, x, rebarY - 10, 2.8, COLORS.wall, COLORS.wall);
+  for (const cx of colsIn) {
+    const cw = (pick.cols[0]?.w ?? 300) * s;
+    hatchBox(c, { x: X(cx) - cw / 2, y: top, w: cw, h: padTop - top }, COLORS.concrete, -45, 10, PEN.medium);
+    for (const sx of [X(cx) - cw / 2 + 40 * s, X(cx) + cw / 2 - 40 * s]) {
+      drawLine(c, sx, top + 4, sx, padBot - cover - 2 * barR - 2, 1.8, COLORS.wall);
+      drawLine(c, sx, padBot - cover - 2 * barR - 2, sx + (sx < X(cx) ? -1 : 1) * 12 * (pick.cols[0] ? 16 : 12) * s, padBot - cover - 2 * barR - 2, 1.8, COLORS.wall);
+    }
   }
-  const sectionDims = [fx, fx + side * s];
-  drawDimensionChain(c, sectionDims, footingBottom, 98, 'horizontal', s);
-  drawDimensionChain(c, [footingTop, footingBottom, footingBottom + pcc * s], fx, -67, 'vertical', s);
-  note(c, `PCC ${round(pcc)} THK`, 90, 1040, center - side * s / 3, footingBottom + pcc * s / 2);
-  note(c, `BOTTOM MAT Ø${round(barDia)} @ ${round(spacing)} c/c BOTH WAYS`, 90, 1090, center, rebarY);
-  label(c, 'A–A  FOOTING SECTION', 280, 243, 23, 'left', COLORS.green, true);
-  label(c, 'NGL ±0.000', 820, yGround - 15, 15);
-  label(c, 'FOUNDING LEVEL: VERIFY WITH SOIL REPORT', 640, footingBottom + pcc * s + 48, 14);
-  // Plan view of the identical footing with mesh on right.
-  const planS = Math.min(0.38, 650 / Math.max(side, spec.d)), pcx = 1510, pcy = 690;
-  const pw = side * planS, ph = spec.d * planS;
-  drawRect(c, pcx - pw / 2, pcy - ph / 2, pw, ph,
-    { stroke: COLORS.wall, weight: 2 });
-  const cpw = colW * planS, cph = colD * planS;
-  drawRect(c, pcx - cpw / 2, pcy - cph / 2, cpw, cph,
-    { fill: '#b5b9b8', stroke: COLORS.wall, weight: 1 });
-  const rebarStepX = (pw - 2 * cover * planS) / Math.max(1, nBars - 1);
-  const rebarStepY = (ph - 2 * cover * planS) / Math.max(1, nBars - 1);
-  for (let i = 0; i < nBars; i++) {
-    const x = pcx - pw / 2 + cover * planS + i * rebarStepX;
-    const y = pcy - ph / 2 + cover * planS + i * rebarStepY;
-    drawLine(c, x, pcy - ph / 2 + cover * planS, x, pcy + ph / 2 - cover * planS, 0.8, COLORS.dim);
-    drawLine(c, pcx - pw / 2 + cover * planS, y, pcx + pw / 2 - cover * planS, y, 0.8, COLORS.dim);
-  }
-  drawDimensionChain(c, [pcx - pw / 2, pcx + pw / 2], pcy + ph / 2,
-    58, 'horizontal', planS);
-  drawDimensionChain(c, [pcy - ph / 2, pcy + ph / 2], pcx + pw / 2,
-    55, 'vertical', planS);
-  const coverX = pcx - pw / 2 + cover * planS;
-  const coverY = pcy - ph / 2 + cover * planS;
-  drawLine(c, pcx - pw / 2, pcy - ph / 2 - 21,
-    coverX, pcy - ph / 2 - 21, 0.7, COLORS.dim);
-  drawLine(c, pcx - pw / 2, pcy - ph / 2 - 29,
-    pcx - pw / 2, pcy - ph / 2 - 13, 0.7, COLORS.dim);
-  drawLine(c, coverX, pcy - ph / 2 - 29,
-    coverX, pcy - ph / 2 - 13, 0.7, COLORS.dim);
-  label(c, `COVER ${round(cover)} mm`, pcx - pw / 2,
-    pcy - ph / 2 - 40, 13, 'left', COLORS.dim);
-  circle(c, coverX, coverY, 3, COLORS.wall, COLORS.wall);
-  label(c, 'TYPICAL FOOTING PLAN', 1300, 243, 23, 'left', COLORS.green, true);
-  multiline(c, [`FOOTING ${round(side)} × ${round(spec.d)} × ${round(depth)} mm`,
-    `COLUMN ${round(colW)} × ${round(colD)} mm; CLEAR COVER 50 mm`,
-    `${nBars} BARS EACH WAY; ${concrete(k)}, ${steel(k)}`], 1220, 1090, 16, 27);
+  drawDimensionChain(c, [X(x0), ...colsIn.map(X), X(x0 + len)], pccBot, 40, 'horizontal', s);
+  drawDimensionChain(c, [padTop, padBot, pccBot], X(x0), -40, 'vertical', s);
+  levelMark(c, X(x0 + len) + 60, pccBot, `FOUNDING ${fmtLvl(-ASSUMED_FOUNDING_DEPTH_M * 1000)} (ASSUMED)`);
+  // plan of the pad (raft: whole raft with columns and mesh notation)
+  const den2 = STD_SCALES.find(d => pick.w * PX_PER_PAPER_MM / d <= 640 && pick.d * PX_PER_PAPER_MM / d <= 420) ?? 200, s2 = PX_PER_PAPER_MM / den2;
+  k.views.push(den2);
+  const px = 1260, py = 230, pw = pick.w * s2, ph = pick.d * s2;
+  label(c, raft ? `RAFT PLAN ${pick.mark}` : `PLAN ${pick.mark}`, px, 150, 18, 'left', COLORS.green, true);
+  label(c, `SCALE 1:${den2}`, px, 170, 11, 'left', COLORS.dim);
+  drawRect(c, px, py, pw, ph, { fill: '#fafafa', stroke: COLORS.wall, weight: PEN.cut });
+  const stepPx = pick.sp * s2, every = Math.max(1, Math.ceil(5 / Math.max(stepPx, 1e-6)));
+  for (let i = 0, xx = px + 50 * s2; xx < px + pw - 50 * s2; xx += stepPx, i++) if (i % every === 0) drawLine(c, xx, py + 50 * s2, xx, py + ph - 50 * s2, 0.6, '#b03a2e');
+  for (let i = 0, yy = py + 50 * s2; yy < py + ph - 50 * s2; yy += stepPx, i++) if (i % every === 0) drawLine(c, px + 50 * s2, yy, px + pw - 50 * s2, yy, 0.6, '#b03a2e');
+  for (const cl of (raft ? k.g.columns : pick.cols)) drawRect(c, px + (cl.x - cl.w / 2 - pick.x) * s2, py + (cl.y - cl.d / 2 - pick.y) * s2, cl.w * s2, cl.d * s2, { fill: '#8d8d8d', stroke: COLORS.wall, weight: 1 });
+  drawDimensionChain(c, [px, px + pw], py + ph, 34, 'horizontal', s2);
+  drawDimensionChain(c, [py, py + ph], px + pw, 34, 'vertical', s2);
+  if (!raft) { const ay = py + (col0.y - pick.y) * s2; drawLine(c, px - 26, ay, px - 8, ay, PEN.medium); drawLine(c, px + pw + 8, ay, px + pw + 26, ay, PEN.medium); label(c, 'A', px - 34, ay, 12, 'center', COLORS.text, true); label(c, 'A', px + pw + 34, ay, 12, 'center', COLORS.text, true); }
+  if (every > 1) label(c, `1 in ${every} bars shown at this scale`, px, py + ph + 70, 11, 'left', COLORS.dim);
+  const y0 = Math.max(pccBot + 120, py + ph + 110, 820);
+  legend(c, 90, y0, `${foundationName(t)} — ${pick.mark}`, [
+    `${round(pick.w)} × ${round(pick.d)} × ${round(pick.depth)} mm on ${round(pick.pcc)} mm PCC 1:4:8; ${concrete(k)} / ${steel(k)}.`,
+    `Bottom mesh Ø${pick.bar} @ ${pick.sp} c/c both ways (red)${pick.topMesh ? `; top mesh Ø${pick.bar} @ ${pick.sp} c/c both ways (blue)` : ''}.`,
+    'Clear cover 50 mm; column starters L-footed on the bottom mesh, lap 50d above.',
+    raft ? 'Raft projects 300 mm beyond the outer column faces all round.' : `Columns on this ${pick.type === 'combined' ? 'combined footing' : 'pad'}: ${pick.cols.map(cl => cl.mark ?? '').filter(Boolean).join(', ') || '—'}.`,
+    `${raft ? 'Total column load' : 'Column load'} (service) ≈ ${round(pick.load)} kN${raft ? ` → ${(pick.load / (pick.w * pick.d / 1e6)).toFixed(0)} kN/m² average` : ''}; SBC assumed ${round(nval(obj(k.data.parameters), 'sbc', 150))} kN/m².`,
+  ]);
+  legend(c, 1260, y0, 'BASIS', foundationBasis(k, 60));
 }
 
 /* 4. Slab/beam layout with panel reinforcement and a coordinated architectural overlay. */
@@ -1637,12 +1658,24 @@ function sectionAA(k: Context): void {
   const groundColumns = k.g.columns.filter(col => col.x >= b.x - 1 && col.x <= b.x + b.w + 1);
   const drawnX = unique(groundColumns.map(col => clamp(col.x, b.x + col.w / 2, b.x + b.w - col.w / 2)));
   const fTop = project(0, -FD + found.depth).y;
-  for (const x of drawnX) {
-    const col = groundColumns[0] ?? k.g.columns[0];
-    const p = project(x, 0);
-    hatchBox(c, { x: p.x - (found.w + 300) * s / 2, y: project(0, -FD).y, w: (found.w + 300) * s, h: found.pcc * s }, '#d7d7d7', -45, 9, PEN.thin);
-    hatchBox(c, { x: p.x - found.w * s / 2, y: fTop, w: found.w * s, h: found.depth * s }, COLORS.concrete, 45, 8, PEN.medium);
-    hatchBox(c, { x: p.x - (col?.w ?? 300) * s / 2, y: project(x, PL).y, w: (col?.w ?? 300) * s, h: fTop - project(x, PL).y }, COLORS.concrete, 45, 10, PEN.medium);
+  // the adopted foundation, cut along the section line: raft slab, or the pads whose plan box the cut crosses
+  const sPads = padsMm(k), sRaft = sPads.find(p => p.type === 'raft');
+  if (sRaft) {
+    const rTop = project(0, -FD + sRaft.depth).y;
+    hatchBox(c, { x: project(sRaft.x - 75, 0).x, y: project(0, -FD).y, w: (sRaft.w + 150) * s, h: sRaft.pcc * s }, '#d7d7d7', -45, 9, PEN.thin);
+    hatchBox(c, { x: project(sRaft.x, 0).x, y: rTop, w: sRaft.w * s, h: sRaft.depth * s }, COLORS.concrete, 45, 8, PEN.medium);
+    for (const x of drawnX) { const col = groundColumns[0] ?? k.g.columns[0]; hatchBox(c, { x: project(x, 0).x - (col?.w ?? 300) * s / 2, y: project(x, PL).y, w: (col?.w ?? 300) * s, h: rTop - project(x, PL).y }, COLORS.concrete, 45, 10, PEN.medium); }
+  } else {
+    for (const x of drawnX) {
+      const col = groundColumns[0] ?? k.g.columns[0];
+      const p = project(x, 0);
+      const pad = sPads.find(q => x >= q.x - 1 && x <= q.x + q.w + 1 && cutY >= q.y - 1 && cutY <= q.y + q.d + 1) ?? sPads.find(q => x >= q.x - 1 && x <= q.x + q.w + 1);
+      const pw = pad ? pad.w : found.w, pd = pad ? pad.depth : found.depth, pcc = pad ? pad.pcc : found.pcc, px0 = pad ? project(pad.x, 0).x : p.x - found.w * s / 2;
+      const top2 = project(0, -FD + pd).y;
+      hatchBox(c, { x: px0 - 150 * s, y: project(0, -FD).y, w: (pw + 300) * s, h: pcc * s }, '#d7d7d7', -45, 9, PEN.thin);
+      hatchBox(c, { x: px0, y: top2, w: pw * s, h: pd * s }, COLORS.concrete, 45, 8, PEN.medium);
+      hatchBox(c, { x: p.x - (col?.w ?? 300) * s / 2, y: project(x, PL).y, w: (col?.w ?? 300) * s, h: top2 - project(x, PL).y }, COLORS.concrete, 45, 10, PEN.medium);
+    }
   }
   // plinth beam + DPC
   const plinthY = project(0, PL).y;
@@ -1719,7 +1752,7 @@ function sectionAA(k: Context): void {
   legend(c, 1660, 330, 'SECTION NOTES', [
     `Floor-to-floor ${H} mm; plinth ${PL} mm.`,
     `Slab ${round(storyThickness(k, floors - 1))} mm; beams ${round(positive(firstBeam(k).widthMm, 230))} × ${round(beamD)} mm.`,
-    `Footing ${round(found.w)} × ${round(found.d)} × ${round(found.depth)} mm on ${round(found.pcc)} mm PCC.`,
+    foundationType(k) === 'raft' ? `Raft ${round(padsMm(k)[0]?.depth ?? 300)} mm on 100 mm PCC (see ${sheetNumber('footing_detail', 0)}).` : `Footing ${round(found.w)} × ${round(found.d)} × ${round(found.depth)} mm on ${round(found.pcc)} mm PCC.`,
     `Founding depth ${FD} mm: ASSUMED`,
     '  (same as BOQ) — confirm by soil test.',
     `Walls ${WALL_EXTERNAL_MM} mm ext.; 150 mm partitions.`,
