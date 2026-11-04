@@ -2347,8 +2347,8 @@ function terracePlan(k: Context): void {
     circle(c, p.x, p.y, 7, '#fff', '#4b9eb3', 1.5);
     label(c, 'RWP Ø110', p.x + (r.side === 'left' ? 10 : -10), p.y + (p.y < cy ? 18 : -14), 10, r.side === 'left' ? 'left' : 'right', '#2e7d8f', true);
   }
-  label(c, 'FALL 1:100 TO RWPs', cx, cy - 8, 12, 'center', COLORS.green, true);
-  label(c, `TERRACE +${(roofLevelMm(g.floors) / 1000).toFixed(3)}`, cx, cy + 12, 11, 'center', COLORS.dim);
+  { const t2 = `TERRACE +${(roofLevelMm(g.floors) / 1000).toFixed(3)}`, w = Math.max(textWidth(c, 'FALL 1:100 TO RWPs', 12, true), textWidth(c, t2, 11));
+    soft(w, 34, ringCands(cx, cy, Math.max(60, B.w / 6), Math.max(40, B.h / 6), 2), (x, y) => { label(c, 'FALL 1:100 TO RWPs', x, y - 8, 12, 'center', COLORS.green, true); label(c, t2, x, y + 12, 11, 'center', COLORS.dim); }); }
   planDimensions(k, false);
   const wpSqm = ((b.w - 230) * (b.h - 230)) / 1e6 - (st ? (st.w * st.d) / 1e6 : 0);
   const rowsOut: string[][] = [
