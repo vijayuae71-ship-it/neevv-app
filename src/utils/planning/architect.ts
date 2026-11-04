@@ -589,7 +589,13 @@ function structuralGrid(bt: Built): { xs: number[]; ys: number[] } {
     const out = [0]; let prev = 0;
     while (len - prev > 5.0 + 1e-6) {
       const opts = cs.filter((v) => v > prev + 1.2 && v <= prev + 5.0 + 1e-6);
-      if (!opts.length) { prev = r2(Math.min(prev + 5.0, len)); out.push(prev); continue; }
+      if (!opts.length) {
+        // a last bay just over 5 m (≤ 5.1 m) stays on the outer wall — never a sliver bay 50 mm from the wall
+        if (len - prev <= 5.1 + 1e-6) break;
+        // otherwise split what is left evenly rather than leaving a short end bay
+        const n = Math.ceil((len - prev) / 5.0 - 1e-6);
+        prev = r2(prev + (len - prev) / n); out.push(prev); continue;
+      }
       const best = opts.reduce((a, b) => (coverage(b) + (b - prev) / 25 > coverage(a) + (a - prev) / 25 ? b : a));
       out.push(best); prev = best;
     }

@@ -1718,7 +1718,7 @@ function sectionAA(k: Context): void {
     for (const room of rooms) {
       if (room.source.type === 'staircase') continue;
       const cen = project(room.x + room.w / 2, baseZ + 1700), span = room.w * s;
-      if (span > 50) label(c, room.source.name.replace(/\s*\(.*?\)\s*/g, '').trim().toUpperCase(), cen.x, cen.y, Math.min(14, span / 9), 'center');
+      if (span > 50) { const t = room.source.name.replace(/\s*\(.*?\)\s*/g, '').trim().toUpperCase(); let fs = Math.min(14, span / 9); while (fs > 8 && textWidth(c, t, fs) > span - 8) fs -= 0.5; const w = textWidth(c, t, fs); soft(w, fs + 2, [cen, { x: cen.x, y: cen.y - 22 }, { x: cen.x, y: cen.y + 22 }, { x: cen.x, y: cen.y - 44 }], (x, y) => label(c, t, x, y, fs, 'center'), true); }
     }
     // slab (cut, solid RCC) and beams under it at the grid
     hatchBox(c, { x: left, y: roofY, w: right - left, h: Math.max(4, slab * s) }, '#cfd3d0', 45, 6, PEN.cut);
@@ -1830,7 +1830,7 @@ function sectionBB(k: Context): void {
       if (o.source.type !== 'door') drawLine(c, (p0.x + p1.x) / 2, p0.y, (p0.x + p1.x) / 2, p1.y, PEN.thin, COLORS.dim);
       hatchBox(c, { x: p0.x - 1, y: p0.y - 150 * s, w: p1.x - p0.x + 2, h: 150 * s }, COLORS.concrete, 45, 5, PEN.thin);
     }
-    for (const r of rooms) { const cen = project(r.y + r.d / 2, baseZ + 1700), span = r.d * s; if (span > 50) label(c, r.source.name.replace(/\s*\(.*?\)\s*/g, '').trim().toUpperCase(), cen.x, cen.y, Math.min(14, span / 9), 'center'); }
+    for (const r of rooms) { const cen = project(r.y + r.d / 2, baseZ + 1700), span = r.d * s; if (span > 50) { const t = r.source.name.replace(/\s*\(.*?\)\s*/g, '').trim().toUpperCase(); let fs = Math.min(14, span / 9); while (fs > 8 && textWidth(c, t, fs) > span - 8) fs -= 0.5; const w = textWidth(c, t, fs); soft(w, fs + 2, [cen, { x: cen.x, y: cen.y - 22 }, { x: cen.x, y: cen.y + 22 }, { x: cen.x, y: cen.y - 44 }], (x, y) => label(c, t, x, y, fs, 'center'), true); } }
     hatchBox(c, { x: left, y: roofY, w: right - left, h: Math.max(4, slab * s) }, '#cfd3d0', 45, 6, PEN.cut);
     for (const gy of k.g.gridY) { const xx = clamp(project(gy, 0).x - 115 * s, left, right - 230 * s); hatchBox(c, { x: xx, y: roofY + slab * s, w: 230 * s, h: Math.max(0, beamD - slab) * s }, '#cfd3d0', 45, 6, PEN.medium); }
     levelMark(c, right + 70, baseY, `${story === 0 ? 'FFL GF' : `FFL F${story}`} ${fmtLvl(baseZ)}`);

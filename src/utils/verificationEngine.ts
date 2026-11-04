@@ -706,8 +706,15 @@ function validateArchitectural(ctx: Ctx, idGen: () => string): CategoryResult {
   // 5. Room dimensions meet NBC minimums
   const belowMinRooms: string[] = [];
   let severelyUndersizedRoom = false;
+  // NBC 2016 Part 3: one habitable room ≥ 9.5 m², other habitable rooms ≥ 7.5 m² — the same rule the planner checks.
+  // The main living hall and the master bedroom carry the 9.5 m² minimum; other bedrooms 7.5 m². A family lounge / TV
+  // area that opens onto the lobby is part of the circulation, not a separate room, so it is not area-checked.
+  const halls = allRooms.filter(r => r.type === 'hall');
+  const mainHall = halls.slice().sort((p, q) => q.width * q.depth - p.width * p.depth)[0];
   for (const r of allRooms) {
-    const min = NBC_MIN_AREA_SQM[r.type];
+    let min = NBC_MIN_AREA_SQM[r.type];
+    if (r.type === 'bedroom') min = 7.5;
+    if (r.type === 'hall' && r !== mainHall && (/lounge|tv/i.test(r.name) || (r.openTo?.length ?? 0) > 0)) min = undefined;
     if (min !== undefined) {
       const area = r.width * r.depth;
       if (area < min - 0.05) {
@@ -723,7 +730,7 @@ function validateArchitectural(ctx: Ctx, idGen: () => string): CategoryResult {
       severelyUndersizedRoom ? 'ERROR' : 'WARNING', 'Some rooms need more floor space',
       `These rooms may be too small under the preliminary NBC 2016 area check: ${belowMinRooms.join('; ')}. Local rules may differ; ask a licensed architect to confirm.`, 
       'Floor Plan', 'Room Area (NBC minimum)',
-      'bedroom/hall >= 9.5 sqm, kitchen >= 5.0 sqm, toilet >= 1.8 sqm, dining >= 7.5 sqm',
+      'master bedroom / main hall >= 9.5 sqm, other bedrooms >= 7.5 sqm, kitchen >= 5.0 sqm, toilet >= 1.8 sqm, dining >= 7.5 sqm',
       belowMinRooms.join('; '),
       'Resize the affected rooms to meet NBC minimum area requirements.',
     );
