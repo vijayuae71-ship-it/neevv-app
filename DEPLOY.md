@@ -28,8 +28,10 @@ nano .env.local
 ### Step 2: Set Your API Key
 
 ```bash
-# Set the Gemini API key as environment variable
-export GEMINI_API_KEY="AIzaSyDkBoNsiNMWeBdriH3_UqTyJovZs6vMdDg"
+# Set the Gemini API key as an environment variable for this shell only.
+# Never commit a real key. Get it from Secret Manager, e.g.:
+#   export GEMINI_API_KEY="$(gcloud secrets versions access latest --secret=gemini-api-key)"
+export GEMINI_API_KEY="<your-gemini-api-key>"
 ```
 
 ### Step 3: Deploy!
