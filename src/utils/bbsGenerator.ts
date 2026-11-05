@@ -22,6 +22,7 @@ export interface BeamDesignResult {
   tensionBars: string; tensionAreaMm2: number; compressionBars: string; compressionAreaMm2: number;
   stirrupDiaMm: number; stirrupSpacingNearSupportMm: number; stirrupSpacingMidSpanMm: number;
   deflectionCheck: boolean; ptProvided: number; isDoublyReinforced: boolean;
+  topBars?: string; supportTopBars?: string; mark?: string;
 }
 export interface ColumnDesignResult {
   id: string; floor: number; x: number; y: number; widthMm: number; depthMm: number;
@@ -54,8 +55,9 @@ export interface StructuralDesignResult_Input {
   };
   slabs: SlabDesignResult[];
   beams: BeamDesignResult[];
-  columns: ColumnDesignResult[];
+  columns: (ColumnDesignResult & { mark?: string })[];
   foundations: FoundationDesignResult[];
+  foundationSystem?: { type: string; pads: { mark: string; type: string; columnIds: string[]; lengthMm: number; widthMm: number; depthMm: number; barDiaMm: number; barSpacingMm: number; topMesh: boolean }[] };
   staircase: StaircaseDesignResult;
   summary: {
     totalConcreteM3: number; totalSteelKg: number; totalSteelMT: number;
@@ -271,7 +273,7 @@ function scheduleBeams(result: StructuralDesignResult_Input, collector: Schedule
   result.beams.forEach((beam, index) => {
     const memberIndex = index + 1;
     const memberId = `B${memberIndex}`;
-    const description = `${floorLabel(beam.floor)} Beam ${memberIndex} (${beam.id})`;
+    const description = `${floorLabel(beam.floor)} Beam ${beam.mark ?? memberIndex} (${beam.id})`;
     const span = beam.spanM * 1000;
     for (const bar of parseBars(beam.tensionBars)) {
       const ld = developmentLength(bar.diaMm, result.parameters.steelGrade, result.parameters.concreteGrade);
@@ -285,6 +287,22 @@ function scheduleBeams(result: StructuralDesignResult_Input, collector: Schedule
         collector.add({ memberType: 'beam', memberId, memberDescription: description, memberIndex, barType: 'compression', barDiaMm: bar.diaMm,
           barShape: 'Straight', barLengthMm: span + 2 * ld, numberOfBars: bar.count, floor: beam.floor,
           remarks: 'Top compression / negative-moment reinforcement', });
+      }
+    }
+    if (!beam.isDoublyReinforced && beam.topBars) {
+      for (const bar of parseBars(beam.topBars)) {
+        const ld = developmentLength(bar.diaMm, result.parameters.steelGrade, result.parameters.concreteGrade);
+        collector.add({ memberType: 'beam', memberId, memberDescription: description, memberIndex, barType: 'tension_top', barDiaMm: bar.diaMm,
+          barShape: 'Straight', barLengthMm: span + 2 * ld, numberOfBars: bar.count, floor: beam.floor,
+          remarks: 'Continuous top (hanger) bars', });
+      }
+    }
+    if (beam.supportTopBars && beam.supportTopBars !== 'Nil') {
+      for (const bar of parseBars(beam.supportTopBars)) {
+        const ld = developmentLength(bar.diaMm, result.parameters.steelGrade, result.parameters.concreteGrade);
+        collector.add({ memberType: 'beam', memberId, memberDescription: description, memberIndex, barType: 'tension_top', barDiaMm: bar.diaMm,
+          barShape: 'Straight', barLengthMm: 0.3 * span + ld, numberOfBars: bar.count * 2, floor: beam.floor,
+          remarks: 'Extra top bars over both supports; 0.3L into the span + Ld into the support', });
       }
     }
     const stirrupDia = finitePositive(beam.stirrupDiaMm, 8);
@@ -323,6 +341,31 @@ function scheduleColumns(result: StructuralDesignResult_Input, collector: Schedu
 }
 
 function scheduleFoundations(result: StructuralDesignResult_Input, collector: ScheduleCollector): void {
+  const pads = result.foundationSystem?.pads ?? [];
+  if (pads.length) {
+    // The adopted foundation (isolated / combined / raft): bottom mesh both ways, top mesh for combined and raft, column starters.
+    pads.forEach((pad, index) => {
+      const memberIndex = index + 1, memberId = pad.mark;
+      const description = `${pad.type === 'raft' ? 'Raft' : pad.type === 'combined' ? 'Combined footing' : 'Footing'} ${pad.mark} under ${pad.columnIds.length} column(s)`;
+      const hook = 9 * pad.barDiaMm, sp = Math.max(75, pad.barSpacingMm);
+      const nAlongL = Math.floor((pad.widthMm - 2 * FOOTING_COVER) / sp) + 1, nAlongB = Math.floor((pad.lengthMm - 2 * FOOTING_COVER) / sp) + 1;
+      for (const face of pad.topMesh ? ['bottom', 'top'] : ['bottom']) {
+        collector.add({ memberType: 'foundation', memberId, memberDescription: description, memberIndex, barType: face === 'top' ? 'tension_top' : 'main', barDiaMm: pad.barDiaMm,
+          barShape: 'L-bend', barLengthMm: pad.lengthMm - 2 * FOOTING_COVER + 2 * hook, numberOfBars: nAlongL, floor: 0, remarks: `${face} bars, long direction; 9d end bends` });
+        collector.add({ memberType: 'foundation', memberId, memberDescription: description, memberIndex, barType: face === 'top' ? 'tension_top' : 'distribution', barDiaMm: pad.barDiaMm,
+          barShape: 'L-bend', barLengthMm: pad.widthMm - 2 * FOOTING_COVER + 2 * hook, numberOfBars: nAlongB, floor: 0, remarks: `${face} bars, short direction; 9d end bends` });
+      }
+      for (const colId of pad.columnIds) {
+        const col = result.columns.find((c) => c.id === colId);
+        for (const bar of col ? parseBars(col.mainBars) : [{ count: 4, diaMm: 12 }]) {
+          collector.add({ memberType: 'foundation', memberId, memberDescription: description, memberIndex, barType: 'main', barDiaMm: bar.diaMm,
+            barShape: 'L-bend', barLengthMm: pad.depthMm + 50 * bar.diaMm + 12 * bar.diaMm, numberOfBars: bar.count, floor: 0,
+            remarks: `Column ${col?.mark ?? colId} starters: through the ${pad.type === 'raft' ? 'raft' : 'footing'}, 50d lap, L-foot on the bottom mesh` });
+        }
+      }
+    });
+    return;
+  }
   result.foundations.forEach((foundation, index) => {
     const memberIndex = index + 1;
     const memberId = `F${memberIndex}`;

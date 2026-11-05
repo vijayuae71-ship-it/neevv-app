@@ -24,7 +24,7 @@
  */
 
 import { Layout, ProjectRequirements, BOQ, Room, Column, FloorLayout, DoorScheduleItem, WindowScheduleItem } from '../types';
-import { PARAPET_HEIGHT_MM, ELECTRICAL_POINT_MAP, electricalPoints as sharedElectricalPoints, plumbingPoints as sharedPlumbingPoints, isNiche, bedroomOpeningIds } from './quantityRules';
+import { MAX_COLUMN_SPAN_M, PARAPET_HEIGHT_MM, ELECTRICAL_POINT_MAP, electricalPoints as sharedElectricalPoints, plumbingPoints as sharedPlumbingPoints, isNiche, bedroomOpeningIds } from './quantityRules';
 import { computeTakeoff } from './quantityTakeoff';
 
 /* =============================================================================
@@ -108,7 +108,8 @@ export interface VerificationReport {
 const NON_FLOOR_SPECIFIC_TYPES = [
   'doorWindow', 'excavation', 'foundation', 'footingDetail', 'rccDetail',
   'reinforcement', 'barBending', 'section', 'elevation', 'staircase',
-  'waterTank', 'waterproofing', 'stp',
+  'waterTank', 'waterproofing', 'stp', 'sitePlan', 'terracePlan', 'sideElevation',
+  'coverSheet', 'sectionBB', 'wetAreas', 'typicalDetails',
 ] as const;
 
 /**
@@ -118,7 +119,7 @@ const NON_FLOOR_SPECIFIC_TYPES = [
  */
 const FLOOR_SPECIFIC_TYPES = ['workingPlan', 'electrical', 'plumbing', 'tiling', 'brickwork'] as const;
 
-/** All 18 known base drawing type names (matches OVERLAY_DRAWING_TYPES exactly). */
+/** All 25 known base drawing type names (matches OVERLAY_DRAWING_TYPES exactly). */
 const ALL_DRAWING_BASE_TYPES: string[] = [...NON_FLOOR_SPECIFIC_TYPES, ...FLOOR_SPECIFIC_TYPES];
 
 /**
@@ -409,10 +410,10 @@ function validateLockedDesign(ctx: Ctx, idGen: () => string): CategoryResult {
   // 2. Building footprint matches post-setback calculation (within 0.1m)
   const expectedBuildableWidth = layout.plotWidthM - (layout.setbacks.left + layout.setbacks.right);
   const expectedBuildableDepth = layout.plotDepthM - (layout.setbacks.front + layout.setbacks.rear);
-  if (
-    Math.abs(expectedBuildableWidth - layout.buildableWidthM) <= 0.1 &&
-    Math.abs(expectedBuildableDepth - layout.buildableDepthM) <= 0.1
-  ) {
+  // the building must sit inside the setback envelope; it may be smaller where coverage caps it (offices)
+  const coverageCapped = typeof layout.nbcMaxCoveragePct === 'number';
+  const fitsEnvelope = (want: number, got: number) => (coverageCapped ? got <= want + 0.1 : Math.abs(want - got) <= 0.1);
+  if (fitsEnvelope(expectedBuildableWidth, layout.buildableWidthM) && fitsEnvelope(expectedBuildableDepth, layout.buildableDepthM)) {
     b.pass();
   } else {
     b.fail(
@@ -442,17 +443,18 @@ function validateLockedDesign(ctx: Ctx, idGen: () => string): CategoryResult {
   // 4. FSI compliance: total built-up <= plot area x 1.0
   const plotAreaSqM = layout.plotWidthM * layout.plotDepthM;
   const totalBuiltUpSqM = layout.totalBuiltUpSqM ?? layout.builtUpAreaSqM;
-  const maxAllowedSqM = plotAreaSqM * 1.0;
+  const fsi = typeof layout.fsiValue === 'number' && layout.fsiValue > 0 ? layout.fsiValue : 1.0;
+  const maxAllowedSqM = plotAreaSqM * fsi;
   if (totalBuiltUpSqM <= maxAllowedSqM * 1.01) {
     b.pass();
   } else {
     b.fail(
       'ERROR', 'FSI exceeded',
-      'Total built-up area exceeds the permissible Floor Space Index of 1.0 for the plot area.',
+      `Total built-up area exceeds the permissible Floor Space Index of ${fsi} for the plot area.`,
       'Locked Design Data', 'Floor Space Index (FSI)',
       `<= ${maxAllowedSqM.toFixed(2)} sqm`,
       `${totalBuiltUpSqM.toFixed(2)} sqm`,
-      'Reduce built-up area per floor or floor count to comply with FSI 1.0.',
+      `Reduce built-up area per floor or floor count to comply with FSI ${fsi}.`,
     );
   }
 
@@ -465,13 +467,16 @@ function validateLockedDesign(ctx: Ctx, idGen: () => string): CategoryResult {
   if (setbackIssues.length === 0) {
     b.pass();
   } else {
+    // the customer's own drawing is reported, not blocked: their sanction may allow it
+    const uploaded = layout.strategy === 'User Uploaded Drawing';
     b.fail(
-      'ERROR', 'Setbacks below NBC minimums',
-      'One or more setbacks are below the National Building Code minimums (front/rear 1.5m, sides 1.0m).',
+      uploaded ? 'WARNING' : 'ERROR', 'Setbacks below NBC minimums',
+      uploaded ? 'The setbacks on your drawing are below the National Building Code minimums (front/rear 1.5m, sides 1.0m). Check them against your sanctioned plan / local bylaws.'
+        : 'One or more setbacks are below the National Building Code minimums (front/rear 1.5m, sides 1.0m).',
       'Locked Design Data', 'Setbacks',
       'front/rear >= 1.5m, left/right >= 1.0m',
       setbackIssues.join('; '),
-      'Increase the deficient setback(s) to meet NBC minimums.',
+      uploaded ? 'Confirm the sanctioned setbacks with your local authority before construction.' : 'Increase the deficient setback(s) to meet NBC minimums.',
     );
   }
 
@@ -705,8 +710,15 @@ function validateArchitectural(ctx: Ctx, idGen: () => string): CategoryResult {
   // 5. Room dimensions meet NBC minimums
   const belowMinRooms: string[] = [];
   let severelyUndersizedRoom = false;
+  // NBC 2016 Part 3: one habitable room ≥ 9.5 m², other habitable rooms ≥ 7.5 m² — the same rule the planner checks.
+  // The main living hall and the master bedroom carry the 9.5 m² minimum; other bedrooms 7.5 m². A family lounge / TV
+  // area that opens onto the lobby is part of the circulation, not a separate room, so it is not area-checked.
+  const halls = allRooms.filter(r => r.type === 'hall');
+  const mainHall = halls.slice().sort((p, q) => q.width * q.depth - p.width * p.depth)[0];
   for (const r of allRooms) {
-    const min = NBC_MIN_AREA_SQM[r.type];
+    let min = NBC_MIN_AREA_SQM[r.type];
+    if (r.type === 'bedroom') min = 7.5;
+    if (r.type === 'hall' && r !== mainHall && (/lounge|tv/i.test(r.name) || (r.openTo?.length ?? 0) > 0)) min = undefined;
     if (min !== undefined) {
       const area = r.width * r.depth;
       if (area < min - 0.05) {
@@ -722,7 +734,7 @@ function validateArchitectural(ctx: Ctx, idGen: () => string): CategoryResult {
       severelyUndersizedRoom ? 'ERROR' : 'WARNING', 'Some rooms need more floor space',
       `These rooms may be too small under the preliminary NBC 2016 area check: ${belowMinRooms.join('; ')}. Local rules may differ; ask a licensed architect to confirm.`, 
       'Floor Plan', 'Room Area (NBC minimum)',
-      'bedroom/hall >= 9.5 sqm, kitchen >= 5.0 sqm, toilet >= 1.8 sqm, dining >= 7.5 sqm',
+      'master bedroom / main hall >= 9.5 sqm, other bedrooms >= 7.5 sqm, kitchen >= 5.0 sqm, toilet >= 1.8 sqm, dining >= 7.5 sqm',
       belowMinRooms.join('; '),
       'Resize the affected rooms to meet NBC minimum area requirements.',
     );
@@ -906,14 +918,14 @@ function validateStructural(ctx: Ctx, idGen: () => string): CategoryResult {
     );
   }
 
-  // 3 & 4. Column spacing (<=5.0m) / beam span (>4.5m) heuristic on ground floor grid
+  // 3 & 4. Column spacing (<= MAX_COLUMN_SPAN_M, shared with the planner and the engine) / beam span (>4.5m) heuristic
   if (groundColumns.length >= 2) {
     const xs = uniqueSorted(groundColumns.map(c => c.x));
     const ys = uniqueSorted(groundColumns.map(c => c.y));
     const maxGap = Math.max(maxConsecutiveGap(xs), maxConsecutiveGap(ys));
     if (maxGap <= 4.5) {
       b.pass();
-    } else if (maxGap <= 5.0) {
+    } else if (maxGap <= MAX_COLUMN_SPAN_M + 1e-6) {
       b.fail(
         'WARNING', 'Beam span exceeds 4.5m',
         `The largest column grid gap is ${maxGap.toFixed(2)}m, exceeding the recommended 4.5m beam span. This will require a deeper beam section. Requires structural engineer review.`,
@@ -924,10 +936,10 @@ function validateStructural(ctx: Ctx, idGen: () => string): CategoryResult {
       );
     } else {
       b.fail(
-        'ERROR', 'Column spacing exceeds 5.0m',
-        `The largest column grid gap is ${maxGap.toFixed(2)}m, exceeding the maximum recommended span of 5.0m without intermediate support. Requires structural engineer review.`,
+        'ERROR', `Column spacing exceeds ${MAX_COLUMN_SPAN_M}m`,
+        `The largest column grid gap is ${maxGap.toFixed(2)}m, exceeding the maximum span of ${MAX_COLUMN_SPAN_M}m without intermediate support. Requires structural engineer review.`,
         'Structural Drawing', 'Column Spacing',
-        '<= 5.0m',
+        `<= ${MAX_COLUMN_SPAN_M}m`,
         `${maxGap.toFixed(2)}m`,
         'Add an intermediate column to break up the long span.',
       );

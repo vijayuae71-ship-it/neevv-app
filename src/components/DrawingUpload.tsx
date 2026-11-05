@@ -2,28 +2,12 @@
 
 import React, { useState, useRef, useCallback } from 'react';
 import { Upload, FileImage, Loader2, CheckCircle, AlertCircle, ArrowLeft, ArrowRight, Edit3, X } from 'lucide-react';
-import { ProjectRequirements, Layout, FloorLayout, Room, Column, Facing, FloorProgram } from '@/types';
+import { ProjectRequirements, Layout } from '@/types';
+import { uploadedPlanToLayout, planIssues, ROOM_TYPES, type ExtractedPlan, type ExtractedRoom as ExtractedPlanRoom } from '@/utils/uploadedPlan';
 import { authFetch } from '@/utils/authFetch';
 
-interface ExtractedRoom {
-  name: string;
-  type: string;
-  widthFt: number;
-  depthFt: number;
-}
-
-interface ExtractedFloor {
-  floorLabel: string;
-  rooms: ExtractedRoom[];
-}
-
-interface ExtractedData {
-  plotWidthFt: number;
-  plotDepthFt: number;
-  floors: ExtractedFloor[];
-  facing: string;
-  notes: string[];
-}
+type ExtractedRoom = ExtractedPlanRoom;
+type ExtractedData = ExtractedPlan;
 
 interface DrawingUploadProps {
   onConversionComplete: (layout: Layout, requirements: ProjectRequirements) => void;
@@ -48,8 +32,13 @@ export default function DrawingUpload({ onConversionComplete, onBack }: DrawingU
       return;
     }
 
-    if (file.size > 20 * 1024 * 1024) {
-      setErrorMsg('File size must be under 20MB');
+    if (!['image/jpeg', 'image/png', 'image/webp', 'application/pdf'].includes(file.type)) {
+      setErrorMsg('Please upload a JPG, PNG, WebP or PDF (iPhone photos: share as JPG).');
+      setUploadStep('error');
+      return;
+    }
+    if (file.size > (file.type === 'application/pdf' ? 20 : 5) * 1024 * 1024) {
+      setErrorMsg(file.type === 'application/pdf' ? 'PDF must be under 20 MB' : 'Image must be under 5 MB — please resize it');
       setUploadStep('error');
       return;
     }
@@ -77,21 +66,13 @@ export default function DrawingUpload({ onConversionComplete, onBack }: DrawingU
         throw new Error(data.error || 'Analysis failed');
       }
 
-      // Round plot dimensions to clean values (32.999 → 33)
+      const e = data.extracted;
       const cleaned: ExtractedData = {
-        ...data.extracted,
-        plotWidthFt: Math.round(data.extracted.plotWidthFt * 10) / 10,
-        plotDepthFt: Math.round(data.extracted.plotDepthFt * 10) / 10,
-        floors: (data.extracted.floors || []).map((f: ExtractedFloor) => ({
-          ...f,
-          rooms: (f.rooms || []).map((r: ExtractedRoom) => ({
-            ...r,
-            widthFt: Math.round(r.widthFt * 100) / 100,
-            depthFt: Math.round(r.depthFt * 100) / 100,
-          })),
-        })),
+        plotWidthFt: e.plotWidthFt, plotDepthFt: e.plotDepthFt, facing: e.facing,
+        setbacksFt: e.setbacksFt ?? { front: 5, rear: 5, left: 3.3, right: 3.3 },
+        floors: (e.floors || []).map((f: any) => ({ floorLabel: f.floorLabel, rooms: f.rooms || [], openings: f.openings || [] })),
+        confidence: e.confidence ?? 'medium', notes: e.notes ?? [],
       };
-
       setExtracted(cleaned);
       if (data.imageBase64 && !previewUrl) {
         setPreviewUrl(data.imageBase64);
@@ -148,7 +129,7 @@ export default function DrawingUpload({ onConversionComplete, onBack }: DrawingU
       if (fIdx !== fi) return f;
       return {
         ...f,
-        rooms: [...f.rooms, { name: 'New Room', type: 'bedroom', widthFt: 12, depthFt: 12 }],
+        rooms: [...f.rooms, { name: `Room ${f.rooms.length + 1}`, type: 'bedroom', xFt: 0, yFt: Math.max(0, ...f.rooms.map(r => r.yFt + r.depthFt)), widthFt: 12, depthFt: 12 }],
       };
     });
     setExtracted(updated);
@@ -157,137 +138,15 @@ export default function DrawingUpload({ onConversionComplete, onBack }: DrawingU
   /** Format area with clean rounding */
   const fmtArea = (n: number) => Math.round(n).toLocaleString('en-IN');
 
+  const [city, setCity] = useState('');
   const handleProceed = () => {
     if (!extracted) return;
-
-    const facing = (['North', 'South', 'East', 'West'].includes(extracted.facing)
-      ? extracted.facing : 'North') as Facing;
-
-    const numFloors = extracted.floors.length;
-
-    // Build ProjectRequirements from extracted data
-    const floorPrograms: FloorProgram[] = extracted.floors.map((f) => {
-      const bedrooms = f.rooms.filter(r => r.type === 'bedroom' || r.type === 'master_bedroom').length;
-      const halls = f.rooms.filter(r => r.type === 'hall').length;
-      const kitchens = f.rooms.filter(r => r.type === 'kitchen').length;
-      const hasDining = f.rooms.some(r => r.type === 'dining');
-      const hasPuja = f.rooms.some(r => r.type === 'puja');
-      return {
-        floorLabel: f.floorLabel,
-        bedrooms: bedrooms || 1,
-        halls: halls || 1,
-        kitchens: kitchens || 1,
-        hasDining,
-        hasPuja,
-      };
-    });
-
-    const requirements: ProjectRequirements = {
-      city: 'Not specified',
-      state: 'Not specified',
-      plotWidthFt: extracted.plotWidthFt,
-      plotDepthFt: extracted.plotDepthFt,
-      facing,
-      vastuCompliance: true,
-      parkingType: extracted.floors[0]?.rooms.some(r => r.type === 'parking') ? 'Stilt' : 'None',
-      budget: 'standard',
-      architecturalStyle: 'modern_minimalist',
-      floors: floorPrograms,
-    };
-
-    // NBC-compliant setbacks (single source: nbcCompliance.ts)
-    const FT_TO_M = 0.3048;
-    const plotWidthM = extracted.plotWidthFt * FT_TO_M;
-    const plotDepthM = extracted.plotDepthFt * FT_TO_M;
-    const setbacks = { front: 1.5, rear: 1.5, left: 1.0, right: 1.0 };
-    const buildableWidthM = plotWidthM - setbacks.left - setbacks.right;
-    const buildableDepthM = plotDepthM - setbacks.front - setbacks.rear;
-
-    const floorLayouts: FloorLayout[] = extracted.floors.map((f, floorIdx) => {
-      let currentX = 0;
-      let currentY = 0;
-      let rowMaxDepth = 0;
-
-      const rooms: Room[] = f.rooms.map((r, idx) => {
-        const widthM = r.widthFt * FT_TO_M;
-        const depthM = r.depthFt * FT_TO_M;
-
-        // Simple left-to-right, top-to-bottom placement
-        if (currentX + widthM > buildableWidthM) {
-          currentX = 0;
-          currentY += rowMaxDepth;
-          rowMaxDepth = 0;
-        }
-
-        const room: Room = {
-          id: `${floorIdx}-${idx}`,
-          name: r.name,
-          type: r.type as Room['type'],
-          x: currentX,
-          y: currentY,
-          width: widthM,
-          depth: depthM,
-          floor: floorIdx,
-        };
-
-        currentX += widthM;
-        if (depthM > rowMaxDepth) rowMaxDepth = depthM;
-
-        return room;
-      });
-
-      // Generate columns at ~4m spacing
-      const columns: Column[] = [];
-      const colSpacingX = Math.min(buildableWidthM / 2, 4.0);
-      const colSpacingY = Math.min(buildableDepthM / 2, 4.0);
-      for (let cx = 0; cx <= buildableWidthM; cx += colSpacingX) {
-        for (let cy = 0; cy <= buildableDepthM; cy += colSpacingY) {
-          columns.push({ x: cx, y: cy, widthMM: 230, depthMM: 300 });
-        }
-      }
-
-      return {
-        floor: floorIdx,
-        floorLabel: f.floorLabel,
-        rooms,
-        columns,
-      };
-    });
-
-    // builtUpAreaSqM = footprint × numFloors (matches BOQ calculator expectation)
-    const footprintSqM = buildableWidthM * buildableDepthM;
-    const builtUpAreaSqM = footprintSqM * numFloors;
-    const totalBuiltUpSqFt = builtUpAreaSqM * 10.764;
-
-    const layout: Layout = {
-      id: 'uploaded-plan',
-      name: 'Uploaded Plan',
-      strategy: 'User Uploaded Drawing',
-      description: `Plan extracted from uploaded drawing — ${extracted.plotWidthFt}′×${extracted.plotDepthFt}′ plot`,
-      floors: floorLayouts,
-      vastuScore: 70,
-      vastuDetails: [],
-      nbcCompliant: true,
-      nbcIssues: [],
-      builtUpAreaSqM,
-      builtUpAreaSqFt: totalBuiltUpSqFt,
-      totalBuiltUpSqFt,
-      setbacks,
-      plotWidthM,
-      plotDepthM,
-      buildableWidthM,
-      buildableDepthM,
-      buildingWidthMm: Math.round(buildableWidthM * 1000),
-      buildingDepthMm: Math.round(buildableDepthM * 1000),
-    };
-
+    const { layout, requirements } = uploadedPlanToLayout(extracted, city.trim() || 'Not specified');
     onConversionComplete(layout, requirements);
   };
+  const issues = extracted ? planIssues(extracted) : [];
 
-  const roomTypes = [
-    'bedroom', 'master_bedroom', 'hall', 'kitchen', 'toilet', 'dining',
-    'puja', 'staircase', 'parking', 'balcony', 'passage', 'entrance', 'store', 'utility',
-  ];
+  const roomTypes = [...ROOM_TYPES];
 
   /* ===================== RENDER ===================== */
 
@@ -334,7 +193,7 @@ export default function DrawingUpload({ onConversionComplete, onBack }: DrawingU
                 <span className="px-3 py-1 bg-gray-100 rounded-full text-sm text-gray-600">📄 Scanned PDF</span>
                 <span className="px-3 py-1 bg-gray-100 rounded-full text-sm text-gray-600">🖼️ CAD screenshot</span>
               </div>
-              <p className="text-xs text-gray-400 mt-2">JPG, PNG, PDF — Max 20MB</p>
+              <p className="text-xs text-gray-400 mt-2">JPG, PNG, WebP up to 5 MB · PDF up to 20 MB</p>
             </div>
           </div>
         )}
@@ -429,6 +288,48 @@ export default function DrawingUpload({ onConversionComplete, onBack }: DrawingU
               </div>
             </div>
 
+            {/* Confidence, issues, city */}
+            <div className="bg-white rounded-2xl shadow-sm p-4 space-y-3">
+              <p className={`text-sm font-medium ${extracted.confidence === 'high' ? 'text-green-700' : extracted.confidence === 'medium' ? 'text-amber-700' : 'text-red-700'}`}>
+                Reading confidence: {extracted.confidence} — {extracted.confidence === 'high' ? 'sizes were written on the drawing.' : 'some sizes were scaled from the drawing; check them against your plan.'}
+              </p>
+              {issues.length > 0 && <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-sm text-red-800 space-y-1">
+                <p className="font-semibold">Please fix before continuing:</p>{issues.map((t, i) => <p key={i}>• {t}</p>)}
+              </div>}
+              <label className="block text-sm text-gray-700">City (for soil, rates and loads)
+                <input value={city} onChange={(e) => setCity(e.target.value)} placeholder="e.g. Bengaluru" className="mt-1 w-full max-w-xs px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+              </label>
+            </div>
+
+            {/* To-scale preview of what was read (road at the top) */}
+            {extracted.floors.map((floor, fi) => {
+              const W = Math.max(1, ...floor.rooms.map(r => r.xFt + r.widthFt)), D = Math.max(1, ...floor.rooms.map(r => r.yFt + r.depthFt));
+              const k = Math.min(600 / W, 420 / D);
+              return <div key={`p${fi}`} className="bg-white rounded-2xl shadow-sm p-4">
+                <h3 className="font-semibold text-gray-700 mb-2">{floor.floorLabel} — as read (road at the top)</h3>
+                <svg viewBox={`-10 -24 ${W * k + 20} ${D * k + 34}`} className="w-full max-h-[460px]">
+                  <text x={(W * k) / 2} y={-10} textAnchor="middle" fontSize="11" fill="#6b7280">ROAD / FRONT</text>
+                  {floor.rooms.map((r, ri) => {
+                    const bad = issues.some(t => t.startsWith(floor.floorLabel) && t.includes(r.name));
+                    return <g key={ri}>
+                      <rect x={r.xFt * k} y={r.yFt * k} width={r.widthFt * k} height={r.depthFt * k} fill={bad ? '#fee2e2' : r.type === 'toilet' ? '#e0f2fe' : r.type === 'staircase' ? '#f3f4f6' : '#fffbeb'} stroke={bad ? '#dc2626' : '#374151'} strokeWidth={1.5} />
+                      <text x={(r.xFt + r.widthFt / 2) * k} y={(r.yFt + r.depthFt / 2) * k} textAnchor="middle" fontSize="10" fill="#111827">{r.name}</text>
+                      <text x={(r.xFt + r.widthFt / 2) * k} y={(r.yFt + r.depthFt / 2) * k + 12} textAnchor="middle" fontSize="9" fill="#6b7280">{r.widthFt}′×{r.depthFt}′</text>
+                    </g>;
+                  })}
+                  {floor.openings.map((o, oi) => {
+                    const r = floor.rooms.find(q => q.name.toLowerCase() === o.roomName.toLowerCase()); if (!r) return null;
+                    const hz = o.wall === 'front' || o.wall === 'rear', a = (hz ? r.xFt : r.yFt) + o.positionFt - o.widthFt / 2;
+                    const fixed = o.wall === 'front' ? r.yFt : o.wall === 'rear' ? r.yFt + r.depthFt : o.wall === 'left' ? r.xFt : r.xFt + r.widthFt;
+                    const col = o.type === 'door' ? '#b45309' : '#0284c7';
+                    return hz ? <line key={oi} x1={a * k} x2={(a + o.widthFt) * k} y1={fixed * k} y2={fixed * k} stroke={col} strokeWidth={4} />
+                      : <line key={oi} y1={a * k} y2={(a + o.widthFt) * k} x1={fixed * k} x2={fixed * k} stroke={col} strokeWidth={4} />;
+                  })}
+                </svg>
+                <p className="text-xs text-gray-500 mt-1">Brown: doors · Blue: windows. Positions are from the front-left corner; edit X/Y below if a room is misplaced.</p>
+              </div>;
+            })}
+
             {/* Editable Room List */}
             {extracted.floors.map((floor, fi) => (
               <div key={fi} className="bg-white rounded-2xl shadow-sm p-4">
@@ -439,6 +340,8 @@ export default function DrawingUpload({ onConversionComplete, onBack }: DrawingU
                       <tr className="text-left text-gray-500 border-b border-gray-200">
                         <th className="pb-2 pr-3">Room</th>
                         <th className="pb-2 pr-3">Type</th>
+                        <th className="pb-2 pr-3">X (ft)</th>
+                        <th className="pb-2 pr-3">Y (ft)</th>
                         <th className="pb-2 pr-3">Width (ft)</th>
                         <th className="pb-2 pr-3">Depth (ft)</th>
                         <th className="pb-2 pr-3">Area (sq.ft)</th>
@@ -471,6 +374,10 @@ export default function DrawingUpload({ onConversionComplete, onBack }: DrawingU
                               ))}
                             </select>
                           </td>
+                          {(['xFt', 'yFt'] as const).map(fld => <td key={fld} className="py-2 pr-3">
+                            <input type="number" value={room[fld]} onChange={(e) => updateRoom(fi, ri, fld, parseFloat(e.target.value) || 0)}
+                              className="w-16 px-2 py-1 border border-gray-300 rounded text-sm bg-white text-gray-900" min={0} step={0.5} />
+                          </td>)}
                           <td className="py-2 pr-3">
                             <input
                               type="number"
@@ -538,7 +445,8 @@ export default function DrawingUpload({ onConversionComplete, onBack }: DrawingU
               </button>
               <button
                 onClick={handleProceed}
-                className="flex-1 px-6 py-3 bg-amber-500 text-white rounded-xl font-semibold hover:bg-amber-600 transition-colors flex items-center justify-center gap-2"
+                disabled={issues.length > 0}
+                className="flex-1 px-6 py-3 bg-amber-500 text-white rounded-xl font-semibold hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
               >
                 Generate Plans &amp; Cost Estimation <ArrowRight size={18} />
               </button>

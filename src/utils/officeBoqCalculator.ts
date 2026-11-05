@@ -1,3 +1,4 @@
+import { officeServices } from './officeServices';
 import { Layout, OfficeRequirements, CustomRateSheet } from '../types';
 
 const SQM_TO_SQFT = 10.764;
@@ -133,14 +134,13 @@ export function calculateOfficeBOQ(
   const dataPoints = workstationCount + cabinCount * 2 + (conferenceSmall + conferenceLarge + boardRooms) * 3;
   const floorBoxes = Math.ceil(workstationCount / 6);
   const ledPanels = Math.ceil(totalAreaSqFt / 80);
-  const sprinklerHeads = Math.ceil(totalAreaSqFt / 150);
-  const smokeDetectors = Math.ceil(totalAreaSqFt / 500);
-  const fireExtinguishers = Math.max(numFloors * 4, Math.ceil(totalAreaSqFt / 1000) * 2);
-  const exitSignage = numFloors * 4;
+  // HVAC and fire counts come from the same room-by-room layout the M-201 / FS-101 sheets draw
+  const svc = officeServices(layout).totals;
+  const sprinklerHeads = svc.sprinklers;
+  const smokeDetectors = svc.smoke;
   const wifiAPs = Math.ceil(totalAreaSqFt / 1500);
-  const coolingLoadTR = +(totalAreaSqFt / 130).toFixed(1); // ~130 sqft/TR commercial rule of thumb
-  const vrvOutdoorUnits = Math.max(1, Math.ceil(coolingLoadTR / 9));
-  const cassetteIndoorUnits = Math.ceil(totalAreaSqFt / 250);
+  const vrvOutdoorUnits = svc.outdoorUnits;
+  const cassetteIndoorUnits = svc.cassettes;
 
   const lineItems: OfficeBOQLineItem[] = [];
   let sno = 0;
@@ -227,20 +227,24 @@ export function calculateOfficeBOQ(
   add('Structured Cabling Testing & Certification', 1, 'LS', 15000, 'data_network', 'Fluke test report per point');
 
   // ═══════════ H. HVAC ═══════════
-  add('VRV/VRF Outdoor Unit (8-10 TR)', vrvOutdoorUnits, 'nos', 350000, 'hvac', 'Heat pump, energy efficient');
-  add('Cassette Indoor Unit (4-way, ceiling)', cassetteIndoorUnits, 'nos', 45000, 'hvac', '1.5-2 TR per unit');
+  add(`VRV/VRF Outdoor Unit (10 TR) — total ${svc.tr} TR`, vrvOutdoorUnits, 'nos', 350000, 'hvac', 'Heat pump, on terrace (M-201)');
+  add('Cassette Indoor Unit (4-way, ceiling, 2 TR)', cassetteIndoorUnits, 'nos', 45000, 'hvac', 'Open office / meeting rooms (M-201)');
+  add('Wall-mounted VRV Indoor Unit (1-2 TR)', svc.wallUnits, 'nos', 32000, 'hvac', 'Cabins, small rooms, server room N+1 (M-201)');
   add('Ducting & Diffusers (Fresh Air / AHU)', totalAreaSqFt * 0.02, 'rmt', 1200, 'hvac', 'GI/PUF insulated duct');
   add('Copper Piping & Insulation (Refrigerant lines)', vrvOutdoorUnits * 25, 'rmt', 850, 'hvac', 'Copper with nitrile insulation');
-  add('Thermostat / Zone Controller', cassetteIndoorUnits, 'nos', 3500, 'hvac', 'Wall-mounted digital controller');
-  add('Fresh Air / Exhaust Fan System', numFloors, 'nos', 45000, 'hvac', 'Ducted exhaust for washrooms/pantry');
+  add('Thermostat / Zone Controller', cassetteIndoorUnits + svc.wallUnits, 'nos', 3500, 'hvac', 'One per indoor unit');
+  add('Exhaust Fans (toilets, pantry, electrical)', svc.exhaustFans, 'nos', 4500, 'hvac', 'As M-201');
 
   // ═══════════ I. FIRE SAFETY ═══════════
   add('Sprinkler Heads (ceiling mounted)', sprinklerHeads, 'nos', 800, 'fire_safety', 'Pendant type, as per NBC');
   add('Smoke Detectors', smokeDetectors, 'nos', 1200, 'fire_safety', 'Photoelectric, addressable');
-  add('Fire Extinguishers (ABC / CO2)', fireExtinguishers, 'nos', 2500, 'fire_safety', 'Wall mounted with signage');
-  add('Exit / Emergency Signage', exitSignage, 'nos', 1500, 'fire_safety', 'LED illuminated, battery backup');
-  add('Fire Alarm Panel & Hooters', numFloors, 'nos', 35000, 'fire_safety', 'Addressable main fire alarm panel');
-  add('Fire Hose Reel Cabinet', numFloors, 'nos', 18000, 'fire_safety', 'As per local fire code');
+  add('Fire Extinguisher ABC 6 kg', svc.extABC, 'nos', 2500, 'fire_safety', 'At exits and corridor ends (FS-101)');
+  add('Fire Extinguisher CO2 4.5 kg', svc.extCO2, 'nos', 4500, 'fire_safety', 'Server and electrical rooms (FS-101)');
+  add('Exit Signage (LED, battery backup)', svc.exitSigns, 'nos', 1500, 'fire_safety', 'Over exits and along corridors (FS-101)');
+  add('Emergency Lights', svc.emLights, 'nos', 2200, 'fire_safety', 'Corridors, 3 h backup (FS-101)');
+  add('Manual Call Points + Hooters', svc.mcp, 'set', 3500, 'fire_safety', 'At every exit (FS-101)');
+  add('Fire Alarm Panel (addressable)', numFloors, 'nos', 35000, 'fire_safety', 'One per floor zone');
+  add('Fire Hose Reel Cabinet', svc.hoseReels, 'nos', 18000, 'fire_safety', 'By the stair (FS-101)');
 
   // ═══════════ J. PLUMBING ═══════════
   add('CP Fixtures for Washrooms', washrooms, 'set', 25000, 'plumbing', 'EWC, wash basin, fittings per washroom');

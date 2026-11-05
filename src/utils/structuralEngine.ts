@@ -3,6 +3,8 @@
  * Units: geometry is metres unless stated otherwise; forces are kN and moments kN-m.
  * This module deliberately has no project imports so it can be integrated independently.
  */
+/** Maximum column-to-column span (m). Keep equal to MAX_COLUMN_SPAN_M in quantityRules.ts (planner + validation). */
+const MAX_COLUMN_SPAN_M = 5.1;
 
 export interface Room { id: string; name: string; type: string; x: number; y: number; width: number; depth: number; floor: number; }
 export interface Column { x: number; y: number; widthMM: number; depthMM: number; }
@@ -58,6 +60,14 @@ export interface BeamDesignResult {
   tensionBars: string; tensionAreaMm2: number; compressionBars: string; compressionAreaMm2: number;
   stirrupDiaMm: number; stirrupSpacingNearSupportMm: number; stirrupSpacingMidSpanMm: number;
   deflectionCheck: boolean; ptProvided: number; isDoublyReinforced: boolean;
+  /** Beam axis end points (m, same frame as columns). */
+  x1?: number; y1?: number; x2?: number; y2?: number;
+  /** Continuous top bars (hangers, or compression steel when doubly reinforced). */
+  topBars?: string;
+  /** Extra top bars over each support for the hogging moment wu·L²/10 (IS 456 Table 12), 'Nil' when hangers suffice. */
+  supportTopBars?: string; supportMomentKNm?: number;
+  /** Drawing mark, e.g. FB1 (first-floor slab beam) / RB2 (roof beam); identical designs share a mark. */
+  mark?: string;
 }
 
 export interface ColumnDesignResult {
@@ -65,6 +75,8 @@ export interface ColumnDesignResult {
   axialLoadKN: number; momentKNm: number; mainBars: string; mainBarAreaMm2: number;
   steelPercentage: number; tieDiaMm: number; tieSpacingMm: number; isShort: boolean;
   effectiveLength: number; slendernessRatio: number;
+  /** Column mark (C1, C2…) — one mark per plan position, the schedule gives its section per storey. */
+  mark?: string;
 }
 
 export interface FoundationDesignResult {
@@ -72,6 +84,22 @@ export interface FoundationDesignResult {
   effectiveDepthMm: number; soilPressureKNm2: number; sbc: number; barDiaMm: number; barSpacingMm: number;
   barsEachWay: number; pccSizeMm: number; pccThicknessMm: number; bearingPressureOK: boolean;
   oneWayShearOK: boolean; twoWayShearOK: boolean; developmentLengthOK: boolean;
+}
+
+/** One foundation element as built: an isolated pad, a combined footing under several columns, or the raft. */
+export interface FoundationPad {
+  mark: string; type: 'isolated' | 'combined' | 'raft'; columnIds: string[];
+  /** centre (m, same frame as columns) and plan size / thickness (mm) */
+  cx: number; cy: number; lengthMm: number; widthMm: number; depthMm: number;
+  barDiaMm: number; barSpacingMm: number; topMesh: boolean; pccThicknessMm: number; loadKN: number;
+}
+export interface FoundationSystem {
+  type: 'isolated' | 'combined' | 'raft';
+  /** why this system was chosen (shown on the drawings and in the BOQ basis) */
+  reason: string;
+  /** soil-specific caution (expansive / soft / marine clay / low SBC) — needs a geotechnical report */
+  soilNote?: string;
+  pads: FoundationPad[];
 }
 
 export interface StaircaseDesignResult {
@@ -109,6 +137,8 @@ export interface StructuralDesignResult {
   beams: BeamDesignResult[];
   columns: ColumnDesignResult[];
   foundations: FoundationDesignResult[];
+  /** The foundation actually adopted (isolated / combined / raft) — drawings, BBS and BOQ follow this. */
+  foundationSystem?: FoundationSystem;
   staircase: StaircaseDesignResult;
   summary: {
     totalConcreteM3: number; totalSteelKg: number; totalSteelMT: number;
@@ -248,7 +278,7 @@ function generateColumns(layout: Layout, floor: number, geometry: ReturnType<typ
   // rational 5 m grid only when no planner grid is present (legacy saved projects).
   const plannerGrid = layout.structuralGridM;
   const validLines = (v: unknown, len: number): v is number[] => Array.isArray(v) && v.length >= 2 && v.every((n) => typeof n === 'number' && Number.isFinite(n))
-    && v.every((n, i, arr) => i === 0 || (n - arr[i - 1] > 0.5 && n - arr[i - 1] <= 5 + EPS)) && Math.abs(v[0]) < EPS && Math.abs(v[v.length - 1] - len) < 0.06;
+    && v.every((n, i, arr) => i === 0 || (n - arr[i - 1] > 0.5 && n - arr[i - 1] <= MAX_COLUMN_SPAN_M + EPS)) && Math.abs(v[0]) < EPS && Math.abs(v[v.length - 1] - len) < 0.06;
   const usePlanner = !!plannerGrid && validLines(plannerGrid.xs, geometry.width) && validLines(plannerGrid.ys, geometry.depth);
   const xs = usePlanner ? plannerGrid!.xs.map((x) => geometry.originX + x) : gridCoordinates(geometry.width, geometry.originX);
   const ys = usePlanner ? plannerGrid!.ys.map((y) => geometry.originY + y) : gridCoordinates(geometry.depth, geometry.originY);
@@ -272,7 +302,7 @@ function makeBeamGrid(columns: Point[], floor: number, panels: Panel[], geometry
   const seen = new Set<string>();
   const lines = wallLines(panels, geometry);
   const add = (a: Point, b: Point, tributaryWidth: number, wallThicknessM: number): void => {
-    if (distance(a, b) < 0.75 || distance(a, b) > 5.05) return;
+    if (distance(a, b) < 0.75 || distance(a, b) > MAX_COLUMN_SPAN_M + 0.05) return; // planner wall-line grid: bays up to MAX_COLUMN_SPAN_M
     const key = keyOf(a) < keyOf(b) ? `${keyOf(a)}|${keyOf(b)}` : `${keyOf(b)}|${keyOf(a)}`;
     if (seen.has(key)) return;
     seen.add(key);
@@ -412,6 +442,15 @@ function designBeam(line: BeamLine, materialsUsed: MaterialGrades, slabLoad: num
   const calculatedSpacing = vus > 0 ? 0.87 * materialsUsed.fy * asv * d / vus : 300;
   const near = Math.max(75, Math.min(300, roundDown(Math.min(calculatedSpacing, 0.75 * d), 25)));
   const mid = Math.max(100, Math.min(300, roundDown(Math.min(300, 0.75 * d), 25)));
+  // Hogging at the supports of a continuous beam (IS 456 Table 12: wu·L²/10). Two continuous 12 mm
+  // hangers (or the compression steel) run through; extra top bars over each support make up the rest.
+  const supportMoment = wu * span * span / 10;
+  const topRequired = Math.max(minAst, steelAreaForMoment(Math.min(supportMoment, muLim), width, d, materialsUsed.fck, materialsUsed.fy));
+  const hangerDia = compressionDia || 12, hangerCount = compressionCount || 2;
+  const hangerArea = hangerCount * barArea(hangerDia);
+  const extraNeed = Math.max(0, topRequired - hangerArea);
+  const extraDia = extraNeed > 400 ? 16 : 12;
+  const extraCount = extraNeed > 1 ? Math.max(2, Math.ceil(extraNeed / barArea(extraDia))) : 0;
   return {
     id: line.id, floor: line.floor, spanM: span, widthMm: width, depthMm: depth, effectiveDepthMm: d,
     loadKNm: serviceLoad, maxMomentKNm: moment, maxShearKN: shear,
@@ -419,7 +458,26 @@ function designBeam(line: BeamLine, materialsUsed: MaterialGrades, slabLoad: num
     compressionBars: compressionCount ? fmtBars(compressionCount, compressionDia) : 'Nil', compressionAreaMm2: compressionProvided,
     stirrupDiaMm: stirrupDia, stirrupSpacingNearSupportMm: near, stirrupSpacingMidSpanMm: mid,
     deflectionCheck: depth >= span * 1000 / 15, ptProvided: pt, isDoublyReinforced: doubly,
+    x1: line.a.x, y1: line.a.y, x2: line.b.x, y2: line.b.y,
+    topBars: fmtBars(hangerCount, hangerDia), supportTopBars: extraCount ? fmtBars(extraCount, extraDia) : 'Nil', supportMomentKNm: supportMoment,
   };
+}
+/** Identical beam designs on a slab level share one mark: FB1… (floor slabs, numbered per level), RB1… (roof). */
+function markBeams(beams: BeamDesignResult[], floorsCount: number): void {
+  for (let floor = 0; floor < floorsCount; floor++) {
+    const prefix = floor === floorsCount - 1 ? 'RB' : floorsCount > 2 ? `${floor + 1}B` : 'FB';
+    const sig = (b: BeamDesignResult) => [b.widthMm, b.depthMm, b.tensionBars, b.topBars, b.supportTopBars, b.stirrupDiaMm, b.stirrupSpacingNearSupportMm, b.stirrupSpacingMidSpanMm].join('|');
+    const marks = new Map<string, string>();
+    const level = beams.filter((b) => b.floor === floor).sort((a, b) => b.depthMm - a.depthMm || b.spanM - a.spanM);
+    for (const b of level) { const k = sig(b); if (!marks.has(k)) marks.set(k, `${prefix}${marks.size + 1}`); b.mark = marks.get(k); }
+  }
+}
+/** Columns are marked by plan position (C1… left→right, front→rear); the schedule lists their section per storey. */
+function markColumns(columns: ColumnDesignResult[]): void {
+  const keys = [...new Set(columns.map((c) => `${c.y.toFixed(3)}|${c.x.toFixed(3)}`))]
+    .sort((a, b) => Number(a.split('|')[0]) - Number(b.split('|')[0]) || Number(a.split('|')[1]) - Number(b.split('|')[1]));
+  const markOf = new Map(keys.map((k, i) => [k, `C${i + 1}`]));
+  for (const c of columns) c.mark = markOf.get(`${c.y.toFixed(3)}|${c.x.toFixed(3)}`);
 }
 function nearestColumn(point: Point, columns: Point[]): Point {
   let nearest = columns[0]; let best = distance(point, nearest);
@@ -467,7 +525,7 @@ function designColumns(
       const isShort = slenderness <= 12;
       const minEccentricity = Math.max(floorHeight * 1000 / 500 + leastDimension / 30, 20);
       const moment = pu * minEccentricity / 1000 + lateralBaseShear * floorHeight / Math.max(1, allColumns.length * numFloors) * 0.05;
-      const tieDia = Math.max(6, Math.ceil(dia / 4 / 2) * 2);
+      const tieDia = Math.max(8, Math.ceil(dia / 4 / 2) * 2); // 8 mm minimum (IS 13920 practice for seismic zones II–V)
       const tieSpacing = Math.floor(Math.min(300, 16 * dia, leastDimension) / 25) * 25;
       results.push({
         id: `C-F${floor}-${key}`, floor, x: point.x, y: point.y, widthMm: dimensions.width, depthMm: dimensions.depth,
@@ -525,6 +583,83 @@ function designFooting(column: ColumnDesignResult, sbc: number, materialsUsed: M
     developmentLengthOK: availableLd >= ldRequired,
   };
 }
+/**
+ * Foundation system. Isolated pads are the default for low-rise frames on competent soil. Pads that would
+ * touch or sit closer than 300 mm are merged into combined footings. A raft is adopted when the pads would
+ * cover more than half the footprint, when SBC < 75 kN/m², or on soft soil / marine clay. Expansive (black
+ * cotton) soil keeps pads but carries the under-reamed-pile / CNS caution. All of it is preliminary.
+ */
+function chooseFoundationSystem(foundations: FoundationDesignResult[], columns: ColumnDesignResult[], geometry: ReturnType<typeof buildingGeometry>,
+  sbc: number, soilType: string, materialsUsed: MaterialGrades): FoundationSystem {
+  const colOf = (f: FoundationDesignResult) => columns.find((c) => c.id === f.columnId);
+  const markNo = (f: FoundationDesignResult) => Number((colOf(f)?.mark ?? 'C999').replace(/\D/g, ''));
+  const iso = [...foundations].sort((a, b) => markNo(a) - markNo(b));
+  const footprint = geometry.width * geometry.depth;
+  const padArea = positiveSum(iso.map((f) => (f.footingSizeMm / 1000) ** 2));
+  const weak = soilType === 'Soft Soil' || soilType === 'Marine Clay';
+  const soilNote = soilType === 'Black Cotton'
+    ? 'Expansive black cotton soil: found below the active zone (confirm ≥ 1.5 m) on a 300 mm CNS cushion, or adopt under-reamed piles (IS 2911 Part 3). Geotechnical report required.'
+    : weak ? `${soilType}: low, variable bearing — raft adopted for preliminary design; confirm raft or piles by geotechnical investigation.`
+    : sbc < 100 ? `Low SBC (${sbc} kN/m²): confirm by plate-load / borehole test before construction.` : undefined;
+  const fck = materialsUsed.fck;
+  const rectSteel = (thicknessMm: number) => {
+    const ast = 0.0012 * 1000 * thicknessMm; // per metre, each way
+    const dia = ast > 450 ? 12 : 10;
+    return { dia, spacing: Math.max(100, Math.min(200, roundDown(1000 * barArea(dia) / ast, 25))) };
+  };
+  if (padArea > 0.5 * footprint || sbc < 75 || weak) {
+    const puMax = 1.5 * Math.max(0, ...iso.map((f) => f.columnLoadKN));
+    const c = Math.max(0.3, ...columns.map((col) => Math.max(col.widthMm, col.depthMm) / 1000)) * 1000;
+    let d = 200; while (d < 1200 && puMax * 1000 > 0.25 * Math.sqrt(fck) * 4 * (c + d) * d) d += 25;
+    const t = Math.max(300, roundUp(d + 60, 25)); const st = rectSteel(t);
+    const reason = padArea > 0.5 * footprint ? `Isolated pads would cover ${Math.round(100 * padArea / footprint)}% of the footprint (> 50%) — a raft is more economical.`
+      : sbc < 75 ? `SBC ${sbc} kN/m² (< 75) — pads would be too large; raft spreads the load.` : `${soilType} — raft for the preliminary design.`;
+    return { type: 'raft', reason, soilNote, pads: [{
+      mark: 'RF1', type: 'raft', columnIds: iso.map((f) => f.columnId),
+      cx: geometry.originX + geometry.width / 2, cy: geometry.originY + geometry.depth / 2,
+      lengthMm: Math.round((geometry.width + 0.6) * 1000), widthMm: Math.round((geometry.depth + 0.6) * 1000), depthMm: t,
+      barDiaMm: st.dia, barSpacingMm: st.spacing, topMesh: true, pccThicknessMm: 100, loadKN: positiveSum(iso.map((f) => f.columnLoadKN)),
+    }] };
+  }
+  // pads closer than 300 mm (or overlapping) → combined footing (union-find)
+  const parent = iso.map((_, i) => i); const find = (i: number): number => (parent[i] === i ? i : (parent[i] = find(parent[i])));
+  const rect = (f: FoundationDesignResult) => { const col = colOf(f)!; const h = f.footingSizeMm / 2000; return { x0: col.x - h, x1: col.x + h, y0: col.y - h, y1: col.y + h }; };
+  for (let i = 0; i < iso.length; i++) for (let j = i + 1; j < iso.length; j++) {
+    if (!colOf(iso[i]) || !colOf(iso[j])) continue;
+    const a = rect(iso[i]), b = rect(iso[j]);
+    const gx = Math.max(a.x0, b.x0) - Math.min(a.x1, b.x1), gy = Math.max(a.y0, b.y0) - Math.min(a.y1, b.y1);
+    if (Math.max(gx, gy) < 0.3) parent[find(i)] = find(j);
+  }
+  const groups = new Map<number, FoundationDesignResult[]>();
+  iso.forEach((f, i) => groups.set(find(i), [...(groups.get(find(i)) ?? []), f]));
+  const pads: FoundationPad[] = []; let nIso = 0, nComb = 0;
+  for (const g of groups.values()) {
+    if (g.length === 1 || !g.every(colOf)) {
+      for (const f of g) { const col = colOf(f); if (!col) continue; nIso++;
+        pads.push({ mark: `F${nIso}`, type: 'isolated', columnIds: [f.columnId], cx: col.x, cy: col.y, lengthMm: f.footingSizeMm, widthMm: f.footingSizeMm,
+          depthMm: f.footingDepthMm, barDiaMm: f.barDiaMm, barSpacingMm: f.barSpacingMm, topMesh: false, pccThicknessMm: f.pccThicknessMm, loadKN: f.columnLoadKN }); }
+      continue;
+    }
+    nComb++;
+    const rs = g.map(rect); const x0 = Math.min(...rs.map((r) => r.x0)), x1 = Math.max(...rs.map((r) => r.x1)), y0 = Math.min(...rs.map((r) => r.y0)), y1 = Math.max(...rs.map((r) => r.y1));
+    // bearing check on the combined area; grow the short side if needed
+    const load = positiveSum(g.map((f) => f.columnLoadKN)) * 1.1; let L = x1 - x0, B = y1 - y0;
+    if (load / (L * B) > sbc) { if (L >= B) B = roundUp(load / (sbc * L), 0.05); else L = roundUp(load / (sbc * B), 0.05); }
+    const t = roundUp(Math.max(...g.map((f) => f.footingDepthMm)) + 50, 25); const st = rectSteel(t);
+    pads.push({ mark: `CF${nComb}`, type: 'combined', columnIds: g.map((f) => f.columnId), cx: (x0 + x1) / 2, cy: (y0 + y1) / 2,
+      lengthMm: Math.round(L * 1000), widthMm: Math.round(B * 1000), depthMm: t, barDiaMm: Math.max(st.dia, ...g.map((f) => f.barDiaMm)),
+      barSpacingMm: Math.min(st.spacing, ...g.map((f) => f.barSpacingMm)), topMesh: true, pccThicknessMm: 150, loadKN: load / 1.1 });
+  }
+  return { type: nComb ? 'combined' : 'isolated', soilNote, pads,
+    reason: nComb ? `${nComb} pair(s) of pads would be closer than 300 mm — merged into combined footings; the rest are isolated pads.`
+      : `Isolated pads suit this ${columns.length ? 'low-rise frame' : 'frame'} on ${soilType.toLowerCase()} (SBC ${sbc} kN/m²); pads cover ${Math.round(100 * padArea / Math.max(1, footprint))}% of the footprint.` };
+}
+function padSteelKg(p: FoundationPad): number {
+  const L = p.lengthMm / 1000, B = p.widthMm / 1000, sp = p.barSpacingMm / 1000, w = barWeightKgPerM(p.barDiaMm);
+  const layer = (Math.floor(B / sp) + 1) * (L - 0.1) * w + (Math.floor(L / sp) + 1) * (B - 0.1) * w;
+  return layer * (p.topMesh ? 2 : 1);
+}
+
 function designStaircase(floorHeight: number, materialsUsed: MaterialGrades): StaircaseDesignResult {
   const risers = Math.max(2, Math.round(floorHeight * 1000 / 165));
   const riser = floorHeight * 1000 / risers; const tread = 270;
@@ -638,8 +773,12 @@ export function designStructure(input: StructuralDesignInput): StructuralDesignR
 
   const intrinsicBeamAreaLoad = positiveSum(beamIntrinsicByFloor) / Math.max(1, floorsCount * averageFloorArea);
   const columns = designColumns(layout, baseColumns, panelsByFloor, floorsCount, floorHeight, averageSlabServiceLoad + intrinsicBeamAreaLoad, grade, Math.max(baseShear, windForce));
+  markBeams(beams, floorsCount); markColumns(columns);
   const groundColumns = columns.filter((column) => column.floor === 0);
   const foundations = groundColumns.map((column) => designFooting(column, sbc, grade));
+  const foundationSystem = chooseFoundationSystem(foundations, groundColumns, geometry, sbc, city.soilType, grade);
+  if (foundationSystem.type !== 'isolated') warnings.push(`Foundation: ${foundationSystem.type} — ${foundationSystem.reason}`);
+  if (foundationSystem.soilNote) warnings.push(foundationSystem.soilNote);
   if (columns.some((c) => !c.isShort)) warnings.push('One or more columns are slender (effective-length ratio > 12); slender-column moment magnification must be designed explicitly.');
   if (foundations.some((f) => !f.oneWayShearOK || !f.twoWayShearOK || !f.developmentLengthOK)) warnings.push('One or more footing checks did not converge within 1200 mm depth; a licensed engineer must resize/design these footings.');
   if (slabs.some((s) => !s.shearCheck || !s.deflectionCheck)) warnings.push('One or more slab preliminary checks are not satisfactory; revise depth, support condition or reinforcement after analysis.');
@@ -647,7 +786,7 @@ export function designStructure(input: StructuralDesignInput): StructuralDesignR
   const slabConcrete = positiveSum(slabs.map((s) => s.spanXm * s.spanYm * s.thicknessMm / 1000));
   const beamConcrete = positiveSum(beams.map((b) => b.spanM * b.widthMm / 1000 * b.depthMm / 1000));
   const columnConcrete = positiveSum(columns.map((c) => c.widthMm / 1000 * c.depthMm / 1000 * floorHeight));
-  const foundationConcrete = positiveSum(foundations.map((f) => (f.footingSizeMm / 1000) ** 2 * f.footingDepthMm / 1000));
+  const foundationConcrete = positiveSum(foundationSystem.pads.map((p) => p.lengthMm / 1000 * p.widthMm / 1000 * p.depthMm / 1000));
   const staircaseConcrete = staircase.effectiveSpanM * (staircase.flightWidthMm / 1000) * (staircase.waistSlabThicknessMm / 1000) * 2 * Math.max(1, floorsCount - 1);
   const lintels = 0.23 * 0.15 * (geometry.width + geometry.depth) * 2 * floorsCount;
   const slabSteel = positiveSum(slabs.map((s) => {
@@ -659,7 +798,11 @@ export function designStructure(input: StructuralDesignInput): StructuralDesignR
   }));
   const beamSteel = positiveSum(beams.map((b) => {
     const t = parseBarSpec(b.tensionBars); const c = parseBarSpec(b.compressionBars);
-    const longitudinal = (t ? t.count * b.spanM * barWeightKgPerM(t.dia) : 0) + (c ? c.count * b.spanM * barWeightKgPerM(c.dia) : 0);
+    const top = parseBarSpec(b.topBars ?? ''); const extra = parseBarSpec(b.supportTopBars ?? '');
+    const longitudinal = (t ? t.count * b.spanM * barWeightKgPerM(t.dia) : 0)
+      + (top && !b.isDoublyReinforced ? top.count * b.spanM * barWeightKgPerM(top.dia) : 0)
+      + (c ? c.count * b.spanM * barWeightKgPerM(c.dia) : 0)
+      + (extra ? 2 * extra.count * 0.3 * b.spanM * barWeightKgPerM(extra.dia) : 0);
     const stirrups = (b.spanM / ((b.stirrupSpacingMidSpanMm || 200) / 1000) + 2) * 2 * (b.widthMm + b.depthMm) / 1000 * barWeightKgPerM(b.stirrupDiaMm);
     return longitudinal + stirrups;
   }));
@@ -668,7 +811,7 @@ export function designStructure(input: StructuralDesignInput): StructuralDesignR
     const ties = floorHeight / (c.tieSpacingMm / 1000) * 2 * (c.widthMm + c.depthMm) / 1000 * barWeightKgPerM(c.tieDiaMm);
     return vertical + ties;
   }));
-  const foundationSteel = positiveSum(foundations.map((f) => 2 * f.barsEachWay * (f.footingSizeMm / 1000 - 0.1) * barWeightKgPerM(f.barDiaMm)));
+  const foundationSteel = positiveSum(foundationSystem.pads.map(padSteelKg));
   const staircaseSteel = 2 * Math.max(1, floorsCount - 1) * staircase.flightWidthMm / staircase.mainBarSpacingMm * staircase.effectiveSpanM * barWeightKgPerM(staircase.mainBarDiaMm) +
     2 * Math.max(1, floorsCount - 1) * staircase.effectiveSpanM * 1000 / staircase.distBarSpacingMm * (staircase.flightWidthMm / 1000) * barWeightKgPerM(staircase.distBarDiaMm);
   const totalConcrete = foundationConcrete + columnConcrete + beamConcrete + slabConcrete + staircaseConcrete + lintels;
@@ -680,7 +823,7 @@ export function designStructure(input: StructuralDesignInput): StructuralDesignR
       buildingWidthM: geometry.width, buildingDepthM: geometry.depth },
     loads: { deadLoadPerFloor, liveLoadPerFloor, totalBuildingWeight: totalWeight, seismicBaseShear: baseShear, seismicCoeffAh: ah,
       windForce, governingLateral, floorWiseSeismicForce },
-    slabs, beams, columns, foundations, staircase,
+    slabs, beams, columns, foundations, foundationSystem, staircase,
     summary: { totalConcreteM3: totalConcrete, totalSteelKg: totalSteel, totalSteelMT: totalSteel / 1000,
       concreteBreakdown: { foundation: foundationConcrete, columns: columnConcrete, beams: beamConcrete, slabs: slabConcrete, staircase: staircaseConcrete, lintels },
       steelBreakdown: { foundation: foundationSteel, columns: columnSteel, beams: beamSteel, slabs: slabSteel, staircase: staircaseSteel } },

@@ -25,12 +25,17 @@ cp .env.example .env.local
 nano .env.local
 ```
 
-### Step 2: Set Your API Key
+### Step 2: Set Your API Keys
 
 ```bash
-# Set the Gemini API key as environment variable
-export GEMINI_API_KEY="AIzaSyDkBoNsiNMWeBdriH3_UqTyJovZs6vMdDg"
+# Set the keys as environment variables for this shell only.
+# Never commit a real key. Get them from Secret Manager, e.g.:
+#   export GEMINI_API_KEY="$(gcloud secrets versions access latest --secret=gemini-api-key)"
+export GEMINI_API_KEY="<your-gemini-api-key>"        # photo renders (generate-render / generate-drawing)
+export ANTHROPIC_API_KEY="<your-anthropic-api-key>"  # reading uploaded drawings (analyze-drawing)
 ```
+
+For Cloud Build deploys, set both as trigger substitutions: `_GEMINI_API_KEY` and `_ANTHROPIC_API_KEY`.
 
 ### Step 3: Deploy!
 

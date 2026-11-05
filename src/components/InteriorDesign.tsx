@@ -3,6 +3,7 @@
 import React, { useState, useMemo } from 'react';
 import { Layout, ProjectRequirements, RoomInterior, InteriorDesignData } from '../types';
 import { generateInteriorDesign } from '../utils/interiorCalculator';
+import { roomClearM } from '../utils/drawingEngine';
 import { STYLE_TEMPLATES } from '../utils/interiorTemplates';
 import InteriorMoodBoard from './InteriorMoodBoard';
 import InteriorDrawings from './InteriorDrawings';
@@ -23,12 +24,13 @@ export const InteriorDesign: React.FC<Props> = ({ layout, requirements }) => {
 
   const interiorData = useMemo<InteriorDesignData | null>(() => {
     if (!rooms) return null;
-    return generateInteriorDesign(rooms, layout);
-  }, [rooms, layout]);
+    // quantities on the finished (clear) room size — the same figures the interior sheets show
+    return generateInteriorDesign(rooms, layout, roomClearM(layout, requirements));
+  }, [rooms, layout, requirements]);
 
   const handleMoodBoardComplete = (configuredRooms: RoomInterior[]) => {
     setRooms(configuredRooms);
-    setActiveTab('ai_renders');
+    setActiveTab('drawings');
   };
 
   if (!rooms) {
@@ -98,7 +100,7 @@ export const InteriorDesign: React.FC<Props> = ({ layout, requirements }) => {
           <InteriorMoodBoard layout={layout} onComplete={handleMoodBoardComplete} />
         )}
         {activeTab === 'drawings' && (
-          <InteriorDrawings layout={layout} rooms={rooms} />
+          <InteriorDrawings layout={layout} rooms={rooms} requirements={requirements} />
         )}
         {activeTab === 'ai_renders' && (() => {
           const selectionsMap: Record<string, RoomInterior> = {};

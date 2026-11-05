@@ -1,6 +1,12 @@
 import { Layout, Room, ProjectRequirements } from '../types';
+import {
+  FLOOR_TO_FLOOR_MM, PLINTH_HEIGHT_MM, PARAPET_HEIGHT_MM, STAIR_HEAD_ROOM_MM, COMPOUND_WALL_HEIGHT_MM, COMPOUND_WALL_THICKNESS_MM,
+  gateCentreM, gateWidthM, mainDoorCentreM, ohtPlacement, sumpPlacement, placeOpenings, openingsOnRoomWall, type Face, type PlacedOpening,
+} from './buildingModel';
 
-const FLOOR_HEIGHT = 3.0;
+// Vertical datum shared with the drawings (sections/elevations) and the BOQ.
+const FLOOR_HEIGHT = FLOOR_TO_FLOOR_MM / 1000;
+const PLINTH = PLINTH_HEIGHT_MM / 1000;
 const SLAB_THICKNESS = 0.15;
 const WALL_THICKNESS = 0.23;
 const WALL_HEIGHT = FLOOR_HEIGHT - SLAB_THICKNESS; // 2.85m
@@ -170,6 +176,28 @@ export function buildScene(
     }
   }
 
+  /** Wall with any number of openings (doors / windows / ventilators) cut from the locked schedule. */
+  function buildWallWithOpenings(
+    wallX: number, wallY: number, wallZ: number, wallLength: number, wallHeight: number, wallThick: number, material: any,
+    cuts: { start: number; end: number; sill: number; top: number }[], isAlongX: boolean,
+  ) {
+    const seg = (u0: number, u1: number, y0: number, y1: number) => {
+      if (u1 - u0 < 0.01 || y1 - y0 < 0.01) return;
+      if (isAlongX) addBox(wallX + u0, wallY + y0, wallZ, u1 - u0, y1 - y0, wallThick, material);
+      else addBox(wallX, wallY + y0, wallZ + u0, wallThick, y1 - y0, u1 - u0, material);
+    };
+    let cursor = 0;
+    for (const o of [...cuts].sort((a, b) => a.start - b.start)) {
+      const a = Math.max(cursor, Math.max(0, o.start)), b = Math.min(wallLength, o.end);
+      if (b <= a) continue;
+      seg(cursor, a, 0, wallHeight);
+      seg(a, b, Math.min(wallHeight, o.top), wallHeight);
+      seg(a, b, 0, Math.max(0, o.sill));
+      cursor = b;
+    }
+    seg(cursor, wallLength, 0, wallHeight);
+  }
+
   // ── A. Ground Plane & Plot ──
   const groundGeo = new THREE.PlaneGeometry(plotW * 3, plotD * 3);
   const groundMat = makeMat('#5A8A4A', { roughness: 0.95 });
@@ -230,7 +258,7 @@ export function buildScene(
   }
 
   // Driveway — paver style
-  const gateX = plotW / 2;
+  const gateX = gateCentreM(layout, mainDoorCentreM(layout));
   const driveW = 2.0;
   const driveMat = makeMat('#B8A898', { roughness: 0.8 });
   const driveGeo = new THREE.BoxGeometry(driveW, 0.05, setbacks.front + 0.1);
@@ -247,8 +275,8 @@ export function buildScene(
   const cwMat = makeMat('#E8E0D0', { roughness: 0.85 });
   const cwCopingMat = makeMat('#A09080', { roughness: 0.75 });
   const cwPillarMat = makeMat('#C0B8A8', { roughness: 0.7 });
-  const cwH = 1.5, cwT = 0.15;
-  const gateW = 2.5;
+  const cwH = COMPOUND_WALL_HEIGHT_MM / 1000, cwT = COMPOUND_WALL_THICKNESS_MM / 1000;
+  const gateW = gateWidthM(plotW);
   const gateLeft = gateX - gateW / 2;
   const gateRight = gateX + gateW / 2;
 
@@ -784,11 +812,15 @@ export function buildScene(
     makeTextSprite(label, { x: midX, y: midY, z: midZ }, { fontSize: 22, bgColor: 'rgba(200,30,30,0.75)', scale: 1.8 });
   }
 
+  // Openings resolved once from the locked schedule (empty → legacy heuristic placement below)
+  const placed = placeOpenings(layout);
+
   // ── Building floors ──
   layout.floors.forEach((fl) => {
     if (options.showFloor !== 'all' && fl.floor !== options.showFloor) return;
 
-    const floorY = fl.floor * FLOOR_HEIGHT;
+    // slab top = finished floor level: GF at +plinth, upper floors every FLOOR_HEIGHT (as in the section)
+    const floorY = PLINTH + fl.floor * FLOOR_HEIGHT - SLAB_THICKNESS;
 
     // Floor slab
     const bW = layout.buildableWidthM;
@@ -845,105 +877,135 @@ export function buildScene(
         frontFacadeRooms.push({ rx, rz, rw, rd, floorY, type: room.type });
       }
 
-      const hasFrontDoor = (room.type === 'hall' || room.type === 'entrance' || room.type === 'parking') && isFrontExterior;
-      const hasFrontWindow = isFrontExterior && !hasFrontDoor && room.type !== 'passage' && room.type !== 'balcony' && rw > 1.5;
-      const hasRearWindow = isRearExterior && room.type !== 'toilet' && room.type !== 'passage' && room.type !== 'balcony' && rw > 1.5;
-      const hasLeftWindow = isLeftExterior && room.type !== 'toilet' && room.type !== 'kitchen' && room.type !== 'balcony' && rd > 1.5;
-      const hasRightWindow = isRightExterior && room.type !== 'toilet' && room.type !== 'kitchen' && room.type !== 'balcony' && rd > 1.5;
-
-      const hasInteriorDoor = !isFrontExterior && !hasFrontDoor && (
-        room.type === 'bedroom' || room.type === 'master_bedroom' ||
-        room.type === 'kitchen' || room.type === 'toilet' ||
-        room.type === 'puja' || room.type === 'dining' ||
-        room.type === 'store' || room.type === 'utility'
-      );
-
-      // ── Build 4 walls with openings ──
-
-      // FRONT wall
-      const isFrontCutaway = options.cutaway && isFrontExterior;
-      if (!isFrontCutaway) {
-        if (isBalcony && isFrontExterior) {
-          addRailing(rx, roomBaseY, rz + 0.05, rw, true);
-        } else {
-          const fMat = getWallMat(isFrontExterior, room.type, 'front');
-          let frontOpening: { offset: number; width: number; height: number; sillHeight: number; type: 'door' | 'window' } | undefined;
-
-          if (hasFrontDoor) {
-            frontOpening = { offset: rw / 2, width: DOOR_W, height: DOOR_H, sillHeight: 0, type: 'door' };
-          } else if (hasFrontWindow) {
-            frontOpening = { offset: rw / 2, width: WIN_W, height: WIN_H, sillHeight: WIN_SILL, type: 'window' };
-          } else if (hasInteriorDoor && !isFrontExterior) {
-            frontOpening = { offset: rw / 2, width: DOOR_W, height: DOOR_H, sillHeight: 0, type: 'door' };
+      // ── Walls + openings from the LOCKED openings schedule (same positions as plans, elevations and the D/W schedule) ──
+      if (placed.length) {
+        const faces: Face[] = ['front', 'rear', 'left', 'right'];
+        for (const face of faces) {
+          const ext = face === 'front' ? isFrontExterior : face === 'rear' ? isRearExterior : face === 'left' ? isLeftExterior : isRightExterior;
+          if (face === 'front' && options.cutaway && ext) continue;
+          if (room.openTo?.includes(face)) continue; // open to the neighbouring room — no wall (as drawn)
+          const alongX = face === 'front' || face === 'rear';
+          const len = alongX ? rw : rd;
+          const wx = face === 'right' ? rx + rw - WALL_THICKNESS : rx;
+          const wz = face === 'rear' ? rz + rd - WALL_THICKNESS : rz;
+          if (isBalcony && ext) {
+            addRailing(face === 'right' ? rx + rw - 0.05 : face === 'left' ? rx + 0.05 : rx, roomBaseY, face === 'rear' ? rz + rd - 0.05 : face === 'front' ? rz + 0.05 : rz, len, alongX);
+            continue;
           }
+          const ops: PlacedOpening[] = openingsOnRoomWall(placed, room, fl.floor, face);
+          const origin = alongX ? room.x : room.y;
+          const cuts = ops.map((o) => ({ o, start: o.a - origin, end: o.b - origin, sill: o.source.type === 'door' ? 0 : o.sillM, top: (o.source.type === 'door' ? 0 : o.sillM) + o.heightM }));
+          buildWallWithOpenings(wx, roomBaseY, wz, len, WALL_HEIGHT, WALL_THICKNESS, getWallMat(ext, room.type, face), cuts, alongX);
+          for (const cu of cuts) {
+            if (cu.o.room.id !== room.id) continue; // the owning room fits the door/window leaf; the neighbour only gets the hole
+            const st = Math.max(0, cu.start), w = Math.min(len, cu.end) - st;
+            if (w < 0.1) continue;
+            const ox = alongX ? rx + st : wx, oz = alongX ? wz : rz + st;
+            if (cu.o.source.type === 'door') addDoorInOpening(ox, roomBaseY, oz, w, cu.o.heightM, WALL_THICKNESS, alongX, ext);
+            else addWindowInOpening(ox, roomBaseY + cu.sill, oz, w, cu.o.heightM, WALL_THICKNESS, alongX, ext);
+          }
+        }
+      } else {
+        const hasFrontDoor = (room.type === 'hall' || room.type === 'entrance' || room.type === 'parking') && isFrontExterior;
+        const hasFrontWindow = isFrontExterior && !hasFrontDoor && room.type !== 'passage' && room.type !== 'balcony' && rw > 1.5;
+        const hasRearWindow = isRearExterior && room.type !== 'toilet' && room.type !== 'passage' && room.type !== 'balcony' && rw > 1.5;
+        const hasLeftWindow = isLeftExterior && room.type !== 'toilet' && room.type !== 'kitchen' && room.type !== 'balcony' && rd > 1.5;
+        const hasRightWindow = isRightExterior && room.type !== 'toilet' && room.type !== 'kitchen' && room.type !== 'balcony' && rd > 1.5;
 
-          buildWallWithOpening(rx, roomBaseY, rz, rw, WALL_HEIGHT, WALL_THICKNESS, fMat, frontOpening, true);
+        const hasInteriorDoor = !isFrontExterior && !hasFrontDoor && (
+          room.type === 'bedroom' || room.type === 'master_bedroom' ||
+          room.type === 'kitchen' || room.type === 'toilet' ||
+          room.type === 'puja' || room.type === 'dining' ||
+          room.type === 'store' || room.type === 'utility'
+        );
 
-          if (frontOpening) {
-            const oStartX = rx + frontOpening.offset - frontOpening.width / 2;
-            if (frontOpening.type === 'door') {
-              addDoorInOpening(oStartX, roomBaseY, rz, frontOpening.width, frontOpening.height, WALL_THICKNESS, true, isFrontExterior);
-            } else {
-              addWindowInOpening(oStartX, roomBaseY + frontOpening.sillHeight, rz, frontOpening.width, frontOpening.height, WALL_THICKNESS, true, isFrontExterior);
+        // ── Build 4 walls with openings ──
+
+        // FRONT wall
+        const isFrontCutaway = options.cutaway && isFrontExterior;
+        if (!isFrontCutaway) {
+          if (isBalcony && isFrontExterior) {
+            addRailing(rx, roomBaseY, rz + 0.05, rw, true);
+          } else {
+            const fMat = getWallMat(isFrontExterior, room.type, 'front');
+            let frontOpening: { offset: number; width: number; height: number; sillHeight: number; type: 'door' | 'window' } | undefined;
+
+            if (hasFrontDoor) {
+              frontOpening = { offset: rw / 2, width: DOOR_W, height: DOOR_H, sillHeight: 0, type: 'door' };
+            } else if (hasFrontWindow) {
+              frontOpening = { offset: rw / 2, width: WIN_W, height: WIN_H, sillHeight: WIN_SILL, type: 'window' };
+            } else if (hasInteriorDoor && !isFrontExterior) {
+              frontOpening = { offset: rw / 2, width: DOOR_W, height: DOOR_H, sillHeight: 0, type: 'door' };
+            }
+
+            buildWallWithOpening(rx, roomBaseY, rz, rw, WALL_HEIGHT, WALL_THICKNESS, fMat, frontOpening, true);
+
+            if (frontOpening) {
+              const oStartX = rx + frontOpening.offset - frontOpening.width / 2;
+              if (frontOpening.type === 'door') {
+                addDoorInOpening(oStartX, roomBaseY, rz, frontOpening.width, frontOpening.height, WALL_THICKNESS, true, isFrontExterior);
+              } else {
+                addWindowInOpening(oStartX, roomBaseY + frontOpening.sillHeight, rz, frontOpening.width, frontOpening.height, WALL_THICKNESS, true, isFrontExterior);
+              }
             }
           }
         }
-      }
 
-      // REAR wall
-      if (isBalcony && isRearExterior) {
-        addRailing(rx, roomBaseY, rz + rd - 0.05, rw, true);
-      } else {
-        const rMat = getWallMat(isRearExterior, room.type, 'rear');
-        let rearOpening: { offset: number; width: number; height: number; sillHeight: number; type: 'door' | 'window' } | undefined;
+        // REAR wall
+        if (isBalcony && isRearExterior) {
+          addRailing(rx, roomBaseY, rz + rd - 0.05, rw, true);
+        } else {
+          const rMat = getWallMat(isRearExterior, room.type, 'rear');
+          let rearOpening: { offset: number; width: number; height: number; sillHeight: number; type: 'door' | 'window' } | undefined;
 
-        if (hasRearWindow) {
-          rearOpening = { offset: rw / 2, width: WIN_W, height: WIN_H, sillHeight: WIN_SILL, type: 'window' };
+          if (hasRearWindow) {
+            rearOpening = { offset: rw / 2, width: WIN_W, height: WIN_H, sillHeight: WIN_SILL, type: 'window' };
+          }
+
+          buildWallWithOpening(rx, roomBaseY, rz + rd - WALL_THICKNESS, rw, WALL_HEIGHT, WALL_THICKNESS, rMat, rearOpening, true);
+
+          if (rearOpening) {
+            const oStartX = rx + rearOpening.offset - rearOpening.width / 2;
+            addWindowInOpening(oStartX, roomBaseY + rearOpening.sillHeight, rz + rd - WALL_THICKNESS, rearOpening.width, rearOpening.height, WALL_THICKNESS, true, isRearExterior);
+          }
         }
 
-        buildWallWithOpening(rx, roomBaseY, rz + rd - WALL_THICKNESS, rw, WALL_HEIGHT, WALL_THICKNESS, rMat, rearOpening, true);
+        // LEFT wall
+        if (isBalcony && isLeftExterior) {
+          addRailing(rx + 0.05, roomBaseY, rz, rd, false);
+        } else {
+          const lMat = getWallMat(isLeftExterior, room.type, 'left');
+          let leftOpening: { offset: number; width: number; height: number; sillHeight: number; type: 'door' | 'window' } | undefined;
 
-        if (rearOpening) {
-          const oStartX = rx + rearOpening.offset - rearOpening.width / 2;
-          addWindowInOpening(oStartX, roomBaseY + rearOpening.sillHeight, rz + rd - WALL_THICKNESS, rearOpening.width, rearOpening.height, WALL_THICKNESS, true, isRearExterior);
-        }
-      }
+          if (hasLeftWindow) {
+            leftOpening = { offset: rd / 2, width: WIN_W, height: WIN_H, sillHeight: WIN_SILL, type: 'window' };
+          }
 
-      // LEFT wall
-      if (isBalcony && isLeftExterior) {
-        addRailing(rx + 0.05, roomBaseY, rz, rd, false);
-      } else {
-        const lMat = getWallMat(isLeftExterior, room.type, 'left');
-        let leftOpening: { offset: number; width: number; height: number; sillHeight: number; type: 'door' | 'window' } | undefined;
+          buildWallWithOpening(rx, roomBaseY, rz, rd, WALL_HEIGHT, WALL_THICKNESS, lMat, leftOpening, false);
 
-        if (hasLeftWindow) {
-          leftOpening = { offset: rd / 2, width: WIN_W, height: WIN_H, sillHeight: WIN_SILL, type: 'window' };
-        }
-
-        buildWallWithOpening(rx, roomBaseY, rz, rd, WALL_HEIGHT, WALL_THICKNESS, lMat, leftOpening, false);
-
-        if (leftOpening) {
-          const oStartZ = rz + leftOpening.offset - leftOpening.width / 2;
-          addWindowInOpening(rx, roomBaseY + leftOpening.sillHeight, oStartZ, leftOpening.width, leftOpening.height, WALL_THICKNESS, false, isLeftExterior);
-        }
-      }
-
-      // RIGHT wall
-      if (isBalcony && isRightExterior) {
-        addRailing(rx + rw - 0.05, roomBaseY, rz, rd, false);
-      } else {
-        const riMat = getWallMat(isRightExterior, room.type, 'right');
-        let rightOpening: { offset: number; width: number; height: number; sillHeight: number; type: 'door' | 'window' } | undefined;
-
-        if (hasRightWindow) {
-          rightOpening = { offset: rd / 2, width: WIN_W, height: WIN_H, sillHeight: WIN_SILL, type: 'window' };
+          if (leftOpening) {
+            const oStartZ = rz + leftOpening.offset - leftOpening.width / 2;
+            addWindowInOpening(rx, roomBaseY + leftOpening.sillHeight, oStartZ, leftOpening.width, leftOpening.height, WALL_THICKNESS, false, isLeftExterior);
+          }
         }
 
-        buildWallWithOpening(rx + rw - WALL_THICKNESS, roomBaseY, rz, rd, WALL_HEIGHT, WALL_THICKNESS, riMat, rightOpening, false);
+        // RIGHT wall
+        if (isBalcony && isRightExterior) {
+          addRailing(rx + rw - 0.05, roomBaseY, rz, rd, false);
+        } else {
+          const riMat = getWallMat(isRightExterior, room.type, 'right');
+          let rightOpening: { offset: number; width: number; height: number; sillHeight: number; type: 'door' | 'window' } | undefined;
 
-        if (rightOpening) {
-          const oStartZ = rz + rightOpening.offset - rightOpening.width / 2;
-          addWindowInOpening(rx + rw - WALL_THICKNESS, roomBaseY + rightOpening.sillHeight, oStartZ, rightOpening.width, rightOpening.height, WALL_THICKNESS, false, isRightExterior);
+          if (hasRightWindow) {
+            rightOpening = { offset: rd / 2, width: WIN_W, height: WIN_H, sillHeight: WIN_SILL, type: 'window' };
+          }
+
+          buildWallWithOpening(rx + rw - WALL_THICKNESS, roomBaseY, rz, rd, WALL_HEIGHT, WALL_THICKNESS, riMat, rightOpening, false);
+
+          if (rightOpening) {
+            const oStartZ = rz + rightOpening.offset - rightOpening.width / 2;
+            addWindowInOpening(rx + rw - WALL_THICKNESS, roomBaseY + rightOpening.sillHeight, oStartZ, rightOpening.width, rightOpening.height, WALL_THICKNESS, false, isRightExterior);
+          }
         }
       }
 
@@ -967,7 +1029,7 @@ export function buildScene(
       const cz = col.y + setbacks.front;
       const cw = (col.widthMM / 1000) * 0.9;
       const cd = (col.depthMM / 1000) * 0.9;
-      addBox(cx - cw / 2, floorY, cz - cd / 2, cw, FLOOR_HEIGHT, cd, colMat);
+      addBox(cx - cw / 2, fl.floor === 0 ? 0.05 : floorY, cz - cd / 2, cw, fl.floor === 0 ? floorY + FLOOR_HEIGHT - 0.05 : FLOOR_HEIGHT, cd, colMat);
     });
   });
 
@@ -977,8 +1039,9 @@ export function buildScene(
   const bandMat = makeMat('#604020', { roughness: 0.6 });
   const plinthMat = makeMat('#606060', { roughness: 0.8 });
 
-  // Plinth band
-  const plinthH = 0.3, plinthP = 0.04;
+  // Plinth (NGL to GF finished floor, as in the section and elevations)
+  addBox(buildMinX, 0.05, buildMinZ, bW, PLINTH - SLAB_THICKNESS - 0.05, bD, plinthMat);
+  const plinthH = PLINTH - 0.05, plinthP = 0.04;
   addBox(buildMinX - plinthP, 0.05, buildMinZ - plinthP, bW + plinthP * 2, plinthH, plinthP, plinthMat);
   addBox(buildMinX - plinthP, 0.05, buildMaxZ, bW + plinthP * 2, plinthH, plinthP, plinthMat);
   addBox(buildMinX - plinthP, 0.05, buildMinZ, plinthP, plinthH, bD + plinthP * 2, plinthMat);
@@ -986,7 +1049,7 @@ export function buildScene(
 
   // Slab band at each floor level
   for (let f = 1; f <= floorCount; f++) {
-    const bandY = f * FLOOR_HEIGHT - 0.02;
+    const bandY = PLINTH + f * FLOOR_HEIGHT - SLAB_THICKNESS - 0.02;
     const bandH = 0.12;
     const bandP = 0.03;
     addBox(buildMinX - bandP, bandY, buildMinZ - bandP, bW + bandP * 2, bandH, bandP, bandMat);
@@ -995,65 +1058,42 @@ export function buildScene(
     addBox(buildMaxX, bandY, buildMinZ, bandP, bandH, bD + bandP * 2, bandMat);
   }
 
-  // ── Front facade projection (cantilever effect for living/hall) ──
-  frontFacadeRooms.forEach(fr => {
-    const projDepth = 0.30;
-    const projY = fr.floorY + SLAB_THICKNESS;
-    // Projected front wall panel
-    addBox(fr.rx, projY, fr.rz - projDepth, fr.rw, WALL_HEIGHT, projDepth, frontExtMat);
-    // Slab projection below
-    addBox(fr.rx, fr.floorY, fr.rz - projDepth, fr.rw, SLAB_THICKNESS, projDepth, slabMat);
-  });
-
-  // ── Recessed panels on side walls (reduce boxy look) ──
+  // Facade = exactly what the elevations show: no extra projections, cladding or accent panels.
+  void frontFacadeRooms; void woodCladdingMat;
   const totalBuildingH = floorCount * FLOOR_HEIGHT;
-  const recessDepth = 0.03;
-  const recessDarkerMat = makeMat('#5898B8', { roughness: 0.7 }); // darker shade of sky blue
-  const recessGreenMat = makeMat('#70A880', { roughness: 0.7 });  // darker shade of green
-
-  // Left side recess
-  const recessStartZ = buildMinZ + bD * 0.33;
-  const recessLenZ = bD * 0.34;
-  addBox(buildMinX - recessDepth - 0.01, SLAB_THICKNESS + 0.5, recessStartZ, recessDepth, totalBuildingH - 1.0, recessLenZ, recessDarkerMat);
-  // Right side recess
-  addBox(buildMaxX + 0.01, SLAB_THICKNESS + 0.5, recessStartZ, recessDepth, totalBuildingH - 1.0, recessLenZ, recessGreenMat);
-
-  // ── Wood cladding accent on front facade ──
-  const claddingW = Math.min(bW * 0.35, 3.0);
-  const claddingX = buildMinX + bW * 0.1;
-  addBox(claddingX, SLAB_THICKNESS + 0.35, buildMinZ - 0.06, claddingW, totalBuildingH - 0.5, 0.05, woodCladdingMat);
-  for (let s = 0; s < 5; s++) {
-    const slatY = SLAB_THICKNESS + 0.4 + s * (totalBuildingH - 0.6) / 5;
-    addBox(claddingX + 0.02, slatY, buildMinZ - 0.09, claddingW - 0.04, 0.06, 0.03, makeMat('#604828', { roughness: 0.5 }));
-  }
-
-  // Second accent color panel on front
-  const accentW2 = Math.min(bW * 0.25, 2.5);
-  const accent2Mat = makeMat('#E07030', { roughness: 0.6 });
-  addBox(buildMaxX - accentW2, SLAB_THICKNESS + 0.35, buildMinZ - 0.04, accentW2, totalBuildingH - 0.5, 0.03, accent2Mat);
 
   // ── Name plate on front facade ──
   const namePlateMat = makeMat('#2A2A2A', { roughness: 0.3, metalness: 0.4 });
   const npW = Math.min(bW * 0.25, 1.5);
   const npH = 0.25;
-  addBox(bldgCenterX - npW / 2, SLAB_THICKNESS + DOOR_H + 0.3, buildMinZ - 0.06, npW, npH, 0.03, namePlateMat);
+  const entryX = buildMinX + (mainDoorCentreM(layout) ?? bW / 2);
+  addBox(Math.min(buildMaxX - npW, Math.max(buildMinX, entryX + 0.7)), PLINTH + 1.5, buildMinZ - 0.04, npW, npH, 0.03, namePlateMat);
 
   // ── Entrance porch with steps ──
   const porchW = Math.min(bW * 0.4, 3.5);
-  const porchX = buildMinX + (bW - porchW) / 2;
+  const porchX = Math.min(buildMaxX - porchW, Math.max(buildMinX, entryX - porchW / 2));
   const porchD = Math.min(setbacks.front * 0.5, 1.2);
   const porchZ = buildMinZ - porchD;
   if (setbacks.front > 0.5) {
     const porchMat = makeMat('#C0A080', { roughness: 0.75 });
-    addBox(porchX, 0.05, porchZ, porchW, 0.35, porchD + 0.1, porchMat);
+    const porchH = PLINTH - 0.05;
+    addBox(porchX, 0.05, porchZ, porchW, porchH, porchD + 0.1, porchMat);
     const numSteps = 3;
     const stepD = porchD / numSteps;
     for (let i = 0; i < numSteps; i++) {
-      const sy = 0.05 + (i + 1) * 0.35 / numSteps;
+      const sy = (i + 1) * porchH / (numSteps + 1);
       addBox(porchX + 0.1, 0.05, porchZ - stepD * (numSteps - i), porchW - 0.2, sy, stepD, porchMat);
     }
     const canopyMat = makeMat('#606068', { roughness: 0.6 });
-    addBox(porchX - 0.2, SLAB_THICKNESS + FLOOR_HEIGHT * 0.35, porchZ - 0.3, porchW + 0.4, 0.08, porchD + 0.6, canopyMat);
+    addBox(porchX - 0.2, PLINTH + 2.1 + 0.3, porchZ - 0.3, porchW + 0.4, 0.08, porchD + 0.6, canopyMat);
+  }
+
+  // Underground sump cover in the front setback (site plan A-001 / plumbing P-101)
+  {
+    const sp = sumpPlacement(layout);
+    const sumpMat = makeMat('#9FB8C0', { roughness: 0.8 });
+    addBox(buildMinX + sp.cx - sp.l / 2, 0.05, buildMinZ + sp.cy - sp.w / 2, sp.l, 0.1, sp.w, sumpMat);
+    addBox(buildMinX + sp.cx - 0.3, 0.15, buildMinZ + sp.cy - 0.3, 0.6, 0.03, 0.6, makeMat('#555555', { roughness: 0.5, metalness: 0.4 }));
   }
 
   // ── Overall building & plot dimension lines ──
@@ -1085,7 +1125,7 @@ export function buildScene(
   );
   // Building height
   const totalFloors = layout.floors.length;
-  const totalH = totalFloors * FLOOR_HEIGHT;
+  const totalH = PLINTH + totalFloors * FLOOR_HEIGHT + PARAPET_HEIGHT_MM / 1000;
   addDimensionLine(
     { x: buildMaxX + 0.8, y: 0, z: buildMaxZ },
     { x: buildMaxX + 0.8, y: totalH, z: buildMaxZ },
@@ -1105,49 +1145,40 @@ export function buildScene(
 
   // ── Roof/Terrace ──
   const topFloorNum = Math.max(...layout.floors.map(f => f.floor));
-  const roofY = (topFloorNum + 1) * FLOOR_HEIGHT;
+  const roofY = PLINTH + (topFloorNum + 1) * FLOOR_HEIGHT - SLAB_THICKNESS;
   if (options.showFloor === 'all' || options.showFloor === topFloorNum) {
     // Top slab
     addBox(buildMinX, roofY, buildMinZ, bW, SLAB_THICKNESS, bD, slabMat);
 
-    // Varying parapet heights — front taller, sides medium, rear short
-    const pFrontH = 1.2, pSideH = 0.9, pRearH = 0.8;
-    const pT = 0.1;
+    // Parapet: 115 mm brick, PARAPET_HEIGHT_MM high on all four sides, with coping (as elevations, section, BOQ)
+    const pH = PARAPET_HEIGHT_MM / 1000, pT = 0.115;
     const pY = roofY + SLAB_THICKNESS;
-    const parFrontMat = makeMat('#D49428', { roughness: 0.65 });
-    const parLeftMat = makeMat('#70B8D8', { roughness: 0.7 });
-    const parRightMat = makeMat('#88C898', { roughness: 0.7 });
-    const parRearMat = makeMat('#E0D4C0', { roughness: 0.8 });
-    addBox(buildMinX, pY, buildMinZ, bW, pFrontH, pT, parFrontMat);      // front — tallest
-    addBox(buildMinX, pY, buildMaxZ - pT, bW, pRearH, pT, parRearMat);   // rear — shortest
-    addBox(buildMinX, pY, buildMinZ, pT, pSideH, bD, parLeftMat);        // left
-    addBox(buildMaxX - pT, pY, buildMinZ, pT, pSideH, bD, parRightMat);  // right
+    const parMat = makeMat('#E0D4C0', { roughness: 0.8 });
+    const copingMat = makeMat('#B8B0A4', { roughness: 0.7 });
+    addBox(buildMinX, pY, buildMinZ, bW, pH, pT, frontExtMat);
+    addBox(buildMinX, pY, buildMaxZ - pT, bW, pH, pT, parMat);
+    addBox(buildMinX, pY, buildMinZ, pT, pH, bD, sideExtMat);
+    addBox(buildMaxX - pT, pY, buildMinZ, pT, pH, bD, accentGreenMat);
+    addBox(buildMinX - 0.03, pY + pH, buildMinZ - 0.03, bW + 0.06, 0.05, 0.17, copingMat);
+    addBox(buildMinX - 0.03, pY + pH, buildMaxZ - 0.14, bW + 0.06, 0.05, 0.17, copingMat);
+    addBox(buildMinX - 0.03, pY + pH, buildMinZ, 0.17, 0.05, bD, copingMat);
+    addBox(buildMaxX - 0.14, pY + pH, buildMinZ, 0.17, 0.05, bD, copingMat);
 
-    // ── Decorative planters on front parapet ──
-    const planterMat = makeMat('#C06030', { roughness: 0.75 });
-    const planterPlantMat = makeMat('#3A8A2A', { roughness: 0.9 });
-    const planterCount = Math.max(2, Math.floor(bW / 2.0));
-    const planterSpacing = bW / (planterCount + 1);
-    for (let i = 1; i <= planterCount; i++) {
-      const ppx = buildMinX + i * planterSpacing;
-      addBox(ppx - 0.15, pY + pFrontH, buildMinZ - 0.05, 0.30, 0.25, 0.30, planterMat);
-      const pGeo = new THREE.SphereGeometry(0.14, 6, 5);
-      const pMesh = new THREE.Mesh(pGeo, planterPlantMat);
-      pMesh.position.set(ppx, pY + pFrontH + 0.35, buildMinZ + 0.10);
-      pMesh.castShadow = true;
-      scene.add(pMesh);
+    // Overhead tank(s): same size and position as the terrace plan / BOQ
+    const wtMat = makeMat('#3A3A3A', { roughness: 0.5 });
+    const standMat = makeMat('#9A9A9A', { roughness: 0.8 });
+    for (const t of ohtPlacement(layout)) {
+      const tx = buildMinX + t.cx, tz = buildMinZ + t.cy;
+      addBox(tx - t.diaM / 2, t.baseM - 0.3, tz - t.diaM / 2, t.diaM, 0.3, t.diaM, standMat);
+      addCylinder(tx, t.baseM, tz, t.diaM / 2, t.diaM / 2, t.heightM, 20, wtMat);
     }
-
-    // Water tank
-    const wtMat = makeMat('#5588BB', { roughness: 0.4, metalness: 0.2 });
-    addBox(buildMaxX - 1.5, pY, buildMaxZ - 1.2, 1.2, 1.0, 0.8, wtMat);
 
     // ── Staircase Mumty — proper headroom enclosure ──
     if (staircaseRoom) {
       const sr = staircaseRoom;
       const sx = sr.x + setbacks.left;
       const sz = sr.y + setbacks.front;
-      const mumtyH = 2.7;
+      const mumtyH = STAIR_HEAD_ROOM_MM / 1000;
 
       // Determine which faces are exterior for color assignment
       const mIsLeft = Math.abs(sx - buildMinX) < 0.1;

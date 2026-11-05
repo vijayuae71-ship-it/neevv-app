@@ -1,37 +1,45 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { GoogleGenAI } from '@google/genai';
+import Anthropic from '@anthropic-ai/sdk';
 import { verifyAuthOptional } from '@/lib/auth-middleware';
 import { rateLimit, getRateLimitKey } from '@/utils/rateLimit';
 import { checkAndIncrementUsage } from '@/utils/usageTracker';
+import { ROOM_TYPES } from '@/utils/uploadedPlan';
 
 export const dynamic = 'force-dynamic';
-export const maxDuration = 120;
+export const maxDuration = 300;
 
-const ANALYSIS_PROMPT = `You are an expert architectural drawing analyzer. Analyze the uploaded floor plan drawing and extract the following information in JSON format:
+/** Reads a floor-plan drawing (photo, scan, CAD export or PDF) into rooms with positions, doors and windows. */
+const SYSTEM = `You read Indian residential architectural drawings (floor plans, sanction drawings, hand sketches, CAD exports) and return the plan as data.
 
-{
-  "plotWidth": <number in feet>,
-  "plotDepth": <number in feet>,
-  "facing": "<North|South|East|West>",
-  "numFloors": <number>,
-  "rooms": [
-    {
-      "name": "<room name>",
-      "type": "<bedroom|kitchen|living|dining|bathroom|toilet|balcony|staircase|parking|store|pooja|utility|passage|sitout|other>",
-      "widthFt": <number>,
-      "depthFt": <number>
-    }
-  ],
-  "notes": ["<any relevant observations>"]
-}
+Coordinates: feet, origin at the building's front-left outer corner, with the ROAD SIDE treated as the front (top). If the road is at the bottom or a side of the drawing, rotate your reading so the road side is the front. x runs to the right along the front, y runs away from the road.
+- Give every room its position (xFt, yFt = its front-left corner) and its size (widthFt along x, depthFt along y), measured to wall centre lines. Adjacent rooms share edges: one room's x + width equals its neighbour's x. Rooms must not overlap.
+- Use the written dimensions when present (convert m/mm/ft-in to decimal feet: 10'6" = 10.5). Where a size is not written, scale it from the drawing against a written dimension. Never invent a room that is not drawn.
+- type must be one of the listed types: living/drawing/family rooms → hall; bathroom/WC/toilet → toilet; pooja → puja; sit-out/porch/foyer → entrance; lobby/corridor → passage; car park → parking; wash/utility → utility; store/dress → store.
+- Openings: for each door, window and ventilator give the room it belongs to (its exact room name), the wall of that room it is in, its centre position along that wall from the wall's left/front end (feet), and its width. Doors between two rooms belong to the smaller room.
+- One entry per storey drawn (Ground Floor, First Floor…). Plot size and setbacks from the site plan or plot dimensions if shown; facing = the compass direction the road side faces (from the north arrow), else your best reading.
+- confidence: high when most sizes are written, medium when some are scaled, low for a rough sketch or unreadable scan. notes: short items the customer should check (assumptions, unreadable parts).`;
 
-Instructions:
-- Convert all dimensions to feet if they are in meters or millimeters
-- Identify the facing direction from the north arrow or compass if present
-- List ALL rooms/spaces visible in the drawing
-- Use standard room type classifications
-- If dimensions are unclear, estimate based on proportions and standard sizes
-- Return ONLY valid JSON, no markdown or explanation`;
+const n = { type: 'number' } as const;
+const SCHEMA = {
+  type: 'object', additionalProperties: false,
+  required: ['plotWidthFt', 'plotDepthFt', 'facing', 'setbacksFt', 'floors', 'confidence', 'notes'],
+  properties: {
+    plotWidthFt: n, plotDepthFt: n,
+    facing: { type: 'string', enum: ['North', 'South', 'East', 'West'] },
+    setbacksFt: { type: 'object', additionalProperties: false, required: ['front', 'rear', 'left', 'right'], properties: { front: n, rear: n, left: n, right: n } },
+    floors: { type: 'array', items: {
+      type: 'object', additionalProperties: false, required: ['floorLabel', 'rooms', 'openings'],
+      properties: {
+        floorLabel: { type: 'string' },
+        rooms: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['name', 'type', 'xFt', 'yFt', 'widthFt', 'depthFt'],
+          properties: { name: { type: 'string' }, type: { type: 'string', enum: [...ROOM_TYPES] }, xFt: n, yFt: n, widthFt: n, depthFt: n } } },
+        openings: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['roomName', 'type', 'wall', 'positionFt', 'widthFt'],
+          properties: { roomName: { type: 'string' }, type: { type: 'string', enum: ['door', 'window', 'ventilator'] }, wall: { type: 'string', enum: ['front', 'rear', 'left', 'right'] }, positionFt: n, widthFt: n } } },
+      } } },
+    confidence: { type: 'string', enum: ['high', 'medium', 'low'] },
+    notes: { type: 'array', items: { type: 'string' } },
+  },
+};
 
 export async function POST(request: NextRequest) {
   // 1. Authenticate (optional during beta)
@@ -64,7 +72,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No drawing file provided' }, { status: 400 });
     }
 
-    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'application/pdf'];
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
     if (!allowedTypes.includes(file.type)) {
       return NextResponse.json(
         { error: 'Unsupported file type. Please upload a JPEG, PNG, WebP, or PDF.' },
@@ -72,10 +80,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const maxSize = 10 * 1024 * 1024;
+    // the model takes images up to 5 MB and PDFs well beyond; keep uploads quick either way
+    const isPdf = file.type === 'application/pdf', maxSize = (isPdf ? 20 : 5) * 1024 * 1024;
     if (file.size > maxSize) {
       return NextResponse.json(
-        { error: 'File too large. Maximum size is 10MB.' },
+        { error: isPdf ? 'PDF too large. Maximum size is 20 MB.' : 'Image too large. Maximum size is 5 MB — please resize or export at a lower resolution.' },
         { status: 400 }
       );
     }
@@ -85,85 +94,55 @@ export async function POST(request: NextRequest) {
     const base64Data = buffer.toString('base64');
     const mimeType = file.type || 'image/jpeg';
 
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      console.error('GEMINI_API_KEY not configured');
+    if (!process.env.ANTHROPIC_API_KEY) {
+      console.error('ANTHROPIC_API_KEY not configured');
       return NextResponse.json({ error: 'Service configuration error' }, { status: 500 });
     }
+    const client = new Anthropic();
+    const drawing: Anthropic.Messages.ContentBlockParam = mimeType === 'application/pdf'
+      ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64Data } }
+      : { type: 'image', source: { type: 'base64', media_type: mimeType as 'image/jpeg' | 'image/png' | 'image/webp', data: base64Data } };
 
-    const ai = new GoogleGenAI({ apiKey });
+    // server-side fallback: if a safety classifier declines, the API re-runs the request on a fallback model
+    const message = await client.beta.messages.stream({
+      model: 'claude-opus-5-5',
+      betas: ['server-side-fallback-2026-07-01'],
+      fallbacks: 'default',
+      max_tokens: 32000,
+      output_config: { effort: 'high', format: { type: 'json_schema', schema: SCHEMA } },
+      system: SYSTEM,
+      messages: [{ role: 'user', content: [drawing, { type: 'text', text: 'Read this drawing into the plan data.' }] }],
+    }).finalMessage();
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: [{
-        role: 'user',
-        parts: [
-          {
-            inlineData: {
-              mimeType,
-              data: base64Data,
-            },
-          },
-          { text: ANALYSIS_PROMPT },
-        ],
-      }],
-      config: {
-        responseMimeType: 'application/json',
-      },
-    });
-
-    const text = response?.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!text) {
-      return NextResponse.json({ error: 'No analysis result from AI' }, { status: 500 });
+    if (message.stop_reason === 'refusal') {
+      return NextResponse.json({ error: 'This file could not be read as a floor plan. Please upload a clear plan drawing.' }, { status: 422 });
     }
-
-    let analysisResult;
-    try {
-      analysisResult = JSON.parse(text);
-    } catch {
-      try {
-        const fenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-        if (fenceMatch) {
-          analysisResult = JSON.parse(fenceMatch[1].trim());
-        } else {
-          const start = text.indexOf('{');
-          const end = text.lastIndexOf('}');
-          if (start !== -1 && end > start) {
-            analysisResult = JSON.parse(text.substring(start, end + 1));
-          } else {
-            throw new Error('No JSON found in response');
-          }
-        }
-      } catch (innerError) {
-        console.error('JSON extraction failed:', text.substring(0, 200));
-        return NextResponse.json(
-          { error: 'Could not parse AI analysis. Please try uploading again.' },
-          { status: 500 }
-        );
-      }
+    if (message.stop_reason === 'max_tokens') {
+      return NextResponse.json({ error: 'The drawing has too much detail to read in one go. Please upload one floor per file.' }, { status: 422 });
     }
-
-    if (!Array.isArray(analysisResult.rooms)) analysisResult.rooms = [];
-    if (!Array.isArray(analysisResult.notes)) analysisResult.notes = [];
-
-    if (analysisResult.plotWidth) analysisResult.plotWidth = Math.round(analysisResult.plotWidth * 10) / 10;
-    if (analysisResult.plotDepth) analysisResult.plotDepth = Math.round(analysisResult.plotDepth * 10) / 10;
-    analysisResult.rooms = analysisResult.rooms.map((room: any) => ({
-      ...room,
-      widthFt: Math.round((room.widthFt || 0) * 10) / 10,
-      depthFt: Math.round((room.depthFt || 0) * 10) / 10,
-    }));
+    const text = message.content.flatMap((b) => (b.type === 'text' ? [b.text] : [])).join('');
+    let extracted: any;
+    try { extracted = JSON.parse(text); } catch {
+      console.error('Unparseable analysis:', text.slice(0, 200));
+      return NextResponse.json({ error: 'Could not read the drawing. Please try a clearer image.' }, { status: 502 });
+    }
+    const r1 = (v: unknown) => Math.round((Number(v) || 0) * 10) / 10;
+    extracted.plotWidthFt = r1(extracted.plotWidthFt); extracted.plotDepthFt = r1(extracted.plotDepthFt);
+    for (const f of extracted.floors ?? []) {
+      f.rooms = (f.rooms ?? []).map((r: any) => ({ ...r, xFt: r1(r.xFt), yFt: r1(r.yFt), widthFt: r1(r.widthFt), depthFt: r1(r.depthFt) }));
+      f.openings = (f.openings ?? []).map((o: any) => ({ ...o, positionFt: r1(o.positionFt), widthFt: r1(o.widthFt) }));
+    }
 
     return NextResponse.json({
-      analysis: analysisResult,
-      imageDataUri: `data:${mimeType};base64,${base64Data}`,
+      success: true,
+      extracted,
+      imageBase64: mimeType === 'application/pdf' ? null : `data:${mimeType};base64,${base64Data}`,
       remaining: usage.remaining,
     });
   } catch (error: any) {
     console.error('Drawing analysis error:', error);
-    return NextResponse.json(
-      { error: 'Failed to analyze drawing', details: error.message },
-      { status: 500 }
-    );
+    if (error instanceof Anthropic.RateLimitError) return NextResponse.json({ error: 'Busy right now — please try again in a minute.' }, { status: 429 });
+    if (error instanceof Anthropic.BadRequestError) return NextResponse.json({ error: 'This file could not be read. Please upload a JPG, PNG or PDF of the plan.' }, { status: 400 });
+    return NextResponse.json({ error: 'Failed to analyze drawing' }, { status: 500 });
   }
 }

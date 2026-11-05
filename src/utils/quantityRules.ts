@@ -4,6 +4,10 @@
  */
 import type { Layout, Room } from '../types';
 
+/** Maximum column-to-column span (m) — the planner's wall-line grid, the structural engine and validation share it.
+ * 5.0 m is the target; a last bay up to 5.1 m is accepted when that keeps every column on a wall line. */
+export const MAX_COLUMN_SPAN_M = 5.1;
+
 /** Wall thicknesses used by every drawing and by the BOQ (mm). */
 export const WALL_EXTERNAL_MM = 230;
 export const WALL_INTERNAL_MM = 115;
@@ -96,3 +100,49 @@ export function bedroomOpeningIds(layout: Layout): { doors: Set<string>; windows
 export const ASSUMED_FOUNDING_DEPTH_M = 1.5;
 /** Terrace parapet height (mm) used by sections, elevations, BOQ masonry and validation. Assumption — confirm locally. */
 export const PARAPET_HEIGHT_MM = 1000;
+
+/* ── Electrical circuits ──
+ * One rule for the electrical drawing's circuit numbers/schedule and the BOQ's DB ways and MCBs.
+ * Lighting (L, F, EF) ≤ 10 points / circuit, 6A sockets ≤ 8 / circuit, 16A power ≤ 2 / circuit,
+ * every split AC on its own circuit. Design loads are the usual Indian residential allowances. */
+export const POINT_LOAD_W: Record<ElecKind, number> = { light: 60, fan: 75, exhaust: 40, socket: 100, power: 1000, ac: 1800 };
+export type CircuitKind = 'lighting' | 'socket' | 'power' | 'ac';
+export interface Circuit { no: string; kind: CircuitKind; rooms: string[]; roomIds: string[]; points: number; loadW: number; mcbA: number; cableMm2: number }
+const CIRCUIT_RULE: Record<CircuitKind, { kinds: ElecKind[]; max: number; mcbA: number; cable: number }> = {
+  lighting: { kinds: ['light', 'fan', 'exhaust'], max: 10, mcbA: 6, cable: 1.5 },
+  socket: { kinds: ['socket'], max: 8, mcbA: 16, cable: 2.5 },
+  power: { kinds: ['power'], max: 2, mcbA: 20, cable: 4 },
+  ac: { kinds: ['ac'], max: 1, mcbA: 20, cable: 4 },
+};
+/** Circuits for one floor's rooms, numbered C1… in the order lighting, sockets, power, AC. */
+export function planCircuits(rooms: Room[]): Circuit[] {
+  const out: Circuit[] = [];
+  for (const kind of ['lighting', 'socket', 'power', 'ac'] as CircuitKind[]) {
+    const rule = CIRCUIT_RULE[kind];
+    let cur: Circuit | null = null;
+    for (const r of rooms.filter((x) => !isNiche(x))) {
+      const b = electricalBreakdown(r.type);
+      let n = rule.kinds.reduce((s, k) => s + b[k], 0);
+      const w = (k: ElecKind) => POINT_LOAD_W[k];
+      const perPoint = n ? rule.kinds.reduce((s, k) => s + b[k] * w(k), 0) / n : 0;
+      while (n > 0) {
+        if (!cur || cur.points >= rule.max) { cur = { no: '', kind, rooms: [], roomIds: [], points: 0, loadW: 0, mcbA: rule.mcbA, cableMm2: rule.cable }; out.push(cur); }
+        const take = Math.min(n, rule.max - cur.points);
+        cur.points += take; cur.loadW += take * perPoint; n -= take;
+        if (!cur.roomIds.includes(r.id)) { cur.roomIds.push(r.id); cur.rooms.push(r.name); }
+      }
+    }
+  }
+  out.forEach((c, i) => { c.no = `C${i + 1}`; c.loadW = Math.round(c.loadW); });
+  return out;
+}
+/** Connected and maximum-demand load for a set of circuits (diversity: lighting 0.8, sockets 0.4, power 0.5, AC 0.8). */
+export function circuitDemand(circuits: Circuit[]): { connectedW: number; demandW: number; supply: 'single-phase' | 'three-phase'; mainA: number } {
+  const div: Record<CircuitKind, number> = { lighting: 0.8, socket: 0.4, power: 0.5, ac: 0.8 };
+  const connectedW = circuits.reduce((s, c) => s + c.loadW, 0);
+  const demandW = Math.round(circuits.reduce((s, c) => s + c.loadW * div[c.kind], 0));
+  const supply = demandW > 7000 ? 'three-phase' : 'single-phase';
+  const amps = supply === 'single-phase' ? demandW / 230 : demandW / (Math.sqrt(3) * 415);
+  const mainA = [32, 40, 63, 80, 100].find((a) => a >= amps * 1.25) ?? 100;
+  return { connectedW, demandW, supply, mainA };
+}

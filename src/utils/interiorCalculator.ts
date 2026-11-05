@@ -32,8 +32,9 @@ function getRoomAreaSqFt(roomId: string, layout: Layout): number {
   for (const fl of layout.floors) {
     for (const room of fl.rooms) {
       if (room.id === roomId) {
-        // room.width and room.depth are in metres
-        const areaSqM = room.width * room.depth;
+        // room.width and room.depth are in metres (clear size when known: what gets tiled and painted)
+        const dm = CLEAR?.[roomId] ?? room;
+        const areaSqM = dm.width * dm.depth;
         return areaSqM * 10.7639; // convert to sqft
       }
     }
@@ -41,7 +42,12 @@ function getRoomAreaSqFt(roomId: string, layout: Layout): number {
   return 120; // default fallback ~11 sqm
 }
 
+/** Finished (clear) room sizes in metres, when the caller has them from the drawing engine. */
+export type ClearDims = Record<string, { width: number; depth: number }>;
+let CLEAR: ClearDims | undefined;
+
 function getRoomDimensionsM(roomId: string, layout: Layout): { width: number; depth: number } {
+  if (CLEAR?.[roomId]) return CLEAR[roomId];
   for (const fl of layout.floors) {
     for (const room of fl.rooms) {
       if (room.id === roomId) {
@@ -324,6 +330,18 @@ export function generateExecutionPlan(
 export function generateInteriorBOQ(
   rooms: RoomInterior[],
   layout: Layout,
+  clear?: ClearDims,
+): {
+  items: InteriorBOQItem[];
+  total: number;
+  breakdown: InteriorDesignData['costBreakdown'];
+} {
+  CLEAR = clear;
+  try { return interiorBOQ(rooms, layout); } finally { CLEAR = undefined; }
+}
+function interiorBOQ(
+  rooms: RoomInterior[],
+  layout: Layout,
 ): {
   items: InteriorBOQItem[];
   total: number;
@@ -522,6 +540,7 @@ export function generateInteriorBOQ(
 export function generateInteriorDesign(
   rooms: RoomInterior[],
   layout: Layout,
+  clear?: ClearDims,
 ): InteriorDesignData {
   // Collect unique style moodboards
   const uniqueStyles = new Set(rooms.map((r) => r.style));
@@ -533,7 +552,7 @@ export function generateInteriorDesign(
   const { phases, totalDays } = generateExecutionPlan(rooms);
 
   // BOQ
-  const { items: boqItems, total: totalCost, breakdown } = generateInteriorBOQ(rooms, layout);
+  const { items: boqItems, total: totalCost, breakdown } = generateInteriorBOQ(rooms, layout, clear);
 
   // Update execution plan costs proportionally based on actual total
   for (const phase of phases) {

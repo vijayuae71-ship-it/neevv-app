@@ -304,6 +304,45 @@ export function getDefaultFurniture(
         item('Storage Credenza', 'console', 1500, 450, 750, 28000, true),
         item('Two-seater Sofa', 'sofa', 1500, 800, 800, 45000, false),
       ];
+    case 'reception':
+      return [
+        item('Reception Counter', 'study_table', 2400, 700, 1100, 85000, true),
+        item('Receptionist Chair', 'chair', 600, 600, 1000, 9500, true),
+        item('Visitor Sofa (3-seater)', 'sofa', 2100, 850, 800, 55000, true),
+        item('Coffee Table', 'console', 1000, 500, 420, 14000, true),
+        item('Brand Wall / Logo Panel', 'tv_unit', 2400, 100, 450, 40000, false),
+      ];
+    case 'waiting_lounge':
+      return [
+        item('Lounge Sofa (3-seater)', 'sofa', 2100, 850, 800, 55000, true),
+        item('Coffee Table', 'console', 1000, 500, 420, 14000, true),
+        item('Magazine Rack', 'bookshelf', 900, 350, 1200, 12000, false),
+      ];
+    case 'pantry':
+      return [
+        item('Pantry Counter with Sink (base units)', 'kitchen_cabinet', 2400, 600, 900, 65000, true),
+        item('Pantry Table (4-seat)', 'dining_table', 1200, 800, 750, 18000, true),
+        item('Pantry Chairs ×4', 'chair', 450, 500, 850, 16000, true),
+        item('Refrigerator / Appliance Tall Unit', 'wardrobe', 700, 650, 1900, 25000, false),
+      ];
+    case 'cafeteria':
+    case 'break_room': {
+      const seats = Math.max(4, Math.min(12, Math.floor(area / 1.8)));
+      return [
+        item(`Cafeteria Table (${seats}-seat)`, 'dining_table', Math.max(1200, Math.ceil(seats / 2) * 600), 900, 750, 6000 * seats, true),
+        item(`Cafeteria Chairs ×${seats}`, 'chair', 450, 500, 850, 4000 * seats, true),
+        item('Service Counter', 'kitchen_cabinet', 2400, 600, 900, 60000, true),
+      ];
+    }
+    case 'server_room':
+      return [
+        item('Server Rack 42U ×2', 'wardrobe', 1200, 1000, 2000, 120000, true),
+        item('Network Rack (wall)', 'console', 600, 450, 600, 18000, true),
+      ];
+    case 'electrical_room':
+      return [item('LT Panel / Main DB', 'wardrobe', 1200, 400, 2000, 150000, true)];
+    case 'ahu_room':
+      return [item('Air Handling Unit', 'wardrobe', 1800, 900, 1800, 250000, true)];
     default:
       break;
   }

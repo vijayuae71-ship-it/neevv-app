@@ -18,6 +18,7 @@
  */
 import type { Facing, Room, RoomType } from '../../types';
 import { calculateVastuScore } from '../vastuEngine';
+import { MAX_COLUMN_SPAN_M } from '../quantityRules';
 
 export const ARCHITECT_PLANNER_VERSION = 'neevv-architect-planner v1.1 (2026-11-01, distinct schemes)';
 const FT = 0.3048;
@@ -182,7 +183,7 @@ function build(b: Brief, env: SiteEnvelope, v: Variant): Built {
   const gfExtraBed = two ? overflow - ffFrontBeds : 0;
   if (v.bedsUp && gfExtraBed > 0) return fail('Not every bedroom fits on the upper floor');
   if (gfExtraBed > 1) return fail('Too many bedrooms for two floors of this plot');
-  const hasPoojaRoom = b.pooja && k >= 1 && !midBed && !compact;
+  let hasPoojaRoom = b.pooja && k >= 1 && !midBed && !compact;
 
   // ── Width: sized to the brief (big plots keep side gardens), capped by the envelope ──
   const livingT = Math.min(SZ.livingCapW, 3.6 + 0.5 * B + 0.5 * k);
@@ -247,6 +248,13 @@ function build(b: Brief, env: SiteEnvelope, v: Variant): Built {
   const rx: Record<string, [number, number]> = {}; let acc = 0;
   spec.forEach((c, i) => { rx[c.key] = [r2(acc), r2(acc + rw![i])]; acc += rw![i]; });
   const restKeys = spec.filter((s) => s.key.startsWith('b') || s.key === 'x').map((s) => s.key);
+  // A pooja room in the middle band must not cut a ground-floor wash/bath column off from the lobby (its only door wall);
+  // when it would, the pooja becomes a niche in the living room instead.
+  if (hasPoojaRoom) {
+    const lobbyEnd = r2(W - SZ.poojaW[k]);
+    const gfWet = Array.from({ length: wetCols }, (_, i) => rx[`w${i}`]).filter((_, i) => two || !(attached && i === 0));
+    if (gfWet.some(([a, z]) => Math.min(z, lobbyEnd) - Math.max(a, Ws) < 0.9 - 1e-6)) hasPoojaRoom = false;
+  }
 
   const bathColumn = (x0: number, x1: number, top: Kind, topName: string, bathKind: Kind, bathName: string): Cell[] => {
     const bd = SZ.bathD[k];
@@ -345,7 +353,8 @@ function build(b: Brief, env: SiteEnvelope, v: Variant): Built {
   // FF front band: over the kitchen → balcony/study; over dining + living → bedrooms first, then the family lounge
   const kEnd = compact ? r2(Df - SZ.stairBoxD) : Df;          // K column above the kitchen
   const kTop = Math.min(kEnd, 2.6);
-  const studyTop = b.study && !rx.x && !(compact && ffFrontBeds > 0);
+  // a study over the kitchen needs a door to circulation: not possible when front bedrooms flank it
+  const studyTop = b.study && !rx.x && ffFrontBeds === 0;
   ff.push({ name: studyTop ? 'Study' : 'Balcony (open)', kind: studyTop ? 'study' : 'balcony', x0: 0, x1: Ws, y0: 0, y1: kEnd - kTop >= 0.9 ? kTop : kEnd });
   if (kEnd - kTop >= 0.9) ff.push({ name: 'Linen / store', kind: 'store', x0: 0, x1: Ws, y0: kTop, y1: kEnd });
   if (compact) ff.push({ ...compactStair });
@@ -360,10 +369,14 @@ function build(b: Brief, env: SiteEnvelope, v: Variant): Built {
     if (!ww) return fail('Upper-floor front bedrooms do not fit');
     let xx = Ws;
     for (let i = 0; i < ffFrontBeds; i++) { ff.push({ name: `Bedroom ${bedNo++}`, kind: 'bedroom', x0: r2(xx), x1: r2(xx + ww[i]), y0: 0, y1: bedD }); xx += ww[i]; }
-    const left = r2(W - xx);
+    let left = r2(W - xx);
+    const lastBed = ff[ff.length - 1];
+    // a sliver under 1 m is not merged into the bedroom (it would outgrow the master): the bedroom gives up
+    // the difference so a usable 1 m balcony remains, if the bedroom stays at its minimum width
+    if (left > 0.01 && left < 1.0 && lastBed.x1 - lastBed.x0 - (1.0 - left) >= minBed - 1e-6) { lastBed.x1 = r2(W - 1.0); xx = lastBed.x1; left = 1.0; }
     if (left >= 2.6) ff.push({ name: 'Family lounge', kind: 'lounge', x0: r2(xx), x1: W, y0: 0, y1: bedD, open: compact ? ['R'] : [] });
     else if (left >= 1.0) ff.push({ name: 'Balcony (open)', kind: 'balcony', x0: r2(xx), x1: W, y0: 0, y1: bedD });
-    else if (left > 0.01) ff[ff.length - 1].x1 = W;
+    else lastBed.x1 = W; // rounding: never past (or short of) the outer wall
     if (lobbyD) ff.push({ name: 'Upper lobby', kind: 'lobby', x0: Ws, x1: W, y0: bedD, y1: Df });
   } else ff.push({ name: 'Family lounge', kind: 'lounge', x0: Ws, x1: W, y0: 0, y1: Df, open: ['R'] });
   if (gfExtraBed) {
@@ -577,7 +590,13 @@ function structuralGrid(bt: Built): { xs: number[]; ys: number[] } {
     const out = [0]; let prev = 0;
     while (len - prev > 5.0 + 1e-6) {
       const opts = cs.filter((v) => v > prev + 1.2 && v <= prev + 5.0 + 1e-6);
-      if (!opts.length) { prev = r2(Math.min(prev + 5.0, len)); out.push(prev); continue; }
+      if (!opts.length) {
+        // a last bay just over 5 m (≤ 5.1 m) stays on the outer wall — never a sliver bay 50 mm from the wall
+        if (len - prev <= MAX_COLUMN_SPAN_M + 1e-6) break;
+        // otherwise split what is left evenly rather than leaving a short end bay
+        const n = Math.ceil((len - prev) / 5.0 - 1e-6);
+        prev = r2(prev + (len - prev) / n); out.push(prev); continue;
+      }
       const best = opts.reduce((a, b) => (coverage(b) + (b - prev) / 25 > coverage(a) + (a - prev) / 25 ? b : a));
       out.push(best); prev = best;
     }
@@ -695,7 +714,23 @@ export function planHome(b: Brief, opts: { alternatives?: boolean } = {}): PlanR
     pool.sort((a, c) => (Math.min(...chosen.map((x) => diff(x, c))) * 10 + q(c) / 10) - (Math.min(...chosen.map((x) => diff(x, a))) * 10 + q(a) / 10));
     chosen.push(pool.shift()!);
   }
-  if (chosen.length && chosen.length < 3) verdict += ` ${chosen.length === 1 ? 'Only one arrangement' : `Only ${chosen.length} genuinely different arrangements`} pass${chosen.length === 1 ? 'es' : ''} every check on this plot; mirror-image copies are not shown as separate options.`;
+  // The three options are the customer's choice. When fewer than three genuinely different schemes pass, the list is
+  // topped up with the mirrored version of a passing scheme (kitchen + stair on the other side): a real alternative on
+  // the plot — Vastu zones, morning sun and the neighbour each room faces all change — clearly labelled as such.
+  const distinct = chosen.length;
+  if (distinct && distinct < 3) {
+    const mirrorOf = (c: Cand) => cands.find((o) => o.sig === c.sig && o.v.serviceSide !== c.v.serviceSide);
+    const pool2: Cand[] = [];
+    for (const c of [...chosen, ...pool]) { const m = mirrorOf(c); if (m && !chosen.includes(m) && !pool2.includes(m)) pool2.push(m); }
+    for (const m of pool2.filter(vastuOk)) if (chosen.length < 3) chosen.push(m);
+    for (const m of pool2.filter((x) => !vastuOk(x))) if (chosen.length < 3) chosen.push(m);
+    const added = chosen.length - distinct;
+    verdict += ` ${distinct === 1 ? 'One arrangement passes' : `${distinct} genuinely different arrangements pass`} every check on this plot`
+      + (added ? `; ${added === 1 ? 'the other option shows' : `the other ${added} options show`} the same plan mirrored — kitchen and stair on the other side — so you can choose the orientation that suits your Vastu, sunlight and neighbours.` : '.');
+  }
+  const sigCount = (sig: string) => chosen.filter((c) => c.sig === sig).length;
+  // serviceSide 'left' = kitchen at x = 0 in the app frame (seen from inside, facing the road) → on the RIGHT seen from the road
+  const sideNote = (v: Variant) => `kitchen & stair on the ${v.serviceSide === 'left' ? 'right' : 'left'} (seen from the road)`;
   const schemeName = (v: Variant) => [v.compact ? 'Compact hall plan' : 'Zoned plan', v.openHall && !v.compact ? 'open living-dining' : '', v.bedsUp ? 'all bedrooms upstairs' : (v.storeys === 2 ? 'parents\u2019 room on ground floor' : '')].filter(Boolean).join(' · ');
   const schemeNote = (v: Variant) => (v.compact ? 'Compact hall plan: no middle band — the stair sits behind the kitchen and the hall leads straight to the bedrooms (least circulation).'
     : v.openHall ? 'Zoned plan with one open living-dining hall instead of separate living and dining rooms.'
@@ -710,10 +745,10 @@ export function planHome(b: Brief, opts: { alternatives?: boolean } = {}): PlanR
       : `Two-wheeler only in front (${c.bt.frontOpen} m open) — a car needs a plot at least 40 ft wide and 50 ft deep, or stilt parking with higher FSI`;
     return {
       id: `${c.v.storeys === 1 ? 'G' : 'G1'}-${c.v.compact ? 'compact' : c.v.bedsUp ? 'bedsup' : c.v.openHall ? 'openhall' : 'zoned'}-${c.v.serviceSide}`,
-      title: `${c.v.storeys === 1 ? 'Single storey' : 'G+1'} · ${schemeName(c.v)}`,
+      title: `${c.v.storeys === 1 ? 'Single storey' : 'G+1'} · ${schemeName(c.v)}${sigCount(c.sig) > 1 ? ` · ${sideNote(c.v)}` : ''}`,
       storeys: c.v.storeys, serviceSide: c.v.serviceSide, widthM: c.bt.W, depthM: c.bt.D, floors,
       builtUpSqm: bua, builtUpSqft: Math.round(bua * SQFT), fsiUsed: r2(bua / env.plotSqm), frontOpenM: c.bt.frontOpen, parkingNote,
-      vastuScore: b.vastu ? c.vastu : -1, checks: c.checks, notes: [schemeNote(c.v), ...c.bt.notes], recommended: i === 0,
+      vastuScore: b.vastu ? c.vastu : -1, checks: c.checks, notes: [schemeNote(c.v), ...(sigCount(c.sig) > 1 ? [`Orientation: ${sideNote(c.v)}.`] : []), ...c.bt.notes], recommended: i === 0,
       ...appOpeningsAndGrid(c.bt, c.v.serviceSide, floors),
     };
   });

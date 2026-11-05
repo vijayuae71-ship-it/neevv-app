@@ -1,7 +1,8 @@
 import type { BOQ, BOQLineItem, DoorScheduleItem, WindowScheduleItem, Layout, MaterialRate, CustomRateSheet, BudgetRange } from '../types';
 import { computeTakeoff, type Takeoff } from './quantityTakeoff';
+import { COMPOUND_WALL_HEIGHT_MM, gateWidthM, waterStorage } from './buildingModel';
 import { cityRateFactor, specFactor } from './marketRates';
-import { electricalPoints as electricalPointsFor, plumbingPoints as plumbingPointsFor, electricalTotals, fixtureTotals, isNiche, ASSUMED_FOUNDING_DEPTH_M, PARAPET_HEIGHT_MM, WALL_EXTERNAL_MM, WALL_INTERNAL_MM } from './quantityRules';
+import { planCircuits, circuitDemand, electricalPoints as electricalPointsFor, plumbingPoints as plumbingPointsFor, electricalTotals, fixtureTotals, isNiche, ASSUMED_FOUNDING_DEPTH_M, PARAPET_HEIGHT_MM, WALL_EXTERNAL_MM, WALL_INTERNAL_MM } from './quantityRules';
 
 /** Pricing context: city and specification level. Custom rates entered by the customer always win. */
 export interface BOQContext { city?: string; budget?: BudgetRange; bathTileHeightM?: number }
@@ -294,20 +295,27 @@ export function calculateBOQ(
   };
 
   // Footing-derived earthwork when the structural engine has designed footings
-  const footings = (structuralResult as (StructuralResultLike & { foundations?: Array<{ footingSizeMm: number; footingDepthMm: number; pccSizeMm?: number; pccThicknessMm?: number }> }) | undefined)?.foundations ?? [];
+  // The ADOPTED foundation (isolated pads / combined footings / raft) drives excavation, PCC and backfill.
+  type Pad = { mark: string; type: string; lengthMm: number; widthMm: number; depthMm: number; pccThicknessMm: number };
+  const fsys = (structuralResult as (StructuralResultLike & { foundationSystem?: { type: string; pads: Pad[] } }) | undefined)?.foundationSystem;
+  const footings = (fsys?.pads?.length ? fsys.pads : ((structuralResult as (StructuralResultLike & { foundations?: Array<{ footingSizeMm: number; footingDepthMm: number; pccThicknessMm?: number }> }) | undefined)?.foundations ?? [])
+    .map((f, i) => ({ mark: `F${i + 1}`, type: 'isolated', lengthMm: f.footingSizeMm, widthMm: f.footingSizeMm, depthMm: f.footingDepthMm, pccThicknessMm: f.pccThicknessMm ?? 75 })));
+  const raft = footings.some((f) => f.type === 'raft');
   const foundingDepthM = ASSUMED_FOUNDING_DEPTH_M;
   const gfInternalLen = takeoff.floors[0]?.internalWallLenM ?? 0;
   const gfExternalLen = takeoff.floors[0]?.externalWallLenM ?? perimeter;
+  // pits: pad + 300 mm working space each side; a raft is one open excavation, so no separate plinth-beam trench
   const excavationM3 = footings.length
-    ? footings.reduce((s, f) => s + ((f.footingSizeMm / 1000 + 0.6) ** 2) * foundingDepthM, 0) + (perimeter + gfInternalLen * 0.5) * 0.6 * 0.6
+    ? footings.reduce((s, f) => s + (f.lengthMm / 1000 + 0.6) * (f.widthMm / 1000 + 0.6) * foundingDepthM, 0) + (raft ? 0 : (perimeter + gfInternalLen * 0.5) * 0.6 * 0.6)
     : builtUpPerFloor * 1.2;
   const pccM3 = footings.length
-    ? footings.reduce((s, f) => s + ((f.pccSizeMm ?? f.footingSizeMm + 150) / 1000) ** 2 * ((f.pccThicknessMm ?? 75) / 1000), 0)
+    ? footings.reduce((s, f) => s + (f.lengthMm / 1000 + 0.15) * (f.widthMm / 1000 + 0.15) * (f.pccThicknessMm / 1000), 0)
     : builtUpPerFloor * 0.075;
-  const footingVolM3 = footings.reduce((s, f) => s + (f.footingSizeMm / 1000) ** 2 * (f.footingDepthMm / 1000), 0);
+  const footingVolM3 = footings.reduce((s, f) => s + f.lengthMm / 1000 * f.widthMm / 1000 * f.depthMm / 1000, 0);
   const backfillM3 = Math.max(0, excavationM3 - pccM3 - (footings.length ? footingVolM3 : excavationM3 * 0.4));
   const groundFloorArea = layout.buildableWidthM * layout.buildableDepthM;
-  const earthBasis = footings.length ? `From ${footings.length} designed footing(s) at ${foundingDepthM} m founding depth + plinth-beam trench` : 'Allowance — footings not yet designed';
+  const fType = raft ? 'raft' : footings.some((f) => f.type === 'combined') ? 'isolated + combined footings' : 'isolated footings';
+  const earthBasis = footings.length ? `From the designed ${fType} (${footings.length}) at ${foundingDepthM} m founding depth${raft ? '' : ' + plinth-beam trench'}` : 'Allowance — footings not yet designed';
 
   // A. SITE PREPARATION & EARTHWORK
   add('Site Clearing & Levelling', groundFloorArea, 'm²', 30, 'structural', 'Remove debris, level ground');
@@ -320,7 +328,7 @@ export function calculateBOQ(
 
   // B. CONCRETE & RCC (rates include formwork; steel billed separately)
   add('PCC (1:4:8) – Footing Bed', +pccM3.toFixed(2), 'm³', 6000, 'structural', footings.length ? 'Under designed footings' : '75mm allowance');
-  add('RCC Foundation / Footings (M25)', foundationConcrete, 'm³', 8000, 'structural', quantityBasis === 'engineered' ? `Engineered: ${actualColumnCount ?? 0} designed footing(s), IS 456` : 'Isolated footings, IS 456');
+  add(raft ? 'RCC Raft Foundation (M25)' : 'RCC Foundation / Footings (M25)', foundationConcrete, 'm³', 8000, 'structural', quantityBasis === 'engineered' ? `Engineered: ${fType} (${footings.length}), IS 456` : 'Isolated footings, IS 456');
   add('RCC Plinth Beam (M25)', +((gfExternalLen + gfInternalLen) * 0.23 * 0.30).toFixed(2), 'm³', 9500, 'structural', '230×300mm under ground-floor wall lines');
   add('DPC (40mm CC 1:2:4 + waterproofing compound)', +(gfExternalLen * WALL_EXTERNAL_MM / 1000 + gfInternalLen * WALL_INTERNAL_MM / 1000).toFixed(2), 'm²', 450, 'structural', 'At plinth level');
   add('RCC Columns (M25)', columnConcrete, 'm³', 11000, 'structural', quantityBasis === 'engineered' ? `Engineered: ${actualColumnCount ?? 0} actual column member(s), IS 456` : '230×300mm, IS 456');
@@ -387,9 +395,8 @@ export function calculateBOQ(
   add('Mosquito Mesh Screens', glazedWindows.reduce((s, w) => s + w.qty, 0), 'nos', 2500, 'doors_windows', 'SS mesh, aluminium frame');
 
   // I. PLUMBING & SANITARY
-  const persons = bedrooms.length * 2 + 1;
-  const sumpL = Math.max(5000, Math.ceil((persons * 135 * 1.5) / 1000) * 1000);
-  const ohtL = Math.max(1000, Math.ceil((persons * 135) / 500) * 500);
+  // Same storage sizes as the tank sheet, terrace plan, site plan and 3D model.
+  const { persons, sumpL, ohtL } = waterStorage(layout);
   add('Plumbing – Supply Lines (CPVC)', plumbingPoints, 'points', 2400, 'mep', 'CPVC concealed');
   add('Plumbing – Drainage Lines (SWR)', plumbingPoints, 'points', 1800, 'mep', '110mm & 75mm SWR');
   const fx = fixtureTotals(allRooms);
@@ -414,7 +421,12 @@ export function calculateBOQ(
   add('Exhaust Fans (Kitchen & Baths)', el.exhaust, 'nos', 2200, 'mep', '150–200 mm, incl. fixing');
   add('AC Points (Power + Drain)', el.ac, 'nos', 4500, 'mep', '16A socket with drain pipe');
   add('Geyser Point (15A)', toilets.length, 'nos', 2000, 'mep', '15A socket + MCB');
-  add('MCB Distribution Board', numFloors, 'nos', 12000, 'mep', 'Per floor');
+  // DB ways and MCBs from the same circuit plan as the electrical drawings (E-sheets)
+  const circuitsPerFloor = layout.floors.map((f) => planCircuits(f.rooms));
+  const nCircuits = circuitsPerFloor.reduce((s, c) => s + c.length, 0);
+  const demand = circuitDemand(circuitsPerFloor.flat());
+  add(`MCB Distribution Board (${Math.max(...circuitsPerFloor.map((c) => c.length)) + 4}-way, RCCB)`, numFloors, 'nos', 12000, 'mep', `Per floor; ${nCircuits} circuits in all (E-sheets)`);
+  add('MCBs (SP, C-curve)', nCircuits, 'nos', 350, 'mep', `6A lighting / 16A sockets / 20A power & AC; max demand ${(demand.demandW / 1000).toFixed(1)} kW, ${demand.supply}`);
   add('RCCB (Earth Leakage)', numFloors, 'nos', 4500, 'mep', '63A/30mA');
   add('Earthing (Pipe/Plate)', 2, 'nos', 9000, 'mep', 'As per IS 3043');
   add('TV & Internet Points', bedrooms.length + halls.length, 'nos', 1000, 'mep', 'Cat6 + coaxial');
@@ -423,8 +435,9 @@ export function calculateBOQ(
   // K. EXTERNAL WORKS (site works — reported separately from the building cost)
   const siteStart = lineItems.length;
   const plotPerimeter = 2 * ((layout.plotWidthM || layout.buildableWidthM) + (layout.plotDepthM || layout.buildableDepthM));
-  add('Compound Wall (1.5m height)', +Math.max(0, plotPerimeter - 4).toFixed(1), 'Rmt', 4000, 'misc', 'Plot boundary less gate opening');
-  add('MS Main Gate (4 m)', 1, 'nos', 45000, 'misc', 'Powder-coated');
+  const gateW = gateWidthM(layout.plotWidthM || layout.buildableWidthM);
+  add(`Compound Wall (${COMPOUND_WALL_HEIGHT_MM / 1000}m height)`, +Math.max(0, plotPerimeter - gateW).toFixed(1), 'Rmt', 4000, 'misc', 'Plot boundary less gate opening (site plan A-001)');
+  add(`MS Main Gate (${gateW} m)`, 1, 'nos', Math.round(45000 * gateW / 4), 'misc', 'Powder-coated');
   add('Staircase Railing', +(takeoff.floorFinish.stairTreads * 0.25 * 1.2).toFixed(1), 'Rmt', 3500, 'misc', 'MS + wooden/SS top rail');
   add('Balcony Railing', +takeoff.floors.reduce((s, f) => s + f.balconyEdgeLenM, 0).toFixed(1), 'Rmt', 4500, 'misc', 'MS / glass');
   add('Driveway / Front Paving', +((layout.setbacks?.front ?? 1.5) * Math.min(3.5, layout.plotWidthM || 3.5)).toFixed(1), 'm²', 1100, 'misc', 'Paver blocks');

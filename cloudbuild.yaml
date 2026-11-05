@@ -14,7 +14,7 @@ steps:
         if [ $$BUILD_EXIT -ne 0 ]; then
           echo "=== BUILD FAILED — sending logs to webhook ==="
           LOGS=$$(tail -80 /workspace/build.log | sed 's/"/\\"/g' | awk '{printf "%s\\n", $$0}')
-          curl -s -X POST "https://webhooks.tasklet.ai/v1/public/webhook?token=d6ee42e51865b00c3525c667177f2345" \
+          [ -n "${_BUILD_WEBHOOK_URL}" ] && curl -s -X POST "${_BUILD_WEBHOOK_URL}" \
             -H "Content-Type: application/json" \
             -d "{\"status\": \"FAILED\", \"step\": \"docker_build\", \"build_id\": \"$BUILD_ID\", \"commit\": \"$COMMIT_SHA\", \"logs\": \"$$LOGS\"}"
           exit 1
@@ -53,7 +53,7 @@ steps:
       - '--port'
       - '8080'
       - '--set-env-vars'
-      - 'NODE_ENV=production,GEMINI_API_KEY=${_GEMINI_API_KEY}'
+      - 'NODE_ENV=production,GEMINI_API_KEY=${_GEMINI_API_KEY},ANTHROPIC_API_KEY=${_ANTHROPIC_API_KEY}'
 
   # Step 4: Deploy Firebase Hosting (clean URL → Cloud Run)
   - name: 'node:18'
@@ -64,20 +64,22 @@ steps:
         npm install -g firebase-tools
         firebase deploy --only hosting --project $PROJECT_ID --non-interactive
 
-  # Step 5: Notify success
+  # Step 5: Notify success (webhook URL comes from the trigger's _BUILD_WEBHOOK_URL substitution; skipped when unset)
   - name: 'gcr.io/cloud-builders/curl'
+    entrypoint: 'bash'
     args:
-      - '-s'
-      - '-X'
-      - 'POST'
-      - 'https://webhooks.tasklet.ai/v1/public/webhook?token=d6ee42e51865b00c3525c667177f2345'
-      - '-H'
-      - 'Content-Type: application/json'
-      - '-d'
-      - '{"status": "SUCCESS", "step": "deploy", "build_id": "$BUILD_ID", "commit": "$COMMIT_SHA"}'
+      - '-c'
+      - |
+        if [ -n "${_BUILD_WEBHOOK_URL}" ]; then
+          curl -s -X POST "${_BUILD_WEBHOOK_URL}" -H "Content-Type: application/json" \
+            -d '{"status": "SUCCESS", "step": "deploy", "build_id": "'"$BUILD_ID"'", "commit": "'"$COMMIT_SHA"'"}'
+        fi
 
 substitutions:
+  # Set both in the Cloud Build trigger (never commit their values):
   _GEMINI_API_KEY: ''
+  _ANTHROPIC_API_KEY: ''
+  _BUILD_WEBHOOK_URL: ''
 
 images:
   - 'gcr.io/$PROJECT_ID/neevv-app:$COMMIT_SHA'

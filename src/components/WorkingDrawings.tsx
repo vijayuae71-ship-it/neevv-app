@@ -5,16 +5,17 @@ import { Layout, ProjectRequirements, BOQ } from '../types';
 import {
   Layers, Grid3x3, ArrowUpDown, Building, Shovel, Columns3,
   BarChart3, BrickWall, Zap, Droplets, Grid2x2, Ruler, Download,
-  Footprints, Container, ShieldCheck, Pipette, Sparkles, Loader2,
+  Footprints, Container, ShieldCheck, Pipette, Sparkles, Loader2, Map as MapIcon,
   CheckCircle2, PlayCircle, ZoomIn, ZoomOut, RotateCcw
 } from 'lucide-react';
-import { exportAIPDF, ExportProgress } from '../utils/pdfExport';
 import { applyTextOverlay, OVERLAY_DRAWING_TYPES } from '../utils/textOverlay';
 import { toOverlayData, type StructuralOverlayData } from '../utils/textOverlay';
 import { authFetch } from '@/utils/authFetch';
 import { getCachedDrawing, setCachedDrawing, getAllCachedDrawings, clearCachedDrawings, migrateFromLocalStorage } from '../utils/drawingCache';
 import { buildDrawingPrompt, DrawingType as ApiDrawingType, StructuralPromptData } from '../utils/drawingPrompts';
 import { generateProgrammaticDrawing, PROGRAMMATIC_TYPES } from '../utils/drawingEngine';
+import { buildingSheets, downloadVectorPDF, downloadCADSet } from '../utils/drawingSetExport';
+import { isOfficeLayout } from '../utils/officeServices';
 
 interface Props {
   onDrawingGenerated?: (drawingType: string) => void;
@@ -44,7 +45,17 @@ type DrawingType =
   | 'staircase'
   | 'waterTank'
   | 'waterproofing'
-  | 'stp';
+  | 'stp'
+  | 'sitePlan'
+  | 'terracePlan'
+  | 'sideElevation'
+  | 'coverSheet'
+  | 'sectionBB'
+  | 'wetAreas'
+  | 'typicalDetails'
+  | 'officeFurniture'
+  | 'hvac'
+  | 'fireSafety';
 
 /* Map internal drawing types to API drawing types */
 const aiDrawingMap: Record<DrawingType, string> = {
@@ -66,10 +77,22 @@ const aiDrawingMap: Record<DrawingType, string> = {
   waterproofing: 'waterproofing',
   stp: 'stp_detail',
   tiling: 'tiling_layout',
+  sitePlan: 'site_plan',
+  terracePlan: 'terrace_plan',
+  sideElevation: 'side_elevation',
+  coverSheet: 'cover_sheet',
+  sectionBB: 'section_bb',
+  wetAreas: 'wet_areas',
+  typicalDetails: 'typical_details',
+  officeFurniture: 'office_furniture',
+  hvac: 'hvac',
+  fireSafety: 'fire_safety',
 };
 
 /* Drawing types that differ between Ground Floor and First Floor and need separate generation/caching */
-const FLOOR_SPECIFIC: DrawingType[] = ['workingPlan', 'electrical', 'plumbing', 'tiling', 'brickwork'];
+const FLOOR_SPECIFIC: DrawingType[] = ['workingPlan', 'electrical', 'plumbing', 'tiling', 'brickwork', 'officeFurniture', 'hvac', 'fireSafety'];
+/** Shown only for office buildings. */
+const OFFICE_ONLY: DrawingType[] = ['officeFurniture', 'hvac', 'fireSafety'];
 
 export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq, onDrawingGenerated, structuralResult, bbsResult, statusBadge }) => {
   const structuralOverlay = useMemo(() => {
@@ -124,12 +147,9 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq, on
   const [aiLoading, setAiLoading] = useState<string | null>(null);
   const [aiError, setAiError] = useState<string | null>(null);
   const [generatingAll, setGeneratingAll] = useState(false);
-  const [exporting, setExporting] = useState(false);
-  const [exportProgress, setExportProgress] = useState<ExportProgress | null>(null);
-  const [exportResult, setExportResult] = useState<string | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
 
-  const drawingsStorageKey = `neevv-drawings-v3-${requirements.plotWidthFt}x${requirements.plotDepthFt}-${layout.designSeed?.seedId || layout.id || 'default'}-${requirements.city || 'city'}`;
+  const drawingsStorageKey = `neevv-drawings-v4-${requirements.plotWidthFt}x${requirements.plotDepthFt}-${layout.designSeed?.seedId || layout.id || 'default'}-${requirements.city || 'city'}`;
 
   const saveDrawingToCache = useCallback(async (cacheKey: string, imageData: string) => {
     try {
@@ -164,6 +184,7 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq, on
   }, [drawingsStorageKey]);
 
   const isMultiFloor = (requirements?.floors?.length || layout?.floors?.length || 1) > 1;
+  const office = useMemo(() => isOfficeLayout(layout), [layout]);
 
   /* Cache key: floor-specific drawings get a separate key per floor, shared drawings don't */
   const getCacheKey = useCallback((dt: DrawingType, floor: 'GF' | 'FF') => {
@@ -251,7 +272,7 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq, on
   const generateAll = useCallback(async () => {
     setGeneratingAll(true);
     setAiError(null);
-    const allTypes = Object.keys(aiDrawingMap) as DrawingType[];
+    const allTypes = (Object.keys(aiDrawingMap) as DrawingType[]).filter(t => office || !OFFICE_ONLY.includes(t));
 
     const genOne = async (dt: DrawingType, floor: 'GF' | 'FF') => {
       setSelectedFloor(floor);
@@ -307,7 +328,7 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq, on
       await genOne(dt, 'GF');
     }
     if (isMultiFloor) {
-      for (const dt of FLOOR_SPECIFIC) {
+      for (const dt of FLOOR_SPECIFIC.filter(t => office || !OFFICE_ONLY.includes(t))) {
         await genOne(dt, 'FF');
       }
     }
@@ -317,22 +338,19 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq, on
     setGeneratingAll(false);
   }, [aiImages, layout, requirements, boq, mergedStructuralData, structuralOverlay, structuralPromptData, isMultiFloor, getCacheKey, saveDrawingToCache, onDrawingGenerated]);
 
-  /* ---------- PDF Export ---------- */
-  const handleExportPDF = async () => {
-    setExporting(true);
-    setExportResult(null);
-    setExportError(null);
+  /* ---------- Vector PDF and CAD (DXF) of the whole set, straight from the engine ---------- */
+  const [vecBusy, setVecBusy] = useState<null | 'pdf' | 'cad'>(null);
+  const exportVector = async (kind: 'pdf' | 'cad') => {
+    setVecBusy(kind); setExportError(null);
     try {
-      const path = await exportAIPDF(aiImages, layout, requirements, boq || null, setExportProgress);
-      setExportResult(path);
+      await new Promise(r => setTimeout(r, 30)); // let the button show its busy state
+      const sheets = buildingSheets(layout, requirements, mergedStructuralData, boq || null);
+      const name = `neevv-${requirements.plotWidthFt}x${requirements.plotDepthFt}-${layout.name || 'plan'}`;
+      if (kind === 'pdf') await downloadVectorPDF(sheets, name, `${layout.name || 'neevv'} — working drawings`);
+      else downloadCADSet(sheets, name);
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'Export failed';
-      setExportError(msg);
-      console.error('PDF export error:', e);
-    } finally {
-      setExporting(false);
-      setExportProgress(null);
-    }
+      setExportError(e instanceof Error ? e.message : 'Export failed');
+    } finally { setVecBusy(null); }
   };
 
   /* ---------- Download single image ---------- */
@@ -349,19 +367,27 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq, on
   };
 
   const generatedCount = Object.keys(aiImages).length;
-  const totalDrawings = Object.keys(aiDrawingMap).length + (isMultiFloor ? FLOOR_SPECIFIC.length : 0);
+  const shownTypes = (Object.keys(aiDrawingMap) as DrawingType[]).filter(t => office || !OFFICE_ONLY.includes(t));
+  const totalDrawings = shownTypes.length + (isMultiFloor ? FLOOR_SPECIFIC.filter(t => office || !OFFICE_ONLY.includes(t)).length : 0);
 
   const tabs: { id: DrawingType; label: string; icon: React.ReactNode; group: string }[] = [
+    { id: 'coverSheet', label: 'Cover & Register', icon: <Layers size={12} />, group: 'Architecture' },
+    { id: 'sitePlan', label: 'Site Plan', icon: <MapIcon size={12} />, group: 'Architecture' },
     { id: 'workingPlan', label: 'Working Plan', icon: <Ruler size={12} />, group: 'Architecture' },
+    { id: 'terracePlan', label: 'Terrace Plan', icon: <Layers size={12} />, group: 'Architecture' },
     { id: 'doorWindow', label: 'Door & Window Schedule', icon: <Columns3 size={12} />, group: 'Architecture' },
     { id: 'excavation', label: 'Excavation', icon: <Shovel size={12} />, group: 'Site' },
-    { id: 'foundation', label: 'Foundation Plan', icon: <Grid3x3 size={12} />, group: 'Structure' },
-    { id: 'footingDetail', label: 'Footing Detail', icon: <Layers size={12} />, group: 'Structure' },
+    { id: 'foundation', label: 'Foundation Layout', icon: <Grid3x3 size={12} />, group: 'Structure' },
+    { id: 'footingDetail', label: 'Foundation Detail', icon: <Layers size={12} />, group: 'Structure' },
     { id: 'rccDetail', label: 'RCC Slab/Beam', icon: <Layers size={12} />, group: 'Structure' },
-    { id: 'reinforcement', label: 'Rebar Details', icon: <Ruler size={12} />, group: 'Structure' },
+    { id: 'reinforcement', label: 'Column Schedule', icon: <Ruler size={12} />, group: 'Structure' },
     { id: 'barBending', label: 'BBS', icon: <BarChart3 size={12} />, group: 'Structure' },
     { id: 'section', label: 'Section 1-1', icon: <ArrowUpDown size={12} />, group: 'Architecture' },
-    { id: 'elevation', label: 'Elevation', icon: <Building size={12} />, group: 'Architecture' },
+    { id: 'sectionBB', label: 'Section 2-2', icon: <ArrowUpDown size={12} />, group: 'Architecture' },
+    { id: 'wetAreas', label: 'Toilet & Kitchen', icon: <Droplets size={12} />, group: 'Architecture' },
+    { id: 'typicalDetails', label: 'Typical Details', icon: <Ruler size={12} />, group: 'Finishes' },
+    { id: 'elevation', label: 'Front Elevation', icon: <Building size={12} />, group: 'Architecture' },
+    { id: 'sideElevation', label: 'Side & Rear Elevations', icon: <Building size={12} />, group: 'Architecture' },
     { id: 'brickwork', label: 'Brickwork', icon: <BrickWall size={12} />, group: 'Finishes' },
     { id: 'electrical', label: 'Electrical', icon: <Zap size={12} />, group: 'MEP' },
     { id: 'plumbing', label: 'Plumbing', icon: <Droplets size={12} />, group: 'MEP' },
@@ -370,21 +396,36 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq, on
     { id: 'waterTank', label: 'Water Tank', icon: <Container size={12} />, group: 'MEP' },
     { id: 'waterproofing', label: 'Waterproofing', icon: <ShieldCheck size={12} />, group: 'Finishes' },
     { id: 'stp', label: 'STP', icon: <Pipette size={12} />, group: 'MEP' },
+    ...(office ? [
+      { id: 'officeFurniture' as DrawingType, label: 'Office Furniture', icon: <Columns3 size={12} />, group: 'Office' },
+      { id: 'hvac' as DrawingType, label: 'HVAC', icon: <Container size={12} />, group: 'Office' },
+      { id: 'fireSafety' as DrawingType, label: 'Fire Safety & Escape', icon: <ShieldCheck size={12} />, group: 'Office' },
+    ] : []),
   ];
 
-  const groups = ['Architecture', 'Site', 'Structure', 'Finishes', 'MEP'];
+  const groups = ['Architecture', 'Site', 'Structure', 'Finishes', 'MEP', ...(office ? ['Office'] : [])];
 
   const descriptions: Record<DrawingType, string> = {
     excavation: 'Trench excavation layout with depths, bench mark, center line pegs, and earth removal volume. Trench width: 1800mm (1200mm footing + 300mm working space each side).',
-    foundation: 'Foundation layout with isolated footings, column pedestals, and plinth beam grid. Designed per IS 456 with city-specific SBC.',
-    footingDetail: 'Detailed footing cross-section and plan with reinforcement, PCC bed, pedestal starter bars, and soil bearing details per IS 456.',
-    rccDetail: 'RCC slab & beam layout showing slab panels (one-way/two-way), beam grid, reinforcement directions, staircase opening, and cantilever balcony slabs.',
+    foundation: 'Foundation layout: the adopted system (isolated pads, combined footings or raft — chosen from footing overlap, SBC and soil type), column marks, plinth beams and a foundation schedule.',
+    footingDetail: 'Foundation details for the adopted system: section and plan with bottom/top mesh, PCC bed, column starters, founding level and the soil caution where it applies.',
+    rccDetail: 'RCC beam & slab layout: every beam marked (FB/RB) on its real line with a beam schedule — size, bottom, continuous top and extra top bars over supports, stirrups — and slab marks with thickness and span type.',
     workingPlan: 'Dimensioned working plan from the locked plan: wall-face, opening and overall dimension strings, column grid, door/window marks, room sizes and areas, floor levels and section marker.',
     doorWindow: 'Door, window and ventilator schedule: marks, sizes, sills, lintel levels, materials and counts per floor (matching the BOQ), with type elevations at 1:50.',
-    reinforcement: 'Detailed reinforcement sections for footing, column, beam, slab, and lintel with bar sizes, spacing, cover, and stirrup details.',
+    reinforcement: 'Column schedule by type for each storey with sections at 1:10, and the typical continuous beam detail with bar zones and sections at support and mid-span.',
     barBending: 'Bar Bending Schedule per IS 2502. All members quantified with bar mark, diameter, shape code, cutting length, and total weight.',
-    section: `Cross-section showing foundation system, RCC frame, infill masonry, and lintels. Floor-to-floor: 3000mm.`,
-    elevation: `Front elevation (${requirements.facing} facing). Plinth, DPC, windows, main door, balcony, slab bands, parapet with coping.`,
+    section: `Cross-section through the stair: foundation at the assumed founding depth, RCC frame, slabs, stair flights, parapet and stair head room. Plinth 450 mm; floor-to-floor 3000 mm.`,
+    elevation: `Front elevation as seen from the road (${requirements.facing} facing): openings, sills and chajjas from the locked plan, plinth, slab bands, parapet, stair head room and overhead tank.`,
+    coverSheet: 'Cover sheet: project data, drawing register (every sheet with number and revision), general notes, codes and abbreviations.',
+    sectionBB: 'Section 2–2 from the road to the rear through the largest room: foundations cut, plinth, walls and openings cut, slabs and beams, levels and room depths.',
+    wetAreas: 'Toilet and kitchen enlargements at 1:25 / 1:50: fixture set-out from the plumbing layout, counter, sink and hob, and the toilet service-wall elevation with tile height.',
+    officeFurniture: 'Whole-floor furniture: every room furnished with the same placement as its interior sheets — workstation clusters, cabins, meeting rooms, reception, toilet cubicles — with a furniture count.',
+    hvac: 'HVAC: cooling load room by room (TR), ceiling cassettes and wall units, exhaust fans, refrigerant routes to the riser and VRV outdoor units on the terrace. Counts equal the fit-out BOQ.',
+    fireSafety: 'Fire safety and escape: sprinklers, smoke detectors, extinguishers, call points, hooters, exit signs, emergency lights, hose reel, escape routes and the NBC travel-distance check. Counts equal the fit-out BOQ.',
+    typicalDetails: 'Typical details: lintel & chajja (1:10), plinth / DPC / plinth protection, stair railing and parapet coping with roof upstand (1:20).',
+    sideElevation: 'Left, right and rear elevations at one common scale, each as seen from outside that side: openings from the locked plan, levels, stair head room and overhead tank.',
+    sitePlan: 'Site plan: plot, setbacks (required vs provided), building footprint, main gate, parking, sump, manhole, rain-water pipes and an area statement (coverage, built-up, FSI) matching the planner and BOQ.',
+    terracePlan: 'Terrace / roof plan: parapet, stair head room with door, overhead tank(s) sized as in the BOQ, falls to the four rain-water pipes and a terrace schedule.',
     brickwork: 'Masonry layout from the locked plan: 230 mm external and 115 mm internal walls, balcony railings, openings with lintels, wall lengths and masonry quantities matching the BOQ.',
     electrical: 'Electrical layout from the locked plan: room-wise light, fan, exhaust, socket, 16A and AC points, switch boards, DB and circuit runs, with a point schedule matching the BOQ.',
     plumbing: 'Plumbing layout from the locked plan: WC, basin, shower, sink and floor traps in each wet room, supply from the OHT, SWR drainage, stacks, inspection chambers, sump and RWPs, with a fixture schedule matching the BOQ.',
@@ -504,24 +545,22 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq, on
           </button>
         )}
 
-        {/* PDF export */}
-        {exporting ? (
-          <span className="text-[10px] font-mono text-blue-600 flex items-center gap-1">
-            <Loader2 size={10} className="animate-spin" />
-            {exportProgress ? `${exportProgress.step} (${exportProgress.current}/${exportProgress.total})` : 'Preparing...'}
-          </span>
-        ) : exportResult ? (
-          <span className="text-[10px] font-mono text-green-600">{'\u2713'} PDF downloaded</span>
-        ) : exportError ? (
-          <span className="text-[10px] font-mono text-red-600">{exportError}</span>
-        ) : null}
-        <button
-          className={`btn btn-xs gap-1 ${exporting || generatedCount === 0 ? 'btn-disabled' : 'btn-primary'}`}
-          onClick={handleExportPDF}
-          disabled={exporting || generatedCount === 0}
-        >
-          <Download size={12} /> {exporting ? 'Exporting...' : 'Download PDF'}
+        {/* Customer download: one vector PDF of the whole set */}
+        {exportError && <span className="text-[10px] font-mono text-red-600">{exportError}</span>}
+        <button className={`btn btn-xs gap-1 ${vecBusy ? 'btn-disabled' : 'btn-primary'}`} onClick={() => exportVector('pdf')} disabled={!!vecBusy}
+          title="All sheets in one PDF — sharp at any zoom, prints to scale on A3">
+          {vecBusy === 'pdf' ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />} Download PDF
         </button>
+        {/* Professionals only: CAD files, kept out of the customer's way */}
+        <details className="relative">
+          <summary className="list-none cursor-pointer text-[10px] text-gray-500 hover:text-gray-800 underline decoration-dotted px-1">For architects &amp; engineers</summary>
+          <div className="absolute right-0 z-20 mt-1 w-64 rounded-lg border border-gray-200 bg-white p-3 shadow-lg text-[11px] text-gray-600 space-y-2">
+            <p>CAD files of every sheet (DXF, one per sheet). Open in AutoCAD, BricsCAD or LibreCAD; in AutoCAD use Save As → DWG.</p>
+            <button className={`btn btn-xs w-full gap-1 ${vecBusy ? 'btn-disabled' : 'btn-outline'}`} onClick={() => exportVector('cad')} disabled={!!vecBusy}>
+              {vecBusy === 'cad' ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />} Download CAD files (.zip)
+            </button>
+          </div>
+        </details>
       </div>
 
       {/* Canvas area */}
