@@ -88,8 +88,14 @@ export const ModelARView: React.FC<Props> = ({ layout, requirements, structuralR
           try { new THREE.GLTFExporter().parse(scene, resolve, { binary: true, onlyVisible: true }); } catch (e) { reject(e); }
         });
         if (cancelled) return;
+        // show it straight away from memory; then save it so the phone's AR app (Scene Viewer / Quick Look) can fetch it
         url = URL.createObjectURL(new Blob([glb], { type: 'model/gltf-binary' }));
         setModelSrc(url);
+        try {
+          const res = await fetch('/api/ar-model', { method: 'POST', headers: { 'Content-Type': 'model/gltf-binary' }, body: glb });
+          const data = await res.json().catch(() => ({}));
+          if (!cancelled && res.ok && typeof data.url === 'string') setModelSrc(new URL(data.url, window.location.origin).toString());
+        } catch { /* in-browser AR (WebXR) still works with the in-memory model */ }
       } catch {
         if (!cancelled) setModelError('The 3D model for AR could not be prepared on this device. Interactive 3D still shows your house.');
       }
