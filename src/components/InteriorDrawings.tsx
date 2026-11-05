@@ -78,11 +78,16 @@ const InteriorDrawings: React.FC<Props> = ({ layout, rooms, requirements }) => {
 
     <div className="flex items-center gap-2">
       <button onClick={() => current.uri && download(current.uri, fileName(sheet))} disabled={!current.uri || sheet === '3d'}
-        className="border border-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-100 disabled:opacity-50 flex items-center gap-2 text-sm"><Download size={14} /> This sheet (PNG)</button>
+        className="border border-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-100 disabled:opacity-50 flex items-center gap-2 text-sm"><Download size={14} /> This sheet (image)</button>
       <button onClick={() => downloadSet('pdf')} disabled={busy}
-        className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-60 flex items-center gap-2 text-sm">{busy ? <Loader2 size={14} className="animate-spin" /> : <FileDown size={14} />} All 6 sheets — vector PDF</button>
-      <button onClick={() => downloadSet('cad')} disabled={busy}
-        className="border border-blue-600 text-blue-700 px-4 py-2 rounded-lg hover:bg-blue-50 disabled:opacity-60 flex items-center gap-2 text-sm"><FileDown size={14} /> CAD (DXF → DWG)</button>
+        className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-60 flex items-center gap-2 text-sm">{busy ? <Loader2 size={14} className="animate-spin" /> : <FileDown size={14} />} Download PDF (all 6 sheets)</button>
+      <details className="relative">
+        <summary className="list-none cursor-pointer text-xs text-gray-500 hover:text-gray-800 underline decoration-dotted">For architects &amp; engineers</summary>
+        <div className="absolute left-0 z-20 mt-1 w-64 rounded-lg border border-gray-200 bg-white p-3 shadow-lg text-xs text-gray-600 space-y-2">
+          <p>CAD files of these sheets (DXF). Open in AutoCAD, BricsCAD or LibreCAD; in AutoCAD use Save As → DWG.</p>
+          <button onClick={() => downloadSet('cad')} disabled={busy} className="w-full border border-gray-300 rounded-md px-3 py-1.5 hover:bg-gray-50 disabled:opacity-60 flex items-center justify-center gap-2"><FileDown size={13} /> Download CAD files (.zip)</button>
+        </div>
+      </details>
     </div>
 
     {current.error && <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-2 flex items-center gap-2"><AlertTriangle size={16} className="text-red-600" /><span className="text-sm text-red-800">{current.error}</span></div>}

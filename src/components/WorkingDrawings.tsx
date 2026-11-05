@@ -8,7 +8,6 @@ import {
   Footprints, Container, ShieldCheck, Pipette, Sparkles, Loader2, Map as MapIcon,
   CheckCircle2, PlayCircle, ZoomIn, ZoomOut, RotateCcw
 } from 'lucide-react';
-import { exportAIPDF, ExportProgress } from '../utils/pdfExport';
 import { applyTextOverlay, OVERLAY_DRAWING_TYPES } from '../utils/textOverlay';
 import { toOverlayData, type StructuralOverlayData } from '../utils/textOverlay';
 import { authFetch } from '@/utils/authFetch';
@@ -139,9 +138,6 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq, on
   const [aiLoading, setAiLoading] = useState<string | null>(null);
   const [aiError, setAiError] = useState<string | null>(null);
   const [generatingAll, setGeneratingAll] = useState(false);
-  const [exporting, setExporting] = useState(false);
-  const [exportProgress, setExportProgress] = useState<ExportProgress | null>(null);
-  const [exportResult, setExportResult] = useState<string | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
 
   const drawingsStorageKey = `neevv-drawings-v4-${requirements.plotWidthFt}x${requirements.plotDepthFt}-${layout.designSeed?.seedId || layout.id || 'default'}-${requirements.city || 'city'}`;
@@ -331,24 +327,6 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq, on
     setSelectedFloor('GF');
     setGeneratingAll(false);
   }, [aiImages, layout, requirements, boq, mergedStructuralData, structuralOverlay, structuralPromptData, isMultiFloor, getCacheKey, saveDrawingToCache, onDrawingGenerated]);
-
-  /* ---------- PDF Export ---------- */
-  const handleExportPDF = async () => {
-    setExporting(true);
-    setExportResult(null);
-    setExportError(null);
-    try {
-      const path = await exportAIPDF(aiImages, layout, requirements, boq || null, setExportProgress);
-      setExportResult(path);
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'Export failed';
-      setExportError(msg);
-      console.error('PDF export error:', e);
-    } finally {
-      setExporting(false);
-      setExportProgress(null);
-    }
-  };
 
   /* ---------- Vector PDF and CAD (DXF) of the whole set, straight from the engine ---------- */
   const [vecBusy, setVecBusy] = useState<null | 'pdf' | 'cad'>(null);
@@ -548,32 +526,22 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq, on
           </button>
         )}
 
-        {/* PDF export */}
-        {exporting ? (
-          <span className="text-[10px] font-mono text-blue-600 flex items-center gap-1">
-            <Loader2 size={10} className="animate-spin" />
-            {exportProgress ? `${exportProgress.step} (${exportProgress.current}/${exportProgress.total})` : 'Preparing...'}
-          </span>
-        ) : exportResult ? (
-          <span className="text-[10px] font-mono text-green-600">{'\u2713'} PDF downloaded</span>
-        ) : exportError ? (
-          <span className="text-[10px] font-mono text-red-600">{exportError}</span>
-        ) : null}
-        <button
-          className={`btn btn-xs gap-1 ${exporting || generatedCount === 0 ? 'btn-disabled' : 'btn-primary'}`}
-          onClick={handleExportPDF}
-          disabled={exporting || generatedCount === 0}
-        >
-          <Download size={12} /> {exporting ? 'Exporting...' : 'PDF (images)'}
-        </button>
+        {/* Customer download: one vector PDF of the whole set */}
+        {exportError && <span className="text-[10px] font-mono text-red-600">{exportError}</span>}
         <button className={`btn btn-xs gap-1 ${vecBusy ? 'btn-disabled' : 'btn-primary'}`} onClick={() => exportVector('pdf')} disabled={!!vecBusy}
-          title="Every sheet as a sharp vector PDF (A3) — zoom without blur, print to scale">
-          {vecBusy === 'pdf' ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />} Vector PDF
+          title="All sheets in one PDF — sharp at any zoom, prints to scale on A3">
+          {vecBusy === 'pdf' ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />} Download PDF
         </button>
-        <button className={`btn btn-xs gap-1 ${vecBusy ? 'btn-disabled' : 'btn-outline'}`} onClick={() => exportVector('cad')} disabled={!!vecBusy}
-          title="One DXF per sheet in a ZIP — opens in AutoCAD, BricsCAD, LibreCAD; Save As DWG in AutoCAD">
-          {vecBusy === 'cad' ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />} CAD (DXF → DWG)
-        </button>
+        {/* Professionals only: CAD files, kept out of the customer's way */}
+        <details className="relative">
+          <summary className="list-none cursor-pointer text-[10px] text-gray-500 hover:text-gray-800 underline decoration-dotted px-1">For architects &amp; engineers</summary>
+          <div className="absolute right-0 z-20 mt-1 w-64 rounded-lg border border-gray-200 bg-white p-3 shadow-lg text-[11px] text-gray-600 space-y-2">
+            <p>CAD files of every sheet (DXF, one per sheet). Open in AutoCAD, BricsCAD or LibreCAD; in AutoCAD use Save As → DWG.</p>
+            <button className={`btn btn-xs w-full gap-1 ${vecBusy ? 'btn-disabled' : 'btn-outline'}`} onClick={() => exportVector('cad')} disabled={!!vecBusy}>
+              {vecBusy === 'cad' ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />} Download CAD files (.zip)
+            </button>
+          </div>
+        </details>
       </div>
 
       {/* Canvas area */}
