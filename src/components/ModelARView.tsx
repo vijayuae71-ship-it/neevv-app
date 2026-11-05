@@ -59,6 +59,8 @@ export const ModelARView: React.FC<Props> = ({ layout, requirements, structuralR
   const [showQuotePanel, setShowQuotePanel] = useState(false);
   const [modelSrc, setModelSrc] = useState<string | null>(null);
   const [modelError, setModelError] = useState<string | null>(null);
+  /** whether the model was saved where the phone's AR app can fetch it */
+  const [arStatus, setArStatus] = useState<{ state: 'preparing' | 'ready' | 'failed'; detail?: string }>({ state: 'preparing' });
 
   // Build this design's GLB from the locked plan (same builder as Interactive 3D), in metres.
   useEffect(() => {
@@ -92,10 +94,13 @@ export const ModelARView: React.FC<Props> = ({ layout, requirements, structuralR
         url = URL.createObjectURL(new Blob([glb], { type: 'model/gltf-binary' }));
         setModelSrc(url);
         try {
+          setArStatus({ state: 'preparing' });
           const res = await fetch('/api/ar-model', { method: 'POST', headers: { 'Content-Type': 'model/gltf-binary' }, body: glb });
           const data = await res.json().catch(() => ({}));
-          if (!cancelled && res.ok && typeof data.url === 'string') setModelSrc(new URL(data.url, window.location.origin).toString());
-        } catch { /* in-browser AR (WebXR) still works with the in-memory model */ }
+          if (cancelled) return;
+          if (res.ok && typeof data.url === 'string') { setModelSrc(new URL(data.url, window.location.origin).toString()); setArStatus({ state: 'ready' }); }
+          else setArStatus({ state: 'failed', detail: `${data.error || 'Could not save the AR model'} (${res.status}, ${(glb.byteLength / 1048576).toFixed(1)} MB)` });
+        } catch (e: any) { if (!cancelled) setArStatus({ state: 'failed', detail: e?.message || 'network error' }); } // in-browser AR (WebXR) still works with the in-memory model
       } catch {
         if (!cancelled) setModelError('The 3D model for AR could not be prepared on this device. Interactive 3D still shows your house.');
       }
@@ -158,6 +163,14 @@ export const ModelARView: React.FC<Props> = ({ layout, requirements, structuralR
             AR Ready
           </div>
         )}
+      </div>
+
+      {/* Phone AR status: the phone's AR app loads the saved model, not the in-browser preview */}
+      <div className="absolute top-12 left-3 right-3 z-20 flex flex-col gap-1 pointer-events-none">
+        <span className={`self-start text-[11px] font-semibold px-2 py-1 rounded-full ${arStatus.state === 'ready' ? 'bg-green-100 text-green-800' : arStatus.state === 'failed' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-600'}`}>
+          {arStatus.state === 'ready' ? 'Phone AR ready' : arStatus.state === 'failed' ? `Phone AR not available: ${arStatus.detail}` : 'Preparing phone AR…'}
+        </span>
+        <span className="self-start text-[11px] text-gray-600 bg-white/80 rounded px-2 py-0.5">This is a 3D preview. On your phone, tap <b>View in Your Space</b> and point the camera at open ground to place the house.</span>
       </div>
 
       {/* Loading overlay */}

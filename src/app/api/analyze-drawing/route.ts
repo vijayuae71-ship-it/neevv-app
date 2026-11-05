@@ -41,7 +41,29 @@ const SCHEMA = {
   },
 };
 
+/** The site's pages call this route on the Cloud Run address directly (past Hosting's 60 s limit), so allow those origins. */
+const ALLOWED_ORIGIN = /^https:\/\/((www\.)?neevv\.in|[\w-]+\.web\.app|[\w-]+\.firebaseapp\.com)$|^http:\/\/localhost(:\d+)?$/;
+function withCors(request: NextRequest, res: NextResponse): NextResponse {
+  const origin = request.headers.get('origin');
+  if (origin && ALLOWED_ORIGIN.test(origin)) {
+    res.headers.set('Access-Control-Allow-Origin', origin);
+    res.headers.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.headers.set('Access-Control-Allow-Headers', 'Authorization, Content-Type');
+    res.headers.set('Access-Control-Max-Age', '3600');
+    res.headers.set('Vary', 'Origin');
+  }
+  return res;
+}
+
+export async function OPTIONS(request: NextRequest) {
+  return withCors(request, new NextResponse(null, { status: 204 }));
+}
+
 export async function POST(request: NextRequest) {
+  return withCors(request, await analyze(request));
+}
+
+async function analyze(request: NextRequest): Promise<NextResponse> {
   // 1. Authenticate (optional during beta)
   const auth = await verifyAuthOptional(request);
 

@@ -7,6 +7,26 @@ import { uploadedPlanToLayout, planIssues, ROOM_TYPES, type ExtractedPlan, type 
 import { authFetch } from '@/utils/authFetch';
 
 type ExtractedRoom = ExtractedPlanRoom;
+
+/** Phone photos are often 4–12 MB; the reader works from ~2000 px anyway, so shrink to a JPEG before sending. */
+async function shrinkImage(file: File): Promise<File> {
+  if (!file.type.startsWith('image/') || (file.size < 1.5 * 1024 * 1024 && file.type !== 'image/heic')) return file;
+  try {
+    const bmp = await createImageBitmap(file);
+    const k = Math.min(1, 2000 / Math.max(bmp.width, bmp.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(bmp.width * k); canvas.height = Math.round(bmp.height * k);
+    const ctx = canvas.getContext('2d'); if (!ctx) return file;
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(bmp, 0, 0, canvas.width, canvas.height);
+    const blob: Blob | null = await new Promise((r) => canvas.toBlob(r, 'image/jpeg', 0.88));
+    return blob ? new File([blob], file.name.replace(/\.\w+$/, '') + '.jpg', { type: 'image/jpeg' }) : file;
+  } catch { return file; }
+}
+
+/** Cloud Run's own address for the analysis call (Firebase Hosting stops proxied requests at 60 s). */
+let directUrlPromise: Promise<string> | null = null;
+const directBase = () => (directUrlPromise ??= fetch('/api/upload-config').then((r) => r.json()).then((d) => (typeof d.directUrl === 'string' ? d.directUrl : '')).catch(() => ''));
 type ExtractedData = ExtractedPlan;
 
 interface DrawingUploadProps {
@@ -25,12 +45,14 @@ export default function DrawingUpload({ onConversionComplete, onBack }: DrawingU
   const [editingRoom, setEditingRoom] = useState<{ fi: number; ri: number } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleFile = useCallback(async (file: File) => {
+  const handleFile = useCallback(async (picked: File) => {
+    let file = picked;
     if (!file.type.startsWith('image/') && file.type !== 'application/pdf') {
       setErrorMsg('Please upload an image (JPG, PNG) or PDF file');
       setUploadStep('error');
       return;
     }
+    file = await shrinkImage(file);
 
     if (!['image/jpeg', 'image/png', 'image/webp', 'application/pdf'].includes(file.type)) {
       setErrorMsg('Please upload a JPG, PNG, WebP or PDF (iPhone photos: share as JPG).');
@@ -55,12 +77,20 @@ export default function DrawingUpload({ onConversionComplete, onBack }: DrawingU
       const formData = new FormData();
       formData.append('drawing', file);
 
-      const response = await authFetch('/api/analyze-drawing', {
-        method: 'POST',
-        body: formData,
-      });
+      const base = await directBase();
+      let response: Response;
+      try {
+        response = await authFetch(`${base}/api/analyze-drawing`, { method: 'POST', body: formData });
+      } catch (e) {
+        if (!base) throw e;
+        response = await authFetch('/api/analyze-drawing', { method: 'POST', body: formData }); // direct address blocked: try via the site
+      }
 
-      const data = await response.json();
+      const data = await response.json().catch(() => ({
+        error: response.status === 504 || response.status === 502
+          ? 'Reading the drawing took too long. Please try again, or upload one floor per image.'
+          : `The server could not read this drawing (error ${response.status}). Please try again.`,
+      }));
 
       if (!response.ok || !data.success) {
         throw new Error(data.error || 'Analysis failed');
@@ -209,6 +239,7 @@ export default function DrawingUpload({ onConversionComplete, onBack }: DrawingU
                 <Loader2 size={28} className="text-amber-600 animate-spin" />
                 <span className="text-lg text-gray-700">AI is analyzing your drawing...</span>
               </div>
+              <p className="text-xs text-gray-500 -mt-3">Reading every room, door and window carefully takes 1–3 minutes. Please keep this page open.</p>
               <div className="w-full max-w-md">
                 <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
                   <div className="h-full bg-amber-500 rounded-full animate-pulse" style={{ width: '60%' }} />
