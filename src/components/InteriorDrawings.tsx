@@ -5,13 +5,15 @@ import { Layout, ProjectRequirements, RoomInterior } from '../types';
 import { Download, AlertTriangle, FileDown, Loader2 } from 'lucide-react';
 import { generateProgrammaticDrawing, interiorOptions, sheetNumber } from '@/utils/drawingEngine';
 import Room3D from './Room3D';
+import InteriorEditPanel from './InteriorEditPanel';
+import { Pencil } from 'lucide-react';
 import { interiorSheets, downloadVectorPDF, downloadCADSet } from '@/utils/drawingSetExport';
 
 /**
  * Interior sheets for each room, drawn in code from the locked plan and the customer's selection
  * (same furniture, points and areas as the interior BOQ). No AI involved.
  */
-interface Props { layout: Layout; rooms: RoomInterior[]; requirements: ProjectRequirements }
+interface Props { layout: Layout; rooms: RoomInterior[]; requirements: ProjectRequirements; onRoomChange?: (next: RoomInterior) => void }
 
 const SHEETS: { key: string; label: string }[] = [
   { key: 'int_furniture', label: 'Furniture Layout' },
@@ -23,12 +25,13 @@ const SHEETS: { key: string; label: string }[] = [
 ];
 const SKIP = new Set(['staircase', 'passage', 'parking', 'store', 'utility', 'lift', 'shaft']);
 
-const InteriorDrawings: React.FC<Props> = ({ layout, rooms, requirements }) => {
+const InteriorDrawings: React.FC<Props> = ({ layout, rooms, requirements, onRoomChange }) => {
   const allRooms = useMemo(() => layout.floors.flatMap(f => f.rooms).filter(r => !SKIP.has(r.type) && rooms.some(ri => ri.roomId === r.id)), [layout, rooms]);
   const [roomId, setRoomId] = useState(allRooms[0]?.id ?? '');
   const [sheet, setSheet] = useState('int_furniture');
   const [choice, setChoice] = useState<Record<string, number>>({});
   const [busy, setBusy] = useState(false);
+  const [editing, setEditing] = useState(false);
   const interior = rooms.find(r => r.roomId === roomId);
   const room = allRooms.find(r => r.id === roomId);
 
@@ -76,7 +79,9 @@ const InteriorDrawings: React.FC<Props> = ({ layout, rooms, requirements }) => {
       className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${sheet === s.key ? 'bg-slate-800 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>{sheetNumber(s.key, 0)} {s.label}</button>)}
       <button onClick={() => setSheet('3d')} className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${sheet === '3d' ? 'bg-slate-800 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>3D view</button></div>
 
-    <div className="flex items-center gap-2">
+    <div className="flex flex-wrap items-center gap-2">
+      {onRoomChange && interior && <button onClick={() => setEditing(v => !v)}
+        className={`px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-medium ${editing ? 'bg-amber-500 text-white' : 'border border-amber-500 text-amber-700 hover:bg-amber-50'}`}><Pencil size={14} /> Edit</button>}
       <button onClick={() => current.uri && download(current.uri, fileName(sheet))} disabled={!current.uri || sheet === '3d'}
         className="border border-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-100 disabled:opacity-50 flex items-center gap-2 text-sm"><Download size={14} /> This sheet (image)</button>
       <button onClick={() => downloadSet('pdf')} disabled={busy}
@@ -90,6 +95,8 @@ const InteriorDrawings: React.FC<Props> = ({ layout, rooms, requirements }) => {
       </details>
     </div>
 
+    {editing && interior && onRoomChange && <InteriorEditPanel key={interior.roomId} room={interior}
+      onApply={(next) => { onRoomChange(next); setEditing(false); }} onClose={() => setEditing(false)} />}
     {current.error && <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-2 flex items-center gap-2"><AlertTriangle size={16} className="text-red-600" /><span className="text-sm text-red-800">{current.error}</span></div>}
     {options[option]?.omitted.length ? <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-2 text-sm text-amber-900">
       Doesn&apos;t fit in this room: {options[option].omitted.join(', ')}. Remove it in the mood board or choose a smaller size — the BOQ still lists it until you do.</div> : null}

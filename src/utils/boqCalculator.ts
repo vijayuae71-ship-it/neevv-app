@@ -2,10 +2,11 @@ import type { BOQ, BOQLineItem, DoorScheduleItem, WindowScheduleItem, Layout, Ma
 import { computeTakeoff, type Takeoff } from './quantityTakeoff';
 import { COMPOUND_WALL_HEIGHT_MM, gateWidthM, waterStorage } from './buildingModel';
 import { cityRateFactor, specFactor } from './marketRates';
+import { DESIGN_STYLES, roofGeom } from './designStyles';
 import { planCircuits, circuitDemand, electricalPoints as electricalPointsFor, plumbingPoints as plumbingPointsFor, electricalTotals, fixtureTotals, isNiche, ASSUMED_FOUNDING_DEPTH_M, PARAPET_HEIGHT_MM, WALL_EXTERNAL_MM, WALL_INTERNAL_MM } from './quantityRules';
 
 /** Pricing context: city and specification level. Custom rates entered by the customer always win. */
-export interface BOQContext { city?: string; budget?: BudgetRange; bathTileHeightM?: number }
+export interface BOQContext { city?: string; budget?: BudgetRange; bathTileHeightM?: number; designStyle?: string }
 
 const SQM_TO_SQFT = 10.764;
 
@@ -205,7 +206,10 @@ export function calculateBOQ(
   // ────── MASONRY (net of openings and columns) ──────
   const extMasonryM3 = +(takeoff.externalMasonrySqM * WALL_EXTERNAL_MM / 1000).toFixed(2);
   const intMasonryM3 = +(takeoff.internalMasonrySqM * WALL_INTERNAL_MM / 1000).toFixed(2);
-  const parapetM3 = +(takeoff.parapetLenM * (PARAPET_HEIGHT_MM / 1000) * 0.115).toFixed(2);
+  // pitched roof of the chosen regional style replaces the parapet (roof covering on trusses over the slab)
+  const roofStyle = DESIGN_STYLES.find(d => d.id === ctx?.designStyle && d.roof.type !== 'flat');
+  const roofG = roofStyle ? roofGeom(roofStyle, layout.buildableWidthM, layout.buildableDepthM) : null;
+  const parapetM3 = roofG ? 0 : +(takeoff.parapetLenM * (PARAPET_HEIGHT_MM / 1000) * 0.115).toFixed(2);
   const masonryM3 = extMasonryM3 + intMasonryM3 + parapetM3;
   const brickCount = Math.ceil(masonryM3 * 500);
   const externalWallArea = takeoff.externalPlasterSqM;
@@ -343,7 +347,17 @@ export function calculateBOQ(
   // C. MASONRY — measured from wall lines of the locked plan
   add(`Brick Masonry – External (${WALL_EXTERNAL_MM}mm, CM 1:6)`, extMasonryM3, 'm³', 6500, 'masonry', `${takeoff.floors.reduce((s, f) => s + f.externalWallLenM, 0).toFixed(1)} m of external wall × ${takeoff.masonryHeightM} m, less openings & columns`);
   add(`Brick Masonry – Internal (${WALL_INTERNAL_MM}mm, CM 1:4)`, intMasonryM3, 'm³', 7200, 'masonry', `${takeoff.floors.reduce((s, f) => s + f.internalWallLenM, 0).toFixed(1)} m of partitions × ${takeoff.masonryHeightM} m, less openings`);
-  add(`Parapet Wall (115mm, ${(PARAPET_HEIGHT_MM / 1000).toFixed(1)}m height)`, parapetM3, 'm³', 7200, 'masonry', 'Terrace level');
+  if (roofStyle && roofG) {
+    const o = roofStyle.roof.overhangM, W = layout.buildableWidthM, D = layout.buildableDepthM;
+    const slopeArea = +(((W + 2 * o) * (D + 2 * o)) / Math.cos((roofStyle.roof.pitchDeg * Math.PI) / 180)).toFixed(1);
+    const m = roofStyle.roof.material;
+    const rate = /slate/i.test(m) ? 3400 : /metal/i.test(m) ? 1700 : /shingle/i.test(m) ? 1600 : /mangalore/i.test(m) ? 1500 : 1900;
+    add(`Pitched roof – ${m} (${roofStyle.roof.pitchDeg}°, incl. trusses, battens, underlay, ridge & fascia)`, slopeArea, 'm²', rate, 'masonry', `${roofStyle.label}: ${(W + 2 * o).toFixed(1)} × ${(D + 2 * o).toFixed(1)} m on plan incl. ${o} m eaves, on slope`);
+    if (roofStyle.roof.type === 'gable') {
+      const span = roofG.ridgeAlongX ? D : W, gableM3 = +(2 * 0.5 * span * roofG.ridge * (WALL_EXTERNAL_MM / 1000)).toFixed(2);
+      add(`Gable end walls (${WALL_EXTERNAL_MM}mm, CM 1:6)`, gableM3, 'm³', 6500, 'masonry', `Two gable triangles, ${span.toFixed(1)} m span × ${roofG.ridge.toFixed(2)} m rise`);
+    }
+  } else add(`Parapet Wall (115mm, ${(PARAPET_HEIGHT_MM / 1000).toFixed(1)}m height)`, parapetM3, 'm³', 7200, 'masonry', 'Terrace level');
 
   // D. PLASTERING
   add('Internal Plastering (CM 1:4, 12mm)', Math.round(takeoff.internalPlasterSqM), 'm²', 280, 'masonry', 'Both faces of partitions + inner face of external walls, less openings');

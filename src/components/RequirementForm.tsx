@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { ProjectRequirements, FloorProgram, Facing, ParkingType, BudgetRange, ArchitecturalStyle } from '../types';
 import { MapPin, Ruler, Home, Compass, Car, Star, IndianRupee, Palette } from 'lucide-react';
+import { BUILDING_TYPES, COUNTRIES, DESIGN_STYLES, REGIONS, type BuildingType, type DesignStyleId, type Region } from '../utils/designStyles';
 
 interface Props {
   onSubmit: (req: ProjectRequirements) => void;
@@ -26,7 +27,8 @@ const BUDGET_OPTIONS: { value: BudgetRange; label: string; desc: string }[] = [
   { value: 'luxury', label: '₹3,400+/sqft', desc: 'Luxury' },
 ];
 
-const STYLE_OPTIONS: { value: ArchitecturalStyle; label: string; emoji: string }[] = [
+// legacy style list (older saved projects)
+export const STYLE_OPTIONS: { value: ArchitecturalStyle; label: string; emoji: string }[] = [
   { value: 'modern_minimalist', label: 'Modern Minimalist', emoji: '🏢' },
   { value: 'contemporary_indian', label: 'Contemporary Indian', emoji: '🏠' },
   { value: 'traditional', label: 'Traditional', emoji: '🛕' },
@@ -54,6 +56,9 @@ export const RequirementForm: React.FC<Props> = ({ onSubmit, initialValues }) =>
   const [pooja, setPooja] = useState<boolean>(initialValues?.wantsPuja ?? true);
   const [study, setStudy] = useState<boolean>(initialValues?.wantsStudy ?? false);
   const [floorsPref, setFloorsPref] = useState<'auto' | 1 | 2>(initialValues?.floorsPreference ?? 'auto');
+  const [buildingType, setBuildingType] = useState<BuildingType>(initialValues?.buildingType ?? 'independent');
+  const [designStyle, setDesignStyle] = useState<DesignStyleId | ''>((initialValues?.designStyle as DesignStyleId) ?? '');
+  const [region, setRegion] = useState<Region>(DESIGN_STYLES.find((d) => d.id === initialValues?.designStyle)?.region ?? 'india');
   const [setbacks, setSetbacks] = useState(initialValues?.setbacks ?? SETBACK_DEFAULTS);
 
   const plotTooSmall = plotW > 0 && plotD > 0 && (plotW < MIN_W || plotD < MIN_D || plotW * plotD < MIN_W * MIN_D);
@@ -84,6 +89,9 @@ export const RequirementForm: React.FC<Props> = ({ onSubmit, initialValues }) =>
       wantsStudy: study,
       floorsPreference: floorsPref,
       setbacks: setbacksCustom ? setbacks : undefined,
+      buildingType: buildingType === 'independent' ? undefined : buildingType,
+      designStyle: designStyle || undefined,
+      country: 'IN',
     });
   };
 
@@ -92,6 +100,25 @@ export const RequirementForm: React.FC<Props> = ({ onSubmit, initialValues }) =>
 
   return (
     <div className="p-4 space-y-5 max-w-2xl mx-auto">
+      {/* Country: decides building rules, units, currency and rates */}
+      <section className="card bg-gray-100">
+        <div className="card-body p-4 space-y-2">
+          <h3 className="font-semibold flex items-center gap-2 text-sm">
+            <MapPin size={16} className="text-blue-600" /> Where are you building?
+          </h3>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            {COUNTRIES.map((c) => (
+              <button key={c.id} disabled={!c.live} aria-pressed={c.id === 'IN'}
+                className={`btn btn-sm h-auto py-2 flex-col gap-0 normal-case ${c.id === 'IN' ? 'btn-primary' : 'btn-outline'} disabled:opacity-60`}>
+                <span className="text-xs font-semibold">{c.flag} {c.label}</span>
+                {!c.live && <span className="text-[10px] font-normal">Coming soon</span>}
+              </button>
+            ))}
+          </div>
+          <p className="text-[10px] text-gray-500">Building rules, room sizes, units, currency and rates follow the country. You can still pick any region&apos;s look below.</p>
+        </div>
+      </section>
+
       {/* Location */}
       <section className="card bg-gray-100">
         <div className="card-body p-4 space-y-3">
@@ -244,23 +271,41 @@ export const RequirementForm: React.FC<Props> = ({ onSubmit, initialValues }) =>
         </div>
       </section>
 
-      {/* Architectural Style */}
+      {/* Building type + exterior style */}
       <section className="card bg-gray-100">
         <div className="card-body p-4 space-y-3">
           <h3 className="font-semibold flex items-center gap-2 text-sm">
-            <Palette size={16} className="text-blue-600" /> Architectural Style
+            <Palette size={16} className="text-blue-600" /> Building Type &amp; Exterior Style
           </h3>
           <div className="grid grid-cols-2 gap-2">
-            {STYLE_OPTIONS.map((s) => (
-              <button
-                key={s.value}
-                className={`btn btn-sm justify-start gap-2 ${style === s.value ? 'btn-primary' : 'btn-outline'}`}
-                onClick={() => setStyle(s.value)}
-              >
-                <span>{s.emoji}</span>
-                <span className="text-xs">{s.label}</span>
+            {BUILDING_TYPES.map((t) => (
+              <button key={t.id} className={`btn btn-sm h-auto py-2 flex-col items-start gap-0 normal-case ${buildingType === t.id ? 'btn-primary' : 'btn-outline'}`} onClick={() => { setBuildingType(t.id); if (t.id === 'bungalow') setFloorsPref(1); else if (t.id === 'villa' || t.id === 'townhouse') setFloorsPref(2); }}>
+                <span className="text-xs font-semibold">{t.label}</span>
+                <span className="text-[10px] opacity-70 font-normal text-left">{t.blurb}</span>
               </button>
             ))}
+          </div>
+          <div>
+            <label className="text-xs text-gray-600 mb-1 block">Exterior look — elevations, 3D model and photo render all follow it</label>
+            <div className="flex flex-wrap gap-1.5 mb-2">
+              {REGIONS.map((r) => (
+                <button key={r.id} className={`btn btn-xs ${region === r.id ? 'btn-neutral' : 'btn-ghost border border-gray-300'}`} onClick={() => setRegion(r.id)}>{r.label}</button>
+              ))}
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {DESIGN_STYLES.filter((d) => d.region === region).map((d) => (
+                <button key={d.id} className={`btn btn-sm h-auto py-2 flex-col items-start gap-1 normal-case ${designStyle === d.id ? 'btn-primary' : 'btn-outline'}`}
+                  onClick={() => { setDesignStyle(d.id); setStyle(d.id === 'in_kerala' ? 'tropical' : d.region === 'india' ? 'contemporary_indian' : 'modern_minimalist'); }}>
+                  <span className="flex items-center gap-1.5">
+                    <span className="inline-block w-3 h-3 rounded-sm border border-black/10" style={{ background: d.walls.color }} />
+                    <span className="inline-block w-3 h-3 rounded-sm border border-black/10" style={{ background: d.roof.color }} />
+                    <span className="text-xs font-semibold">{d.label}</span>
+                  </span>
+                  <span className="text-[10px] opacity-70 font-normal text-left">{d.blurb}</span>
+                </button>
+              ))}
+            </div>
+            {region !== 'india' && <p className="text-[11px] text-gray-500 mt-2">Look only: your house is still planned, engineered and costed to Indian rules (₹), as chosen above.</p>}
           </div>
         </div>
       </section>
@@ -307,6 +352,7 @@ export const RequirementForm: React.FC<Props> = ({ onSubmit, initialValues }) =>
                 </button>
               ))}
             </div>
+            {buildingType === 'townhouse' && <div className="text-[10px] text-amber-700 mt-0.5">Townhouse: side walls are shared with the neighbours (no side setbacks).</div>}
             <div className="text-[10px] text-gray-400 mt-0.5">neevv plans the number of floors from your rooms and plot. If the brief does not fit, we explain why and suggest options — we never drop rooms without asking.</div>
           </div>
         </div>

@@ -1,4 +1,11 @@
 import { Layout, ProjectRequirements } from '../types';
+import { styleFor, BUILDING_TYPES } from './designStyles';
+
+const REGIONAL_LANDSCAPE: Record<string, string> = {
+  middle_east: '- Boundary wall in matching render with a sliding metal gate\n- Interlocking paver driveway with covered car porch\n- Date palms and frangipani, gravel and drought-tolerant planting\n- Clear desert-blue sky, strong sunlight, crisp shadows',
+  uk_europe: '- Low brick or hedge front boundary with a path to the door\n- Block-paved driveway, small front lawn with shrubs and climbing roses\n- Deciduous trees (birch, maple), soft overcast daylight\n- Neighbouring houses in the same street style',
+  us: '- Open front lawn without a compound wall, concrete driveway to an attached garage\n- Foundation planting of shrubs, a maple or oak tree, mailbox at the curb\n- Sidewalk along the street, suburban neighbourhood, late afternoon light',
+};
 
 /** Convert meters to feet */
 const mToFt = (m: number) => Math.round(m * 3.281);
@@ -116,7 +123,12 @@ ARCHITECTURAL CONSISTENCY (3D render MUST match floor plan layout):
     luxury: 'Italian stone/HPL cladding system, thermally-broken aluminium windows with Low-E glass, integrated LED facade lighting, designer landscape lighting, motorized gate, premium stone paving in driveway',
   };
 
-  const facadeDesc = styleFacades[archStyle] || styleFacades.contemporary_indian;
+  const ds = requirements.designStyle ? styleFor(requirements) : null;
+  const pitched = !!ds && ds.roof.type !== 'flat';
+  const typeName = (BUILDING_TYPES.find(t => t.id === requirements.buildingType)?.label ?? 'residential house').toLowerCase();
+  const facadeDesc = ds
+    ? `${ds.prompt}. Roof: ${ds.roof.type === 'flat' ? 'flat RCC roof with parapet' : `${ds.roof.type} roof at ${ds.roof.pitchDeg}° pitch, ${ds.roof.overhangM} m eaves, ${ds.roof.material}`}. Walls ${ds.walls.cladding.replace('_', '-')} in ${ds.walls.color}, window frames ${ds.openings.frame}${ds.openings.arch ? ', arched window heads' : ''}${ds.openings.shutters ? ', louvred shutters beside windows' : ''}${ds.openings.mashrabiya ? ', timber mashrabiya screens on upper windows' : ''}${ds.porchColumns ? ', porch canopy on columns' : ''}`
+    : (styleFacades[archStyle] || styleFacades.contemporary_indian);
   const finishDesc = budgetFinishes[budget] || budgetFinishes.standard;
 
   // View description
@@ -127,7 +139,7 @@ ARCHITECTURAL CONSISTENCY (3D render MUST match floor plan layout):
     'bird-eye': 'aerial bird-eye view at 45 degrees looking down, showing roof layout, terrace, and full landscaping'
   };
 
-  const prompt = `Professional photorealistic architectural exterior render of a modern Indian residential house WITH DIMENSION ANNOTATIONS.
+  const prompt = `Professional photorealistic architectural exterior render of a ${ds ? `${ds.label} ${typeName}` : 'modern Indian residential house'} WITH DIMENSION ANNOTATIONS.
 
 ${architecturalBrief}
 
@@ -148,7 +160,7 @@ BUILDING SPECIFICATIONS (ACTUAL MEASUREMENTS — render must be proportionally a
 - Doors: ${doorHeight}mm height, main door 1050mm wide, internal doors 900mm wide
 - Plinth height: 450mm above ground level
 
-FACADE & MATERIALS (Style: ${archStyle.replace(/_/g, ' ').toUpperCase()}, Budget: ${budget.toUpperCase()}):
+FACADE & MATERIALS (Style: ${(ds ? ds.label : archStyle.replace(/_/g, ' ')).toUpperCase()}, Budget: ${budget.toUpperCase()}):
 - ${facadeDesc}
 - ${finishDesc}
 - Chajja/sunshade projection above every window appropriate to the architectural style
@@ -159,12 +171,9 @@ FACADE & MATERIALS (Style: ${archStyle.replace(/_/g, ' ').toUpperCase()}, Budget
 ARCHITECTURAL DETAILS:
 - Front porch with 3 granite steps and flat concrete canopy supported by slim columns
 - ${hasBalcony ? 'First floor balcony with MS pipe railing, accessible from bedrooms/living room' : ''}
-- Staircase mumty/headroom enclosure on terrace with matching exterior finish and proper door
-- Parapet wall on terrace with varying heights (1.2m front, 0.9m sides, 0.8m rear)
-- Facade has recesses and projections for depth — not a flat box
+${pitched ? `- PITCHED ${ds!.roof.type.toUpperCase()} ROOF covering the whole building (no terrace, no parapet); stair head room and water tank hidden inside the roof void\n` : '- Staircase mumty/headroom enclosure on terrace with matching exterior finish and proper door\n- Parapet wall on terrace with varying heights (1.2m front, 0.9m sides, 0.8m rear)\n'}- Facade has recesses and projections for depth — not a flat box
 - 230mm thick walls with visible thickness at openings
-- Water tank area on terrace partially screened
-
+${pitched ? '' : '- Water tank area on terrace partially screened\n'}
 MODULAR KITCHEN DETAILS (visible through kitchen window or in cutaway):
 - L-shaped or straight modular kitchen layout with handleless profile cabinets
 - Countertop: Premium quartz stone / engineered marble (white/beige with subtle veining, 20mm thick with waterfall edge)
@@ -178,7 +187,7 @@ MODULAR KITCHEN DETAILS (visible through kitchen window or in cutaway):
 - Under-cabinet task lighting (warm white LED strip)
 
 LANDSCAPING & SURROUNDINGS:
-- 1.5m compound wall with pilaster columns every 3m and decorative coping
+${ds && ds.region !== 'india' ? REGIONAL_LANDSCAPE[ds.region] : `- 1.5m compound wall with pilaster columns every 3m and decorative coping
 - Metal sliding gate with tall gate pillars at driveway entrance
 - Interlocking paver driveway for car parking
 - Lush green grass lawn in front setback area
@@ -187,8 +196,7 @@ LANDSCAPING & SURROUNDINGS:
 - Colorful flower beds with marigolds and bougainvillea
 - Large decorative potted plants (areca palm, money plant) flanking entrance
 - Stepping stone pathway from gate to entrance porch
-- Terrace planter boxes visible on parapet
-
+${pitched ? '' : '- Terrace planter boxes visible on parapet\n'}
 DIMENSION ANNOTATIONS (MUST be visible on the render like a professional architectural presentation board):
 - Show overall building width (${buildingWidthM.toFixed(1)}m) with dimension line along the base
 - Show overall building height (${totalHeight.toFixed(1)}m) with dimension line on the side
@@ -198,7 +206,7 @@ DIMENSION ANNOTATIONS (MUST be visible on the render like a professional archite
 - Label each floor: ${layout.floors.map(f => f.floorLabel).join(', ')}
 - Dimension lines should be thin white or light lines with arrows/ticks at ends, text in clean sans-serif font
 - Place dimensions outside the building silhouette, not overlapping the facade
-- Style: architectural presentation board annotations — professional, clean, readable
+- Style: architectural presentation board annotations — professional, clean, readable`}
 
 RENDER QUALITY:
 - ${viewDesc[viewAngle]}

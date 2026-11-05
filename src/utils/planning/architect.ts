@@ -42,6 +42,8 @@ export interface Brief {
   fsi?: number;                           // assumed 1.0
   setbacks?: { front: number; rear: number; left: number; right: number }; // metres; assumed defaults
   floorsPreference?: 'auto' | 1 | 2;
+  /** Townhouse / row house: build wall to wall across the full buildable width (party walls). */
+  fullWidth?: boolean;
 }
 
 export const DEFAULT_SETBACKS = { front: 1.5, rear: 1.5, left: 1.0, right: 1.0 };
@@ -190,7 +192,7 @@ function build(b: Brief, env: SiteEnvelope, v: Variant): Built {
   const splitDiningWanted = B >= 2 && k >= 1 && !v.openHall;
   const frontTarget = Ws + (splitDiningWanted ? SZ.diningW[k] : 0) + livingT + gfFrontBed * bedT;
   const rearTarget = masterT + wetCols * bathW + rb * bedT + (two && rb === 0 ? 2.8 : 0);
-  let W = Math.min(env.envW, snap(Math.max(frontTarget, rearTarget)));
+  let W = b.fullWidth ? env.envW : Math.min(env.envW, snap(Math.max(frontTarget, rearTarget)));
   const frontMin = Ws + SZ.min.living + gfFrontBed * minBed;
   if (frontMin > W) W = env.envW;
   if (frontMin > W + 1e-6) return fail(`Front rooms need ${r2(frontMin)} m width; only ${env.envW} m is buildable`);
@@ -219,7 +221,7 @@ function build(b: Brief, env: SiteEnvelope, v: Variant): Built {
   if (W * (Df + Dm + Dr) > perFloorCap + 0.05) {
     const wFit = snapDown(perFloorCap / (Df + Dm + Dr));
     const wFloor = Math.max(rearMinW, frontMin, Ws + Math.min(livingT, 4.2) + gfFrontBed * minBed);
-    if (wFit >= wFloor) W = wFit; // narrower house, same rooms, wider side open space
+    if (wFit >= wFloor && !b.fullWidth) W = wFit; // narrower house, same rooms, wider side open space
     // otherwise keep the width and take the cut in depth (rooms keep usable proportions)
   }
   if (W * (Df + Dm + Dr) > perFloorCap + 0.05) { e = shrinkTo(snapDown(perFloorCap / W)); if (e && two && rb > 0) return build(b, env, { ...v, rbMax: rb - 1 }); if (e) return fail(`FSI ${env.fsi}: each of ${v.storeys} floor(s) may be ${r2(perFloorCap)} m²; the plan ${e}`); }

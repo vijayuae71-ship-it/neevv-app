@@ -52,6 +52,12 @@ export interface ProjectRequirements {
   floorsPreference?: 'auto' | 1 | 2;
   /** Customer-entered setbacks in metres; omitted → assumed defaults (to be confirmed locally). */
   setbacks?: { front: number; rear: number; left: number; right: number };
+  /** Villa / bungalow / townhouse (see utils/designStyles). Omitted = independent house. */
+  buildingType?: 'independent' | 'villa' | 'bungalow' | 'townhouse';
+  /** Regional exterior style id from utils/designStyles (roof, facade, openings). Omitted = contemporary Indian. */
+  designStyle?: string;
+  /** Country whose building rules, units, currency and rates apply. Only 'IN' is supported today. */
+  country?: 'IN' | 'AE' | 'UK' | 'US';
 }
 
 export interface Room {
@@ -337,6 +343,13 @@ export interface RoomInterior {
     acPoints: number;
   };
   specialFeatures: string[];
+  /** Customer edits (Edit on the interior drawings). Unset = the room type's default. */
+  /** Wall tiles: height in mm from the floor (kitchen: from the counter top). 0 = none; ≥ ceiling height = full height. */
+  wallTileHeightMm?: number;
+  /** Floor tile / plank module, e.g. '600x600', '800x800', '1200x600', '300x300', '1200x200'. */
+  floorTileSize?: string;
+  /** Skirting height in mm (0 = none). Ignored where the walls are tiled to the floor. */
+  skirtingHeightMm?: number;
 }
 
 export interface InteriorMoodBoard {

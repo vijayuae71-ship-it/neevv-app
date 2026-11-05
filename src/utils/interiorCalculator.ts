@@ -7,6 +7,7 @@ import type {
   InteriorMoodBoard,
 } from '../types';
 import { STYLE_TEMPLATES } from './interiorTemplates';
+import { wallTileBand, wallFinishIsTile, skirtingMm, cleanFinishName } from './interiorSpecs';
 
 /* ================================================================
    CURRENCY FORMATTER
@@ -442,9 +443,9 @@ function interiorBOQ(
       'sqft',
       room.flooring.ratePerUnit,
     );
-    // Skirting
-    const skirtingRate = 65;
-    addItem('flooring', 'Skirting', roomLabel, perimeterFt, 'rft', skirtingRate, 'Matching skirting');
+    // Skirting (none where the walls are tiled down to the floor)
+    const skirtH = skirtingMm(room);
+    if (skirtH > 0) addItem('flooring', `Skirting (${skirtH} mm)`, roomLabel, perimeterFt, 'rft', Math.round(65 * Math.max(0.75, skirtH / 100)), 'Matching skirting');
 
     /* ---------- 4. WOODWORK ---------- */
     for (const furn of room.furniture) {
@@ -455,20 +456,19 @@ function interiorBOQ(
     }
 
     /* ---------- 5. PAINTING ---------- */
-    // For bathrooms, wall tile area uses dado height (2100mm), not full ceiling
-    const wallAreaForFinish = room.roomType === 'bathroom'
-      ? getWallAreaSqFt(room.roomId, layout, 2100) // dado height for tiles
-      : room.roomType === 'kitchen'
-      ? getWallAreaSqFt(room.roomId, layout, 900) // kitchen splash/dado behind counter
-      : wallArea;
-    addItem(
-      'painting',
-      `Wall finish — ${room.wallFinish.name}`,
-      roomLabel,
-      wallAreaForFinish,
-      'sqft',
-      room.wallFinish.ratePerUnit,
-    );
+    // Wall tiles to the chosen height (bath default 2100, kitchen dado counter→1500), paint on the rest of the wall
+    const band = wallTileBand(room);
+    const tileArea = band ? getWallAreaSqFt(room.roomId, layout, band.toMm) - getWallAreaSqFt(room.roomId, layout, band.fromMm) : 0;
+    if (band && tileArea > 0) {
+      const tileIsFinish = wallFinishIsTile(room);
+      addItem('flooring', `Wall tiles ${band.full ? 'full height' : `to ${band.toMm} mm`}${band.fromMm ? ` (from counter ${band.fromMm} mm)` : ''} — ${tileIsFinish ? cleanFinishName(room.wallFinish.name) : 'ceramic 300×600'}`,
+        roomLabel, tileArea, 'sqft', tileIsFinish ? room.wallFinish.ratePerUnit : 110, 'Tile, adhesive, grout and laying');
+    }
+    const paintArea = Math.max(0, wallArea - tileArea);
+    if (paintArea > 1) {
+      const tileIsFinish = wallFinishIsTile(room);
+      addItem('painting', tileIsFinish ? 'Wall paint above tiles (emulsion)' : `Wall finish — ${room.wallFinish.name}`, roomLabel, paintArea, 'sqft', tileIsFinish ? 22 : room.wallFinish.ratePerUnit);
+    }
     // Ceiling paint (if plain ceiling or extra coat on false ceiling)
     const ceilingPaintRate = 18;
     addItem('painting', 'Ceiling paint', roomLabel, areaSqFt, 'sqft', ceilingPaintRate);

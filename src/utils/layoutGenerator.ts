@@ -8,11 +8,13 @@
 import type { Column, FloorLayout, FloorProgram, Layout, NBCIssue, OpeningsSchedule, ProjectRequirements } from '../types';
 import { planHome, type Brief, type PlanOption, type PlanResult } from './planning/architect';
 import { calculateVastuScore } from './vastuEngine';
+import { applyBuildingType } from './designStyles';
 
 const SQFT = 10.7639;
 const r2 = (n: number) => Math.round(n * 100) / 100;
 
-export function briefFromRequirements(req: ProjectRequirements): Brief {
+export function briefFromRequirements(req0: ProjectRequirements): Brief {
+  const req = applyBuildingType(req0);
   const fromFloors = (req.floors ?? []).reduce((s, f) => s + (f.bedrooms || 0), 0);
   const bedrooms = Math.max(1, Math.min(4, Math.round(req.bedroomsTotal ?? (fromFloors || 2))));
   return {
@@ -26,11 +28,13 @@ export function briefFromRequirements(req: ProjectRequirements): Brief {
     fsi: req.fsi && Math.abs(req.fsi - 1) > 1e-9 ? req.fsi : undefined,
     setbacks: req.setbacks,
     floorsPreference: req.floorsPreference ?? 'auto',
+    fullWidth: req.buildingType === 'townhouse',
   };
 }
 
-function openingsSchedule(opt: PlanOption): OpeningsSchedule {
-  const openings = opt.openings.map((o) => ({ ...o }));
+function openingsSchedule(opt: PlanOption, partyWalls = false): OpeningsSchedule {
+  // townhouse: no openings in the shared side (party) walls
+  const openings = opt.openings.filter((o) => !(partyWalls && (o.wall === 'left' || o.wall === 'right'))).map((o) => ({ ...o }));
   const totalDoors = openings.filter((o) => o.type === 'door').length;
   const totalWindows = openings.filter((o) => o.type === 'window').length;
   const totalVentilators = openings.filter((o) => o.type === 'ventilator').length;
@@ -68,7 +72,7 @@ export function optionToLayout(opt: PlanOption, result: PlanResult, req: Project
       `BUILDING OFFSETS ON PLOT: front ${setbacks.front}m, rear ${setbacks.rear}m, left ${setbacks.left}m, right ${setbacks.right}m (required setbacks ${env.setbackSource}: F${env.setbacks.front}/R${env.setbacks.rear}/L${env.setbacks.left}/R${env.setbacks.right} m).`,
       `FLOORS: ${opt.storeys === 1 ? 'Ground only' : 'G+1'}. PER FLOOR: ${Math.round(perFloor * SQFT)} sqft. TOTAL BUILT-UP: ${opt.builtUpSqft} sqft. FSI used ${opt.fsiUsed} of ${env.fsi}.`,
     ].join(' '),
-    openingsSchedule: openingsSchedule(opt),
+    openingsSchedule: openingsSchedule(opt, req.buildingType === 'townhouse'),
     plannerVersion: result.version, requiredSetbacks: env.setbacks, setbackSource: env.setbackSource, fsiSource: env.fsiSource,
     fsiUsed: opt.fsiUsed, parkingNote: opt.parkingNote, plannerNotes: opt.notes, plannerChecks: opt.checks, structuralGridM: opt.structuralGrid,
     revision: 1,

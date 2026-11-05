@@ -1,6 +1,8 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
+import MaterialListTable from './MaterialListTable';
+import { buildingMaterialList } from '@/utils/materialList';
 import { BOQ, BOQLineItem, Layout } from '../types';
 import { Package, Zap, Droplets, Building2, Ruler, Layers, DoorOpen, PieChart, IndianRupee } from 'lucide-react';
 
@@ -10,9 +12,11 @@ interface Props {
   boq: BOQ;
   layout: Layout;
   statusBadge?: React.ReactNode;
+  /** steel by bar diameter from the bar bending schedule, for the material list */
+  steelByDia?: { diaMm: number; totalWeightKg: number }[];
 }
 
-type BOQTab = 'summary' | 'itemized' | 'doors_windows' | 'concrete' | 'cost';
+type BOQTab = 'summary' | 'itemized' | 'materials' | 'doors_windows' | 'concrete' | 'cost';
 
 const CAT_LABELS: Record<string, string> = {
   structural: 'Structural Works',
@@ -28,13 +32,15 @@ const formatCostRange = (n: number) => `₹${(n * 0.9 / 100000).toFixed(1)} – 
 const formatPerSqFtRange = (n: number) => `₹${Math.round(n * 0.9).toLocaleString('en-IN')}–${Math.round(n * 1.1).toLocaleString('en-IN')}`;
 const COST_NOTE = 'Estimate based on current market prices. Actual costs vary by location, contractor and material choices.';
 
-export const BOQReport: React.FC<Props> = ({ boq, layout, statusBadge }) => {
+export const BOQReport: React.FC<Props> = ({ boq, layout, statusBadge, steelByDia }) => {
+  const materials = useMemo(() => buildingMaterialList(boq, steelByDia), [boq, steelByDia]);
   const pricing = (boq as BOQ & { pricing?: PricingInfo }).pricing;
   const [tab, setTab] = useState<BOQTab>('summary');
 
   const tabs: { id: BOQTab; label: string; icon: React.ReactNode }[] = [
     { id: 'summary', label: 'Summary', icon: <PieChart size={12} /> },
     { id: 'itemized', label: 'Itemized BOQ', icon: <Layers size={12} /> },
+    { id: 'materials', label: 'Material List', icon: <Package size={12} /> },
     { id: 'concrete', label: 'Concrete', icon: <Building2 size={12} /> },
     { id: 'doors_windows', label: 'D&W Schedule', icon: <DoorOpen size={12} /> },
     { id: 'cost', label: 'Cost Estimate', icon: <IndianRupee size={12} /> },
@@ -339,6 +345,10 @@ export const BOQReport: React.FC<Props> = ({ boq, layout, statusBadge }) => {
           )}
 
           {/* ─── COST ESTIMATE ─── */}
+          {tab === 'materials' && (
+            <MaterialListTable lines={materials} title="Material list — building (structure, masonry, finishes, services)" compareTotal={boq.totalCost} compareLabel="BOQ total" fileName={`neevv-materials-${layout.plotWidthM ? Math.round(layout.plotWidthM * 3.281) : ''}x${layout.plotDepthM ? Math.round(layout.plotDepthM * 3.281) : ''}`} />
+          )}
+
           {tab === 'cost' && (
             <>
               {/* Category-wise cost */}
