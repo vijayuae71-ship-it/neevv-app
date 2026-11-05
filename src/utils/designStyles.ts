@@ -153,3 +153,11 @@ export function roofProfile(style: DesignStyle, side: 'front' | 'rear' | 'left' 
   if (style.roof.type === 'gable') return { roof: [[-o, ye], [len / 2, yr + v], [len + o, ye], [len + o, ye - v], [len / 2, yr], [-o, ye - v]].map(([u, z]) => [u, z]) as [number, number][], gable: [[0, 0], [len / 2, yr], [len, 0]], ridge: yr + v };
   return { roof: [[-o, ye], [len / 2, yr], [len + o, ye]], ridge: yr };
 }
+
+/** Countries whose building rules the planner applies. Only India is live; the others are listed as coming soon. */
+export const COUNTRIES: { id: 'IN' | 'AE' | 'UK' | 'US'; label: string; flag: string; live: boolean; region: Region }[] = [
+  { id: 'IN', label: 'India', flag: '🇮🇳', live: true, region: 'india' },
+  { id: 'AE', label: 'UAE / GCC', flag: '🇦🇪', live: false, region: 'middle_east' },
+  { id: 'UK', label: 'UK & Europe', flag: '🇬🇧', live: false, region: 'uk_europe' },
+  { id: 'US', label: 'United States', flag: '🇺🇸', live: false, region: 'us' },
+];

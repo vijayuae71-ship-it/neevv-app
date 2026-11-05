@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { ProjectRequirements, FloorProgram, Facing, ParkingType, BudgetRange, ArchitecturalStyle } from '../types';
 import { MapPin, Ruler, Home, Compass, Car, Star, IndianRupee, Palette } from 'lucide-react';
-import { BUILDING_TYPES, DESIGN_STYLES, REGIONS, type BuildingType, type DesignStyleId, type Region } from '../utils/designStyles';
+import { BUILDING_TYPES, COUNTRIES, DESIGN_STYLES, REGIONS, type BuildingType, type DesignStyleId, type Region } from '../utils/designStyles';
 
 interface Props {
   onSubmit: (req: ProjectRequirements) => void;
@@ -91,6 +91,7 @@ export const RequirementForm: React.FC<Props> = ({ onSubmit, initialValues }) =>
       setbacks: setbacksCustom ? setbacks : undefined,
       buildingType: buildingType === 'independent' ? undefined : buildingType,
       designStyle: designStyle || undefined,
+      country: 'IN',
     });
   };
 
@@ -99,6 +100,25 @@ export const RequirementForm: React.FC<Props> = ({ onSubmit, initialValues }) =>
 
   return (
     <div className="p-4 space-y-5 max-w-2xl mx-auto">
+      {/* Country: decides building rules, units, currency and rates */}
+      <section className="card bg-gray-100">
+        <div className="card-body p-4 space-y-2">
+          <h3 className="font-semibold flex items-center gap-2 text-sm">
+            <MapPin size={16} className="text-blue-600" /> Where are you building?
+          </h3>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            {COUNTRIES.map((c) => (
+              <button key={c.id} disabled={!c.live} aria-pressed={c.id === 'IN'}
+                className={`btn btn-sm h-auto py-2 flex-col gap-0 normal-case ${c.id === 'IN' ? 'btn-primary' : 'btn-outline'} disabled:opacity-60`}>
+                <span className="text-xs font-semibold">{c.flag} {c.label}</span>
+                {!c.live && <span className="text-[10px] font-normal">Coming soon</span>}
+              </button>
+            ))}
+          </div>
+          <p className="text-[10px] text-gray-500">Building rules, room sizes, units, currency and rates follow the country. You can still pick any region&apos;s look below.</p>
+        </div>
+      </section>
+
       {/* Location */}
       <section className="card bg-gray-100">
         <div className="card-body p-4 space-y-3">
@@ -285,7 +305,7 @@ export const RequirementForm: React.FC<Props> = ({ onSubmit, initialValues }) =>
                 </button>
               ))}
             </div>
-            {region !== 'india' && <p className="text-[11px] text-gray-500 mt-2">Room sizes, structure, codes and costs are still worked out to Indian practice (₹). Local rules for this region are coming next.</p>}
+            {region !== 'india' && <p className="text-[11px] text-gray-500 mt-2">Look only: your house is still planned, engineered and costed to Indian rules (₹), as chosen above.</p>}
           </div>
         </div>
       </section>

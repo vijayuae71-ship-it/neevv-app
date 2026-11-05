@@ -56,6 +56,8 @@ export interface ProjectRequirements {
   buildingType?: 'independent' | 'villa' | 'bungalow' | 'townhouse';
   /** Regional exterior style id from utils/designStyles (roof, facade, openings). Omitted = contemporary Indian. */
   designStyle?: string;
+  /** Country whose building rules, units, currency and rates apply. Only 'IN' is supported today. */
+  country?: 'IN' | 'AE' | 'UK' | 'US';
 }
 
 export interface Room {
