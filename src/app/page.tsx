@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import type { RoomInterior } from '@/types';
 import { AppStep, ProjectRequirements, Layout, Column, BOQ, CustomRateSheet, OfficeRequirements } from '@/types';
 import { StepIndicator } from '@/components/StepIndicator';
 import { RequirementForm } from '@/components/RequirementForm';
@@ -11,11 +10,10 @@ import { IsometricView } from '@/components/IsometricView';
 import { WorkingDrawings } from '@/components/WorkingDrawings';
 import { BOQReport } from '@/components/BOQReport';
 import { InteriorDesign } from '@/components/InteriorDesign';
-import InteriorAIDrawings from '@/components/InteriorAIDrawings';
-import { mapRoomTypeToFinish, getDefaultFurniture, getDefaultMaterials, STYLE_TEMPLATES } from '@/utils/interiorTemplates';
 import { VerificationReport } from '@/components/VerificationReport';
 import ApartmentForm from '@/components/ApartmentForm';
 import { generateLayoutsDetailed, requirementsForLayout } from '@/utils/layoutGenerator';
+import { buildSingleRoom, type Wall } from '@/utils/singleRoom';
 import type { PlannerSummary } from '@/components/LayoutSelector';
 import { calculateBOQ } from '@/utils/boqCalculator';
 import { BRAND_LOGO_BASE64 } from '@/utils/brand';
@@ -105,6 +103,8 @@ export default function HomePage() {
   const [roomDesignWidth, setRoomDesignWidth] = useState<number>(12);
   const [roomDesignDepth, setRoomDesignDepth] = useState<number>(12);
   const [roomDesignStyle, setRoomDesignStyle] = useState<string>('modern_minimalist');
+  const [roomDoorWall, setRoomDoorWall] = useState<Wall>('front');
+  const [roomWindowWall, setRoomWindowWall] = useState<Wall | 'none'>('rear');
   const [drawingsGenerated, setDrawingsGenerated] = useState<number>(0);
   const [generatedDrawingTypes, setGeneratedDrawingTypes] = useState<string[]>([]);
   const [structuralResult, setStructuralResult] = useState<StructuralDesignResult | null>(null);
@@ -434,69 +434,10 @@ export default function HomePage() {
 
   
   const handleRoomDesignSubmit = () => {
-    const widthM = roomDesignWidth * 0.3048;
-    const depthM = roomDesignDepth * 0.3048;
-    const areaSqFt = roomDesignWidth * roomDesignDepth;
-    const roomTypeMap: Record<string, string> = {
-      'living_room': 'hall', 'bedroom': 'bedroom', 'master_bedroom': 'master_bedroom',
-      'kitchen': 'kitchen', 'bathroom': 'toilet', 'dining': 'dining',
-      'puja': 'puja', 'balcony': 'balcony', 'study': 'study',
-    };
-    const mappedType = roomTypeMap[roomDesignType] || 'hall';
-    const roomName = roomDesignType.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-    
-    const singleRoomLayout: Layout = {
-      id: 'room_design_' + Date.now(),
-      name: roomName + ' Design',
-      strategy: 'room_design',
-      description: 'Individual room design',
-      floors: [{
-        floor: 0,
-        floorLabel: 'Ground Floor',
-        rooms: [{
-          id: 'room_1',
-          name: roomName,
-          type: mappedType as any,
-          x: 0, y: 0,
-          width: widthM,
-          depth: depthM,
-          floor: 0,
-        }],
-        columns: [],
-      }],
-      vastuScore: 0,
-      vastuDetails: [],
-      nbcCompliant: true,
-      nbcIssues: [],
-      builtUpAreaSqM: widthM * depthM,
-      builtUpAreaSqFt: areaSqFt,
-      setbacks: { front: 0, rear: 0, left: 0, right: 0 },
-      plotWidthM: widthM,
-      plotDepthM: depthM,
-      buildableWidthM: widthM,
-      buildableDepthM: depthM,
-    };
-
-    const singleRoomReqs: ProjectRequirements = {
-      city: 'Bangalore',
-      state: 'Karnataka',
-      plotWidthFt: roomDesignWidth,
-      plotDepthFt: roomDesignDepth,
-      facing: 'North',
-      vastuCompliance: false,
-      parkingType: 'None',
-      budget: 'standard',
-      architecturalStyle: roomDesignStyle as any,
-      floors: [{
-        floorLabel: 'Ground Floor',
-        bedrooms: mappedType === 'bedroom' || mappedType === 'master_bedroom' ? 1 : 0,
-        halls: mappedType === 'hall' ? 1 : 0,
-        kitchens: mappedType === 'kitchen' ? 1 : 0,
-        hasDining: mappedType === 'dining',
-        hasPuja: mappedType === 'puja',
-      }],
-    };
-
+    const { layout: singleRoomLayout, requirements: singleRoomReqs } = buildSingleRoom({
+      roomType: roomDesignType, widthFt: roomDesignWidth, depthFt: roomDesignDepth, style: roomDesignStyle,
+      doorWall: roomDoorWall, windowWall: roomWindowWall,
+    });
     setRequirements(singleRoomReqs);
     setSelectedLayout(singleRoomLayout);
     setLayouts([singleRoomLayout]);
@@ -740,37 +681,7 @@ const BRAND_GREEN = '#4f6f52';
             </span>
           </div>
           <div className="flex-1 overflow-y-auto">
-            {(() => {
-              const room = selectedLayout.floors[0]?.rooms[0];
-              if (!room) return null;
-              const styleKey = (roomDesignStyle in STYLE_TEMPLATES ? roomDesignStyle : 'modern_minimalist') as keyof typeof STYLE_TEMPLATES;
-              const finishType = mapRoomTypeToFinish(room.type);
-              const furniture = getDefaultFurniture(finishType, styleKey, room.type as string);
-              const materials = getDefaultMaterials(finishType, styleKey);
-              const selectionsMap: Record<string, RoomInterior> = {
-                [room.id]: {
-                  roomId: room.id,
-                  roomName: room.name,
-                  roomType: finishType,
-                  style: styleKey,
-                  palette: { ...STYLE_TEMPLATES[styleKey].palette },
-                  flooring: materials.flooring,
-                  wallFinish: materials.wallFinish,
-                  ceilingType: 'false_ceiling_peripheral',
-                  ceilingHeight: 2900,
-                  furniture: furniture.filter(fu => fu.defaultSelected !== false),
-                  electricalPoints: { switches: 2, sockets: 3, dataPoints: 1, lightPoints: 2, fanPoints: 1, acPoints: 0 },
-                  specialFeatures: [],
-                },
-              };
-              return (
-                <InteriorAIDrawings
-                  layout={selectedLayout}
-                  interiorSelections={selectionsMap}
-                  moodBoard={STYLE_TEMPLATES[styleKey]}
-                />
-              );
-            })()}
+            <InteriorDesign layout={selectedLayout} requirements={requirements} />
           </div>
         </div>
       );
@@ -839,6 +750,23 @@ const BRAND_GREEN = '#4f6f52';
                 <div className="mb-6 text-center text-sm text-gray-500">
                   Room area: <strong>{roomDesignWidth * roomDesignDepth} sqft</strong> ({(roomDesignWidth * roomDesignDepth * 0.0929).toFixed(1)} sqm)
                 </div>
+
+                {/* Door and window walls (front = top of the drawing) */}
+                <div className="mb-6 grid grid-cols-2 gap-4">
+                  {([['Door on', roomDoorWall, (v: string) => setRoomDoorWall(v as Wall), false], ['Window on', roomWindowWall, (v: string) => setRoomWindowWall(v as Wall | 'none'), true]] as const).map(([lbl, val, set, allowNone]) => (
+                    <div key={lbl}>
+                      <label className="block text-sm font-semibold text-gray-700 mb-1">{lbl}</label>
+                      <select value={val} onChange={(e) => set(e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white">
+                        <option value="front">Front wall (top of plan)</option>
+                        <option value="rear">Back wall</option>
+                        <option value="left">Left wall</option>
+                        <option value="right">Right wall</option>
+                        {allowNone && <option value="none">No window</option>}
+                      </select>
+                    </div>
+                  ))}
+                </div>
+                <p className="-mt-4 mb-6 text-xs text-gray-500">Width runs along the front and back walls. Furniture is arranged around the door and window — you get up to 3 arrangements to choose from.</p>
 
                 {/* Style */}
                 <div className="mb-8">

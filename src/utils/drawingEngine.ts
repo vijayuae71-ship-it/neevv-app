@@ -42,7 +42,8 @@ type DrawingType = 'excavation' | 'column_layout' | 'footing_detail' | 'beam_sla
   'column_detail' | 'bar_bending' | 'section_aa' | 'front_elevation' |
   'staircase_detail' | 'water_tank' | 'waterproofing' | 'stp_detail' |
   'electrical' | 'plumbing' | 'tiling_layout' | 'brickwork_detail' |
-  'working_plan' | 'door_window_schedule' | 'site_plan' | 'terrace_plan' | 'side_elevation' | 'section_bb' | 'cover_sheet' | 'wet_areas' | 'typical_details';
+  'working_plan' | 'door_window_schedule' | 'site_plan' | 'terrace_plan' | 'side_elevation' | 'section_bb' | 'cover_sheet' | 'wet_areas' | 'typical_details'
+  | 'int_furniture' | 'int_rcp' | 'int_electrical' | 'int_flooring' | 'int_elevations' | 'int_woodwork';
 
 /* ── neevv Drafting Standard v1 (IS 962 / SP 46) ──
  * Sheet = A3 landscape (420 × 297 mm) rendered at 5 px per paper-mm.
@@ -91,6 +92,8 @@ interface Context {
   frame: Frame;
   title: string;
   scale: number;
+  /** interior sheets: the room's placement and the customer's selection */
+  int?: { plan: InteriorPlan; interior?: RoomInterior };
 }
 const finite = (n: unknown, fallback: number): number => typeof n === 'number' && Number.isFinite(n) ? n : fallback;
 const positive = (n: unknown, fallback: number): number => { const x = finite(n, fallback); return x > 0 ? x : fallback; };
@@ -116,6 +119,8 @@ const titleFor: Record<DrawingType, string> = {
   site_plan: 'SITE PLAN', terrace_plan: 'TERRACE / ROOF PLAN', side_elevation: 'SIDE & REAR ELEVATIONS',
   section_bb: 'BUILDING SECTION 2–2', cover_sheet: 'COVER SHEET & DRAWING REGISTER',
   wet_areas: 'TOILET & KITCHEN ENLARGEMENTS', typical_details: 'TYPICAL CONSTRUCTION DETAILS',
+  int_furniture: 'INTERIOR FURNITURE LAYOUT', int_rcp: 'REFLECTED CEILING PLAN', int_electrical: 'INTERIOR ELECTRICAL & LIGHTING',
+  int_flooring: 'FLOORING LAYOUT', int_elevations: 'INTERIOR WALL ELEVATIONS', int_woodwork: 'WOODWORK DETAILS',
 };
 
 /** Thin, dimensioned CAD-like primitives. Coordinates are canvas pixels. */
@@ -880,14 +885,18 @@ function sectionCutY(k: Context): number {
   return st ? st.y + st.d * 0.3 : k.g.building.y + k.g.building.h / 2;
 }
 /* Sheet numbering (A architecture, S structure, M masonry, E electrical, P plumbing, F finishes, D details). */
-const SHEET_BASE: Record<DrawingType, string> = {
+const SHEET_BASE: Partial<Record<DrawingType, string>> = {
   cover_sheet: 'G-001', site_plan: 'A-001', working_plan: 'A-101', section_bb: 'A-302', terrace_plan: 'A-109', front_elevation: 'A-201', side_elevation: 'A-202', section_aa: 'A-301', door_window_schedule: 'A-401', staircase_detail: 'A-501', wet_areas: 'A-601', typical_details: 'A-602',
   excavation: 'S-101', column_layout: 'S-102', footing_detail: 'S-103', beam_slab: 'S-104', column_detail: 'S-105', bar_bending: 'S-106',
   brickwork_detail: 'M-101', electrical: 'E-101', plumbing: 'P-101', water_tank: 'P-201', stp_detail: 'P-202',
   tiling_layout: 'F-101', waterproofing: 'D-101',
 };
 const PER_FLOOR: DrawingType[] = ['working_plan', 'brickwork_detail', 'electrical', 'plumbing', 'tiling_layout'];
+/** Interior sheets: one set per room, not part of the building register. */
+const INT_BASE: Record<string, string> = { int_furniture: 'I-101', int_rcp: 'I-201', int_electrical: 'I-301', int_flooring: 'I-401', int_elevations: 'I-501', int_woodwork: 'I-601' };
+export const INTERIOR_SHEET_TYPES = Object.keys(INT_BASE);
 export function sheetNumber(type: string, level: number): string {
+  if (INT_BASE[type]) return INT_BASE[type];
   const base = SHEET_BASE[type as DrawingType] ?? 'X-000';
   if (level > 0 && PER_FLOOR.includes(type as DrawingType)) return base.slice(0, -1) + String(Number(base.slice(-1)) + level);
   return base;
@@ -3119,7 +3128,7 @@ function titleBlock(k: Context): void {
   label(c, 'neevv', x + 18, y + 29, 33, 'left', COLORS.green, true);
   label(c, 'Architecture • Structure • MEP • Interiors', x + 170, y + 31, 14, 'left', COLORS.dim);
   label(c, 'DRAFT DESIGN', x + W - 16, y + 31, 12, 'right', COLORS.dim, true);
-  const t = k.level > 0 && PER_FLOOR.includes(k.type) ? `${k.title} — ${floorName(k)}` : k.title;
+  const t = k.int ? `${k.title} — ${k.int.plan.roomName.toUpperCase()}` : k.level > 0 && PER_FLOOR.includes(k.type) ? `${k.title} — ${floorName(k)}` : k.title;
   label(c, t.length > 44 ? t.slice(0, 43) + '…' : t, x + 16, y + 78, 17, 'left', COLORS.text, true);
   label(c, `PLOT ${round(k.g.plotW)} × ${round(k.g.plotD)} mm  •  ${k.req.city}, ${k.req.state}`, x + 16, y + 106, 13);
   label(c, `ROAD FACING ${k.req.facing}  •  LOCKED PLAN REV ${k.rev}`, x + 16, y + 128, 13);
@@ -3145,6 +3154,8 @@ export interface PlacedFurniture {
   side: Side | 'free'; kind: 'furniture' | 'counter' | 'upper' | 'fixture' | 'seat';
   /** quantity represented by this symbol (e.g. a workstation cluster) */
   qty?: number; cost?: number; material?: string; color?: string;
+  /** id of the customer's FurnitureItem this symbol draws */
+  srcId?: string;
 }
 export interface InteriorPlan {
   roomId: string; roomName: string; roomType: string; floor: number;
@@ -3161,6 +3172,18 @@ function interiorContext(layout: Layout, req: ProjectRequirements, level: number
 function findModelRoom(g: Geometry, roomId: string): { r: ModelRoom; floor: number } | null {
   for (let f = 0; f < g.rooms.length; f++) { const r = (g.rooms[f] ?? []).find(m => m.source.id === roomId); if (r) return { r, floor: f }; }
   return null;
+}
+/** Finished (clear) size of each room in metres, inside the walls: the area that is tiled, painted and ceilinged. */
+export function roomClearM(layout: Layout, req: ProjectRequirements): Record<string, { width: number; depth: number }> {
+  const out: Record<string, { width: number; depth: number }> = {};
+  try {
+    const g = makeGeometry(layout, req, {});
+    for (let f = 0; f < g.rooms.length; f++) {
+      const k = interiorContext(layout, req, f);
+      for (const r of k.g.rooms[f] ?? []) { const cl = clearRect(k, r); if (cl.w > 0 && cl.h > 0) out[r.source.id] = { width: cl.w / 1000, depth: cl.h / 1000 }; }
+    }
+  } catch { /* fall back to room sizes */ }
+  return out;
 }
 /** Openings on any wall of room r (including doors owned by the neighbour). */
 function roomWallOpenings(k: Context, r: ModelRoom): { o: OpeningPlacement; side: Side }[] {
@@ -3198,7 +3221,7 @@ export function planInteriorRoom(layout: Layout, req: ProjectRequirements, roomI
     && !(side && h > 0 && windows.some(wn => wn.side === side && h > wn.sill - 50 && (side === 'front' || side === 'rear' ? b.x < wn.b && wn.a < b.x + b.w : b.y < wn.b && wn.a < b.y + b.h)));
   const put = (it: PlacedFurniture, clearance?: Bounds) => { items.push(it); occupied.push({ x: it.x, y: it.y, w: it.w, h: it.d }); if (clearance) occupied.push(clearance); };
   const asItem = (f: FurnitureItem | undefined, name: string, cat: string, b: Bounds, h: number, side: Side | 'free', kind: PlacedFurniture['kind'] = 'furniture', qty?: number): PlacedFurniture =>
-    ({ name, category: cat, x: b.x, y: b.y, w: b.w, d: b.h, h, side, kind, qty, cost: f?.estimatedCost, material: f?.material, color: f?.color });
+    ({ name, category: cat, x: b.x, y: b.y, w: b.w, d: b.h, h, side, kind, qty, cost: f?.estimatedCost, material: f?.material, color: f?.color, srcId: f?.id });
   /** Wall slot: positions centred, corners, then every 100 mm along each preferred side. Returns the rect (w along wall). */
   const wallSlot = (w: number, d: number, h: number, sides: Side[], mode: 'center' | 'corner' = 'center', front = 0): { b: Bounds; side: Side } | null => {
     for (const s of sides) {
@@ -3224,15 +3247,16 @@ export function planInteriorRoom(layout: Layout, req: ProjectRequirements, roomI
   const rankSides = (pref: (s: Side) => number) => [...all].sort((p, q) => pref(q) - pref(p));
   const keyRank = rankSides(s => sideL(s) / 1000 + (doorSides.has(s) ? -3 : 0) + (winSides.has(s) ? -1.5 : 0));
   const keyOrder = (n: number) => { const ok = keyRank.slice(0, Math.max(1, keyRank.length)); return [...ok.slice(n % ok.length), ...ok.slice(0, n % ok.length)]; };
-  const furn = interior?.furniture ?? []; // the customer's selection (MoodBoard / room flow already filtered it)
+  const furn = (interior?.furniture ?? []).filter(f => f.defaultSelected === true); // billed items only (same rule as the interior BOQ)
   const t = r.source.type as string, used = new Set<FurnitureItem>();
   const take = (pred: (f: FurnitureItem) => boolean) => { const f = furn.find(x => !used.has(x) && pred(x)); if (f) used.add(f); return f; };
   let keySide: Side | undefined;
 
   if (t === 'toilet') {
     // fixtures exactly where the plumbing layout puts them
-    const w = wetLayout(k, r), L = sideLen(r, w.service), tAt = (mm: number) => (w.tEnd === 0 ? mm / L : 1 - mm / L);
-    const at0 = (mm: number, inset: number) => onSide(r, w.service, tAt(mm), inset);
+    // set-out from the finished wall faces (room bounds include external wall thickness)
+    const w = wetLayout(k, r), rc = { ...r, x: clear.x, y: clear.y, w: clear.w, d: clear.h } as ModelRoom, L = sideLen(rc, w.service), tAt = (mm: number) => (w.tEnd === 0 ? mm / L : 1 - mm / L);
+    const at0 = (mm: number, inset: number) => onSide(rc, w.service, tAt(mm), inset);
     const fixAt = (p: Point, wAlong: number, dOut: number, name: string, side: Side) => {
       const hz = side === 'front' || side === 'rear';
       const sgn = side === 'front' || side === 'left' ? 1 : -1, wallC = side === 'front' ? clear.y : side === 'rear' ? clear.y + clear.h : side === 'left' ? clear.x : clear.x + clear.w;
@@ -3243,19 +3267,28 @@ export function planInteriorRoom(layout: Layout, req: ProjectRequirements, roomI
     items.push(asItem(take(f => /shower/i.test(f.name)), 'Shower 900×900', 'bathroom_fixture', shB, 2000, w.service, 'fixture')); occupied.push(shB);
     fixAt(at0(1250, 0), 400, 700, 'WC', w.service);
     const L2 = L >= 2500; const vanity = take(f => /vanity/i.test(f.name));
-    fixAt(L2 ? at0(2150, 0) : onSide(r, opposite[w.service], 0.5, 0), vanity ? 900 : 600, vanity ? 450 : 450, vanity ? 'Vanity unit' : 'Wash basin', L2 ? w.service : opposite[w.service]);
+    fixAt(L2 ? at0(2150, 0) : onSide(rc, opposite[w.service], 0.5, 0), vanity ? 900 : 600, vanity ? 450 : 450, vanity ? 'Vanity unit' : 'Wash basin', L2 ? w.service : opposite[w.service]);
   } else if (t === 'kitchen') {
     const kc = kitchenCounter(k, r);
     for (const [s, maxLen] of [[kc.long, 99999], [kc.short, 2400]] as [Side, number][]) {
       const L = Math.min(sideL(s), maxLen), a0 = s === kc.short ? along0(s) : along0(s);
       let run = { b: wallRect(s, a0, L, 600) };
-      // shorten the run off any door zone
-      for (let cut = 0; cut < L && !fits(run.b, 900, undefined); cut += 100) run = { b: wallRect(s, a0 + (s === kc.short ? 0 : 0), L - cut, 600) };
+      // shorten the run off any door zone, trimming whichever end clears it
+      for (let cut = 100; cut < L - 900 && !fits(run.b, 900, undefined); cut += 100) {
+        const atEnd = { b: wallRect(s, a0, L - cut, 600) }, atStart = { b: wallRect(s, a0 + cut, L - cut, 600) };
+        run = fits(atStart.b, 900, undefined) ? atStart : atEnd;
+      }
       if (!fits(run.b, 900, undefined)) continue;
       put(asItem(take(f => /lower cabinet/i.test(f.name)), s === kc.long ? 'Counter + base units (L)' : 'Counter + base units (S)', 'kitchen_cabinet', run.b, 900, s, 'counter'));
-      items.push({ ...asItem(take(f => /upper cabinet/i.test(f.name)), 'Upper units over', 'kitchen_cabinet', wallRect(s, (s === 'front' || s === 'rear' ? run.b.x : run.b.y), (s === 'front' || s === 'rear' ? run.b.w : run.b.h), 350), 700, s, 'upper') });
+      // upper units over the run, interrupted by windows on that wall (150 clear each side)
+      const upF = take(f => /upper cabinet/i.test(f.name)), hzR = s === 'front' || s === 'rear';
+      let segs: [number, number][] = [[hzR ? run.b.x : run.b.y, hzR ? run.b.x + run.b.w : run.b.y + run.b.h]];
+      for (const { o } of roomWallOpenings(k, r).filter(v => v.side === s && v.o.source.type !== 'door'))
+        segs = segs.flatMap(([a1, b1]): [number, number][] => { const w0 = Math.min(o.a, o.b) - 150, w1 = Math.max(o.a, o.b) + 150; return w1 <= a1 || w0 >= b1 ? [[a1, b1]] : [[a1, w0], [w1, b1]]; }).filter(([a1, b1]) => b1 - a1 >= 450);
+      segs.forEach(([a1, b1], si) => items.push(asItem(si === 0 ? upF : undefined, 'Upper units over', 'kitchen_cabinet', wallRect(s, a1, b1 - a1, 350), 700, s, 'upper')));
     }
-    const lr = items.find(i => i.side === kc.long && i.kind === 'counter');
+    const lr0 = items.filter(i => i.kind === 'counter').sort((a, b) => Math.max(b.w, b.d) - Math.max(a.w, a.d))[0];
+    const lr = lr0 && Math.max(lr0.w, lr0.d) >= 1500 ? lr0 : undefined; if (lr) kc.long = lr.side as Side;
     if (lr) {
       const hz = kc.long === 'front' || kc.long === 'rear', sinkC = onSide(r, kc.long, 0.5, 300);
       const sink = hz ? { x: clamp(sinkC.x - 400, lr.x, lr.x + lr.w - 800), y: lr.y + 75, w: 800, h: 450 } : { x: lr.x + 75, y: clamp(sinkC.y - 400, lr.y, lr.y + lr.d - 800), w: 450, h: 800 };
@@ -3389,6 +3422,302 @@ export function interiorOptions(layout: Layout, req: ProjectRequirements, roomId
   return out;
 }
 
+/* ── Interior sheets (one set per room) ── */
+const INT_TAG = '#5b6b8c';
+/** Room plan frame: the room plus 900 mm around it, walls and openings of that floor clipped to the frame. */
+function roomFrame(k: Context, target: Bounds = { x: 60, y: 150, w: 1200, h: 1075 }, walls: 'solid' | 'light' = 'solid'): Bounds {
+  // interior plans at 1:20 / 1:25 where they fit with their dimension chains (≈110 px), else 1:50 / 1:100
+  const p = k.int!.plan, fitsAt = (den: number, m: number) => { const sc = PX_PER_PAPER_MM / den; return (p.room.w + 2 * m) * sc + 130 <= target.w && (p.room.h + 2 * m) * sc + 140 <= target.h; };
+  let den = 200, m = 250;
+  search: for (const d of [20, 25, 50, 100, 200]) for (const mm of [250, 120]) if (fitsAt(d, mm)) { den = d; m = mm; break search; }
+  const sc = PX_PER_PAPER_MM / den, geo = { x: p.room.x - m, y: p.room.y - m, w: p.room.w + 2 * m, h: p.room.h + 2 * m };
+  k.frame = { x: target.x + (target.w - geo.w * sc) / 2, y: target.y + Math.min(30, (target.h - geo.h * sc) / 2), s: sc, width: geo.x, height: geo.y }; k.scale = sc; k.views.push(den);
+  const G = box(k, geo), c = k.c;
+  c.save(); c.beginPath(); c.rect(G.x, G.y, G.w, G.h); c.clip();
+  drawPlanWalls(k, walls);
+  for (const o of k.g.openings.filter(v => v.floor === k.level)) planOpening(c, k, o);
+  c.restore();
+  return G;
+}
+function intRoom(k: Context): ModelRoom { const p = k.int!.plan; return (k.g.rooms[k.level] ?? []).find(r => r.source.id === p.roomId)!; }
+const shortName = (n: string) => n.replace(/\s*[—–-]\s.*$/, '').replace(/\s*\(.*?\)\s*/g, ' ').trim();
+/** Furniture / fixture symbol. light = grey context on services sheets. */
+function drawItem(k: Context, it: PlacedFurniture, light = false): void {
+  const c = k.c, B = box(k, { x: it.x, y: it.y, w: it.w, h: it.d }), s = k.scale;
+  const stroke = light ? '#a9adb3' : COLORS.wall, pen = light ? PEN.hair : PEN.medium;
+  const hz = it.side === 'front' || it.side === 'rear';
+  // edge strip along the wall the item backs onto
+  const strip = (mm: number): Bounds => it.side === 'front' ? { x: B.x, y: B.y, w: B.w, h: mm * s } : it.side === 'rear' ? { x: B.x, y: B.y + B.h - mm * s, w: B.w, h: mm * s }
+    : it.side === 'left' ? { x: B.x, y: B.y, w: mm * s, h: B.h } : it.side === 'right' ? { x: B.x + B.w - mm * s, y: B.y, w: mm * s, h: B.h } : { x: B.x, y: B.y, w: B.w, h: mm * s };
+  const chair = (cx: number, cy: number) => { c.save(); c.beginPath(); c.arc(cx, cy, Math.max(3, 220 * s), 0, Math.PI * 2); c.fillStyle = '#fff'; c.fill(); c.strokeStyle = stroke; c.lineWidth = PEN.hair; c.stroke(); c.restore(); };
+  if (it.kind === 'upper') { c.save(); c.setLineDash([6, 4]); drawRect(c, B.x, B.y, B.w, B.h, { stroke, weight: PEN.hair }); c.restore(); return; }
+  if (it.kind === 'counter') { drawRect(c, B.x, B.y, B.w, B.h, { fill: light ? '#f4f4f4' : '#efe9df', stroke, weight: pen }); return; }
+  if (it.kind === 'fixture') {
+    drawRect(c, B.x, B.y, B.w, B.h, { fill: '#fff', stroke, weight: pen });
+    if (/shower/i.test(it.name)) { c.save(); c.setLineDash([5, 4]); drawLine(c, B.x, B.y, B.x + B.w, B.y + B.h, PEN.hair, stroke); drawLine(c, B.x + B.w, B.y, B.x, B.y + B.h, PEN.hair, stroke); c.restore(); }
+    else if (/^wc/i.test(it.name)) { const tk = strip(150); drawRect(c, tk.x, tk.y, tk.w, tk.h, { stroke, weight: PEN.hair }); c.save(); c.beginPath(); c.ellipse(B.x + B.w / 2, B.y + B.h / 2, B.w / 2.6, B.h / 2.6, 0, 0, Math.PI * 2); c.strokeStyle = stroke; c.lineWidth = PEN.hair; c.stroke(); c.restore(); }
+    else if (/basin|vanity|sink/i.test(it.name)) { c.save(); c.beginPath(); c.ellipse(B.x + B.w / 2, B.y + B.h / 2, B.w / 3, B.h / 3, 0, 0, Math.PI * 2); c.strokeStyle = stroke; c.lineWidth = PEN.hair; c.stroke(); c.restore(); }
+    else if (/hob/i.test(it.name)) for (const [a, b] of [[0.3, 0.3], [0.7, 0.3], [0.3, 0.7], [0.7, 0.7]]) circle(c, B.x + B.w * a, B.y + B.h * b, Math.max(2, 80 * s), '#fff', stroke, PEN.hair);
+    return;
+  }
+  drawRect(c, B.x, B.y, B.w, B.h, { fill: '#fff', stroke, weight: pen });
+  switch (it.category) {
+    case 'bed': { const pl = strip(320); const n = B.w > B.h ? 1 : 1; void n;
+      if (hz) { drawRect(c, pl.x + 4, pl.y + 2, pl.w / 2 - 6, pl.h - 4, { stroke, weight: PEN.hair }); drawRect(c, pl.x + pl.w / 2 + 2, pl.y + 2, pl.w / 2 - 6, pl.h - 4, { stroke, weight: PEN.hair }); const fy = it.side === 'front' ? B.y + B.h * 0.62 : B.y + B.h * 0.38; drawLine(c, B.x, fy, B.x + B.w, fy, PEN.hair, stroke); }
+      else { drawRect(c, pl.x + 2, pl.y + 4, pl.w - 4, pl.h / 2 - 6, { stroke, weight: PEN.hair }); drawRect(c, pl.x + 2, pl.y + pl.h / 2 + 2, pl.w - 4, pl.h / 2 - 6, { stroke, weight: PEN.hair }); const fx = it.side === 'left' ? B.x + B.w * 0.62 : B.x + B.w * 0.38; drawLine(c, fx, B.y, fx, B.y + B.h, PEN.hair, stroke); }
+      break; }
+    case 'sofa': { const bk = strip(200); drawRect(c, bk.x, bk.y, bk.w, bk.h, { fill: light ? '#f4f4f4' : '#eceff3', stroke, weight: PEN.hair }); break; }
+    case 'dining_table': {
+      const n = Math.max(2, it.qty ?? 4), long = B.w >= B.h, per = Math.ceil(n / 2), off = 300 * s;
+      for (let i = 0; i < n; i++) { const side = i < per ? 0 : 1, j = side ? i - per : i, cnt = side ? n - per : per;
+        if (long) chair(B.x + B.w * (j + 0.5) / cnt, side ? B.y + B.h + off : B.y - off); else chair(side ? B.x + B.w + off : B.x - off, B.y + B.h * (j + 0.5) / cnt); }
+      break; }
+    case 'study_table': {
+      if ((it.qty ?? 1) >= 4) { drawLine(c, B.x + B.w / 2, B.y, B.x + B.w / 2, B.y + B.h, PEN.hair, stroke); drawLine(c, B.x, B.y + B.h / 2, B.x + B.w, B.y + B.h / 2, PEN.hair, stroke);
+        for (const fx of [0.25, 0.75]) { chair(B.x + B.w * fx, B.y - 300 * s); chair(B.x + B.w * fx, B.y + B.h + 300 * s); } }
+      else { const f = it.side === 'free' ? { x: B.x + B.w / 2, y: B.y - 350 * s } : it.side === 'front' ? { x: B.x + B.w / 2, y: B.y + B.h + 350 * s } : it.side === 'rear' ? { x: B.x + B.w / 2, y: B.y - 350 * s } : it.side === 'left' ? { x: B.x + B.w + 350 * s, y: B.y + B.h / 2 } : { x: B.x - 350 * s, y: B.y + B.h / 2 }; chair(f.x, f.y); }
+      break; }
+    case 'wardrobe': case 'crockery': case 'bookshelf': case 'pooja_unit': case 'shoe_rack': case 'bar_unit': case 'kitchen_cabinet': {
+      if (it.h > 1200) drawLine(c, B.x, B.y, B.x + B.w, B.y + B.h, PEN.hair, stroke);
+      const len = hz ? it.w : it.d, n = Math.max(1, Math.round(len / 600));
+      for (let i = 1; i < n; i++) { if (hz) { const x = B.x + B.w * i / n; const fr = it.side === 'front' ? B.y + B.h : B.y; drawLine(c, x, fr, x, fr + (it.side === 'front' ? -6 : 6), PEN.medium, stroke); } else { const y = B.y + B.h * i / n; const fr = it.side === 'left' ? B.x + B.w : B.x; drawLine(c, fr, y, fr + (it.side === 'left' ? -6 : 6), y, PEN.medium, stroke); } }
+      break; }
+    case 'tv_unit': { const tv = strip(60); drawRect(c, tv.x, tv.y, tv.w, tv.h, { fill: stroke, stroke, weight: PEN.hair }); break; }
+    default: break;
+  }
+}
+function tagItem(k: Context, it: PlacedFurniture, n: number): void {
+  const c = k.c, B = box(k, { x: it.x, y: it.y, w: it.w, h: it.d }), t = `${n}`;
+  const cands = [{ x: B.x + B.w / 2, y: B.y + B.h / 2 }, { x: B.x + B.w / 2, y: B.y - 12 }, { x: B.x + B.w / 2, y: B.y + B.h + 12 }, { x: B.x - 12, y: B.y + B.h / 2 }, { x: B.x + B.w + 12, y: B.y + B.h / 2 }];
+  soft(18, 18, cands, (x, y) => { circle(c, x, y, 9, '#fff', INT_TAG, 1.2); label(c, t, x, y + 0.5, 10, 'center', INT_TAG, true); });
+}
+/** Points shared by the RCP and the electrical sheet. */
+function intPoints(k: Context): { lights: Point[]; fans: Point[]; ac: { b: Bounds; side: Side }[]; sb: Point | null; sockets: { p: Point; kind: 'S' | 'P' | 'TV' | 'D' }[] } {
+  const p = k.int!.plan, it = k.int!.interior, ep = it?.electricalPoints ?? { switches: 1, sockets: 2, dataPoints: 0, lightPoints: 2, fanPoints: 1, acPoints: 0 };
+  const cl = p.clear, r = intRoom(k), periph = it?.ceilingType === 'false_ceiling_peripheral';
+  const nL = Math.max(0, ep.lightPoints), lights: Point[] = [];
+  if (periph && nL > 0) { // evenly around the 600 band, 300 mm from the wall
+    const inset = 300, per = 2 * (cl.w + cl.h - 4 * inset);
+    for (let i = 0; i < nL; i++) { let d = per * (i + 0.5) / nL; const W = cl.w - 2 * inset, H = cl.h - 2 * inset;
+      const pt = d < W ? { x: cl.x + inset + d, y: cl.y + inset } : (d -= W) < H ? { x: cl.x + cl.w - inset, y: cl.y + inset + d } : (d -= H) < W ? { x: cl.x + cl.w - inset - d, y: cl.y + cl.h - inset } : { x: cl.x + inset, y: cl.y + cl.h - inset - (d - W) };
+      lights.push(pt); }
+  } else { const cols = Math.max(1, Math.round(Math.sqrt(nL * cl.w / Math.max(1, cl.h)))), rows = Math.max(1, Math.ceil(nL / cols));
+    for (let i = 0; i < nL; i++) lights.push({ x: cl.x + cl.w * ((i % cols) + 0.5) / cols, y: cl.y + cl.h * (Math.floor(i / cols) + 0.5) / rows }); }
+  const fans: Point[] = []; for (let i = 0; i < ep.fanPoints; i++) fans.push({ x: cl.x + cl.w * (i + 1) / (ep.fanPoints + 1), y: cl.y + cl.h / 2 });
+  const ext = externalSides(k, r), ac: { b: Bounds; side: Side }[] = [];
+  for (let i = 0; i < ep.acPoints; i++) { const side = ext.find(sd => sd !== p.keySide) ?? ext[0] ?? 'rear', hz = side === 'front' || side === 'rear';
+    const t0 = (hz ? cl.x + cl.w / 2 : cl.y + cl.h / 2) - 450 + i * 1000; ac.push({ side, b: side === 'front' ? { x: t0, y: cl.y, w: 900, h: 250 } : side === 'rear' ? { x: t0, y: cl.y + cl.h - 250, w: 900, h: 250 } : side === 'left' ? { x: cl.x, y: t0, w: 250, h: 900 } : { x: cl.x + cl.w - 250, y: t0, w: 250, h: 900 } }); }
+  // switch board on the latch side of the room's door, 150 mm in
+  const door = roomWallOpenings(k, r).find(v => v.o.source.type === 'door');
+  let sb: Point | null = null;
+  if (door) { const o = door.o, along = Math.min(o.b + 150, (o.axis === 'horizontal' ? cl.x + cl.w : cl.y + cl.h) - 100);
+    sb = door.side === 'front' ? { x: along, y: cl.y + 80 } : door.side === 'rear' ? { x: along, y: cl.y + cl.h - 80 } : door.side === 'left' ? { x: cl.x + 80, y: along } : { x: cl.x + cl.w - 80, y: along }; }
+  // sockets where they are used: bedside, TV, desk, counter, then the rest along free wall
+  const sockets0: { p: Point; kind: 'S' | 'P' | 'TV' | 'D' }[] = [];
+  // a point within 350 mm of another is moved along its wall
+  const sockets = { push: (v: { p: Point; kind: 'S' | 'P' | 'TV' | 'D' }) => {
+    const onH = Math.abs(v.p.y - cl.y) < 100 || Math.abs(v.p.y - cl.y - cl.h) < 100;
+    const taken = [...sockets0.map(o => ({ ...o.p, r: 350 })), ...ac.map(a => ({ x: a.b.x + a.b.w / 2, y: a.b.y + a.b.h / 2, r: 700 })), ...(sb ? [{ ...sb, r: 350 }] : [])];
+    for (let n = 0; n < 8 && taken.some(o => Math.hypot(o.x - v.p.x, o.y - v.p.y) < o.r); n++) {
+      const d = (n % 2 ? -1 : 1) * 350 * Math.ceil((n + 1) / 2);
+      v = { ...v, p: onH ? { x: clamp(v.p.x + d, cl.x + 100, cl.x + cl.w - 100), y: v.p.y } : { x: v.p.x, y: clamp(v.p.y + d, cl.y + 100, cl.y + cl.h - 100) } };
+    }
+    sockets0.push(v); } };
+  const wallPt = (it2: PlacedFurniture, frac: number): Point => it2.side === 'front' ? { x: it2.x + it2.w * frac, y: cl.y + 60 } : it2.side === 'rear' ? { x: it2.x + it2.w * frac, y: cl.y + cl.h - 60 } : it2.side === 'left' ? { x: cl.x + 60, y: it2.y + it2.d * frac } : { x: cl.x + cl.w - 60, y: it2.y + it2.d * frac };
+  let nS = ep.sockets, nD = ep.dataPoints;
+  for (const st of p.items.filter(i => i.category === 'side_table')) if (nS > 0) { sockets.push({ p: wallPt(st, 0.5), kind: 'S' }); nS--; }
+  const tv = p.items.find(i => i.category === 'tv_unit'); if (tv && nS > 0) { sockets.push({ p: wallPt(tv, 0.35), kind: 'TV' }); nS--; if (nD > 0) { sockets.push({ p: wallPt(tv, 0.65), kind: 'D' }); nD--; } }
+  for (const dk of p.items.filter(i => i.category === 'study_table' && i.side !== 'free')) { if (nS > 0) { sockets.push({ p: wallPt(dk, 0.3), kind: 'S' }); nS--; } if (nD > 0) { sockets.push({ p: wallPt(dk, 0.7), kind: 'D' }); nD--; } }
+  for (const cn of p.items.filter(i => i.kind === 'counter')) for (const f of [0.2, 0.8]) if (nS > 0) { sockets.push({ p: wallPt(cn, f), kind: 'P' }); nS--; }
+  const sides: Side[] = ['rear', 'left', 'right', 'front']; let si = 0;
+  while ((nS > 0 || nD > 0) && si < 12) { const sd = sides[si % 4], f = 0.25 + 0.5 * Math.floor(si / 4) / 2;
+    const pt = sd === 'front' ? { x: cl.x + cl.w * f, y: cl.y + 60 } : sd === 'rear' ? { x: cl.x + cl.w * f, y: cl.y + cl.h - 60 } : sd === 'left' ? { x: cl.x + 60, y: cl.y + cl.h * f } : { x: cl.x + cl.w - 60, y: cl.y + cl.h * f };
+    if (!p.doorZones.some(z => pt.x > z.x && pt.x < z.x + z.w && pt.y > z.y && pt.y < z.y + z.h)) { if (nS > 0) { sockets.push({ p: pt, kind: 'S' }); nS--; } else { sockets.push({ p: pt, kind: 'D' }); nD--; } }
+    si++; }
+  return { lights, fans, ac, sb, sockets: sockets0 };
+}
+function intNotes(k: Context): string[] {
+  const p = k.int!.plan;
+  return [`${p.label}.`, ...(p.omitted.length ? [`Not placed — does not fit: ${p.omitted.map(shortName).join(', ')}. Choose smaller sizes or remove.`] : []),
+    'Placement from the locked plan; door swings and approaches kept clear.'];
+}
+/* I-101 furniture layout */
+function intFurniture(k: Context): void {
+  const c = k.c, p = k.int!.plan, it = k.int!.interior;
+  roomFrame(k);
+  const shown = p.items.filter(i => i.kind !== 'upper');
+  for (const i of p.items.filter(i2 => i2.kind === 'upper')) drawItem(k, i);
+  for (const i of shown) drawItem(k, i);
+  const numbered = shown.filter(i => i.kind !== 'fixture' || /vanity|sink|hob/i.test(i.name));
+  numbered.forEach((i, n) => tagItem(k, i, n + 1));
+  const B = box(k, p.clear), wo = 300 * k.scale + 24;
+  const key = shown.find(i => i.category === 'bed') ?? shown.find(i => i.category === 'sofa');
+  const keyOn = key && key.side !== 'free' ? key.side : null;
+  // set-out of the key piece on its wall (inner chain), overall clear size outside it
+  if (key && keyOn) { const hz = keyOn === 'front' || keyOn === 'rear';
+    if (hz) dimMm(k, [p.clear.x, key.x, key.x + key.w, p.clear.x + p.clear.w], 'x', keyOn === 'front' ? B.y : B.y + B.h, keyOn === 'front' ? -wo : wo, 'key piece set-out');
+    else dimMm(k, [p.clear.y, key.y, key.y + key.d, p.clear.y + p.clear.h], 'y', keyOn === 'left' ? B.x : B.x + B.w, keyOn === 'left' ? -wo : wo, 'key piece set-out'); }
+  dimMm(k, [p.clear.x, p.clear.x + p.clear.w], 'x', B.y + B.h, wo + (keyOn === 'rear' ? 40 : 0), 'room clear width');
+  dimMm(k, [p.clear.y, p.clear.y + p.clear.h], 'y', B.x + B.w, wo + (keyOn === 'right' ? 40 : 0), 'room clear depth');
+  const inr = (v: number) => `₹${Math.round(v).toLocaleString('en-IN')}`;
+  const drawnIds = new Set(p.items.map(i => i.srcId).filter(Boolean));
+  const rows = numbered.map((i, n) => [`${n + 1}`, shortName(i.name), `${round(i.side === 'left' || i.side === 'right' ? i.d : i.w)}×${round(i.side === 'left' || i.side === 'right' ? i.w : i.d)}×${round(i.h)}`, (i.material ?? '—').slice(0, 22), `${i.qty && i.category !== 'study_table' ? i.qty : 1}`, i.cost ? inr(i.cost) : 'in set']);
+  // selected items drawn as part of a run (uppers, countertop, chimney) or not placed: still billed, so listed
+  const omittedNames = new Set(p.omitted);
+  for (const f of (it?.furniture ?? []).filter(x => !drawnIds.has(x.id) && x.defaultSelected === true))
+    rows.push(['–', shortName(f.name), `${round(f.widthMM)}×${round(f.depthMM)}×${round(f.heightMM)}`, (f.material ?? '—').slice(0, 22), '1', inr(f.estimatedCost) + (omittedNames.has(f.name) ? ' (NOT PLACED)' : '')]);
+  for (const i of p.items.filter(x => x.kind === 'upper' && x.cost)) rows.push(['–', shortName(i.name), `${round(Math.max(i.w, i.d))} run`, (i.material ?? '—').slice(0, 22), '1', inr(i.cost!)]);
+  const total = (it?.furniture ?? []).filter(x => x.defaultSelected === true).reduce((sum, f) => sum + f.estimatedCost, 0);
+  rows.push(['', 'TOTAL SELECTED (= BOQ woodwork)', '', '', '', inr(total)]);
+  const y = table(c, 1290, 150, [{ h: '#', w: 30 }, { h: 'ITEM', w: 175 }, { h: 'W×D×H mm', w: 110 }, { h: 'MATERIAL', w: 130 }, { h: 'QTY', w: 36 }, { h: 'COST', w: 150 }], rows, 'FURNITURE SCHEDULE', 21);
+  legend(c, 1290, y + 34, 'NOTES', [...intNotes(k), 'Clear 600 in front of wardrobes, 750 walkways.', `Ceiling ${it?.ceilingType?.replace(/_/g, ' ') ?? 'plain'}; see I-201.`]);
+  viewTitle(k, `${p.roomName.toUpperCase()} — FURNITURE LAYOUT`, 80, 130);
+}
+/* I-201 reflected ceiling plan */
+function intRcp(k: Context): void {
+  const c = k.c, p = k.int!.plan, it = k.int!.interior, ct = it?.ceilingType ?? 'plain', s = k.scale;
+  roomFrame(k, undefined, 'light');
+  const B = box(k, p.clear), soffit = FLOOR_TO_FLOOR_MM - 150, fc = Math.min(positive(it?.ceilingHeight, 2750), soffit - 150);
+  if (ct === 'false_ceiling_peripheral') {
+    const band = 600 * s;
+    for (const r of [{ x: B.x, y: B.y, w: B.w, h: band }, { x: B.x, y: B.y + B.h - band, w: B.w, h: band }, { x: B.x, y: B.y + band, w: band, h: B.h - 2 * band }, { x: B.x + B.w - band, y: B.y + band, w: band, h: B.h - 2 * band }]) hatchBox(c, r, '#eef1f5', 45, 9, PEN.hair);
+    c.save(); c.setLineDash([8, 4]); drawRect(c, B.x + band + 6, B.y + band + 6, B.w - 2 * band - 12, B.h - 2 * band - 12, { stroke: '#d08b2c', weight: PEN.medium }); c.restore();
+    { const t1 = `FC +${(fc / 1000).toFixed(3)}`, w1 = textWidth(c, t1, 11); soft(w1, 13, [B.y + band / 2, B.y + B.h - band / 2].flatMap(y => [0.5, 0.25, 0.75].map(f => ({ x: B.x + B.w * f, y }))), (x, y) => label(c, t1, x, y, 11, 'center', COLORS.text, true)); }
+    { const t2 = `SOFFIT +${(soffit / 1000).toFixed(3)} (PAINTED)`, w2 = textWidth(c, t2, 11); soft(w2, 13, [0.5, 0.62, 0.38, 0.72, 0.28].map(f => ({ x: B.x + B.w / 2, y: B.y + B.h * f })), (x, y) => label(c, t2, x, y, 11, 'center', COLORS.dim)); }
+  } else if (ct === 'false_ceiling_full' || ct === 'wooden_ceiling') {
+    hatchBox(c, B, ct === 'wooden_ceiling' ? '#f3ead9' : '#eef1f5', ct === 'wooden_ceiling' ? 0 : 45, ct === 'wooden_ceiling' ? 16 : 12, PEN.hair);
+    label(c, `${ct === 'wooden_ceiling' ? 'WOODEN PANEL' : 'GYPSUM'} FC +${(fc / 1000).toFixed(3)}`, B.x + B.w / 2, B.y + B.h / 2 + 34, 11, 'center', COLORS.text, true);
+  } else label(c, `PLAIN CEILING — SOFFIT +${(soffit / 1000).toFixed(3)}`, B.x + B.w / 2, B.y + B.h / 2 + 34, 11, 'center', COLORS.text, true);
+  const pts = intPoints(k);
+  for (const l of pts.lights) { const q = at(k, l.x, l.y); circle(c, q.x, q.y, 8, '#fff', SVC.light, 1.4); drawLine(c, q.x - 6, q.y - 6, q.x + 6, q.y + 6, 1, SVC.light); drawLine(c, q.x + 6, q.y - 6, q.x - 6, q.y + 6, 1, SVC.light); }
+  for (const f of pts.fans) { const q = at(k, f.x, f.y); circle(c, q.x, q.y, 13, '#fff', SVC.light, 1.6); for (let a = 0; a < 3; a++) { const ang = a * 2.094; drawLine(c, q.x, q.y, q.x + 11 * Math.cos(ang), q.y + 11 * Math.sin(ang), 1.4, SVC.light); } }
+  for (const a of pts.ac) { const A = box(k, a.b); c.save(); c.setLineDash([5, 3]); drawRect(c, A.x, A.y, A.w, A.h, { stroke: SVC.power, weight: PEN.medium }); c.restore(); label(c, 'AC', A.x + A.w / 2, A.y + A.h / 2, 10, 'center', SVC.power, true); }
+  const areaSqft = p.clear.w * p.clear.h / 1e6 * 10.7639, fcArea = ct === 'false_ceiling_peripheral' ? areaSqft * 0.6 : ct === 'plain' ? 0 : areaSqft;
+  const y = table(c, 1290, 150, [{ h: 'ITEM', w: 300 }, { h: 'QTY', w: 140 }], [
+    ['Ceiling', ct.replace(/_/g, ' ')], ['False ceiling area (= BOQ)', `${fcArea.toFixed(1)} sqft`], ['Ceiling paint (= BOQ)', `${areaSqft.toFixed(1)} sqft`],
+    ['Light points', `${pts.lights.length}`], ['Fan points', `${pts.fans.length}`], ['AC indoor units', `${pts.ac.length}`],
+    ['False ceiling level', ct === 'plain' ? '—' : `+${(fc / 1000).toFixed(3)} FFL`], ['Slab soffit', `+${(soffit / 1000).toFixed(3)} FFL`]], 'CEILING SCHEDULE', 22);
+  legend(c, 1290, y + 34, 'LEGEND & NOTES', ['⊗ recessed LED downlight   fan: ceiling fan   AC: split indoor unit', '- - - cove LED strip at the band edge (orange)', '12.5 mm gypsum board on GI frame; access panel at AC and junctions.', ...intNotes(k).slice(0, 1)]);
+  viewTitle(k, `${p.roomName.toUpperCase()} — REFLECTED CEILING PLAN`, 80, 130);
+}
+/* I-301 electrical & lighting */
+function intElectrical(k: Context): void {
+  const c = k.c, p = k.int!.plan, it = k.int!.interior; roomFrame(k, undefined, 'light');
+  for (const i of p.items) drawItem(k, i, true);
+  const pts = intPoints(k), ep = it?.electricalPoints;
+  const wire = (a: Point, b: Point, color: string) => { const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2, dx = b.x - a.x, dy = b.y - a.y, L = Math.hypot(dx, dy) || 1; c.save(); c.setLineDash([4, 3]); c.strokeStyle = color; c.lineWidth = 0.8; c.beginPath(); c.moveTo(a.x, a.y); c.quadraticCurveTo(mx - dy / L * Math.min(30, L * 0.2), my + dx / L * Math.min(30, L * 0.2), b.x, b.y); c.stroke(); c.restore(); };
+  const sbP = pts.sb ? at(k, pts.sb.x, pts.sb.y) : null;
+  for (const l of pts.lights) { const q = at(k, l.x, l.y); if (sbP) wire(sbP, q, SVC.light); sym(c, q, 'L', SVC.light, 'circle', 10); }
+  for (const f of pts.fans) { const q = at(k, f.x, f.y); if (sbP) wire(sbP, q, SVC.light); sym(c, q, 'F', SVC.light, 'circle', 12); }
+  for (const a of pts.ac) { const A = box(k, a.b); sym(c, { x: A.x + A.w / 2, y: A.y + A.h / 2 }, 'AC', SVC.power, 'square', 12); }
+  for (const so of pts.sockets) { const q = at(k, so.p.x, so.p.y); sym(c, q, so.kind, so.kind === 'D' ? '#6a4c93' : SVC.power, so.kind === 'S' ? 'circle' : 'square', so.kind.length > 1 ? 12 : 9); }
+  if (sbP) { drawRect(c, sbP.x - 9, sbP.y - 6, 18, 12, { fill: COLORS.wall, stroke: COLORS.wall, weight: 1 }); soft(24, 12, ringCands(sbP.x + 20, sbP.y - 12, 14, 12, 2), (x, y) => label(c, 'SB', x, y, 10, 'center', COLORS.text, true)); }
+  const cnt = (kd: string) => pts.sockets.filter(s2 => s2.kind === kd).length;
+  const rows = [['Switch board (modular)', `${ep?.switches ?? 1}`, '1200', 'at door latch side'], ['Light points', `${ep?.lightPoints ?? pts.lights.length}`, 'ceiling', 'see I-201'], ['Fan points', `${ep?.fanPoints ?? pts.fans.length}`, 'ceiling', ''],
+    ['6A sockets (S / TV)', `${cnt('S') + cnt('TV')}`, '300 / 1100 TV', 'bedside 600'], ['16A power (P)', `${cnt('P')}`, '1100 over counter', ''], ['Data / TV (D)', `${ep?.dataPoints ?? cnt('D')}`, '300', 'Cat6'], ['AC points', `${ep?.acPoints ?? pts.ac.length}`, '2100', '16A + drain']];
+  const y = table(c, 1290, 150, [{ h: 'POINT (= interior BOQ)', w: 200 }, { h: 'QTY', w: 50 }, { h: 'HEIGHT mm', w: 110 }, { h: 'NOTE', w: 140 }], rows, 'ELECTRICAL POINTS', 22);
+  legend(c, 1290, y + 34, 'NOTES', ['Curves: switching from the board to each light / fan.', 'Points follow the furniture: bedside, TV wall, desk, counter.', 'FRLS Cu wiring in concealed conduit; circuits on the house DB (E-sheets).', ...intNotes(k).slice(0, 1)]);
+  viewTitle(k, `${p.roomName.toUpperCase()} — ELECTRICAL & LIGHTING`, 80, 130);
+}
+/* I-401 flooring */
+function intFlooring(k: Context): void {
+  const c = k.c, p = k.int!.plan, it = k.int!.interior; roomFrame(k);
+  const fl = it?.flooring, txt = `${fl?.name ?? ''} ${fl?.finish ?? ''}`, m = /(\d{3,4})\s*[x×]\s*(\d{2,4})/.exec(txt);
+  const wood = /wood|laminate|plank|vinyl/i.test(txt);
+  const tw = m ? Number(m[1]) : wood ? 1200 : 600, th = m ? Number(m[2]) : wood ? 200 : 600;
+  const B = box(k, p.clear), s = k.scale, cx = p.clear.x + p.clear.w / 2, cy = p.clear.y + p.clear.h / 2;
+  c.save(); c.beginPath(); c.rect(B.x, B.y, B.w, B.h); c.clip(); c.fillStyle = '#fbfaf7'; c.fillRect(B.x, B.y, B.w, B.h);
+  for (let x = cx - Math.ceil(p.clear.w / 2 / tw + 1) * tw; x <= p.clear.x + p.clear.w; x += tw) { const q = at(k, x, 0).x; drawLine(c, q, B.y, q, B.y + B.h, PEN.hair, '#b8b1a5'); }
+  for (let y = cy - Math.ceil(p.clear.h / 2 / th + 1) * th; y <= p.clear.y + p.clear.h; y += th) { const q = at(k, 0, y).y; drawLine(c, B.x, q, B.x + B.w, q, PEN.hair, '#b8b1a5'); }
+  c.restore();
+  const cl = at(k, cx, cy); c.save(); c.setLineDash([14, 4, 3, 4]); drawLine(c, cl.x, B.y - 20, cl.x, B.y + B.h + 20, PEN.thin, COLORS.green); drawLine(c, B.x - 20, cl.y, B.x + B.w + 20, cl.y, PEN.thin, COLORS.green); c.restore();
+  drawRect(c, B.x, B.y, B.w, B.h, { stroke: '#7a5c3a', weight: 2.2 });
+  for (const z of p.doorZones) { const Z = box(k, z); const hz = Z.w >= Z.h; drawRect(c, Z.x, hz ? (Math.abs(Z.y - B.y) < 2 ? B.y - 4 : B.y + B.h - 4) : Z.y, hz ? Z.w : 8, hz ? 8 : Z.h, { fill: '#cfcac0', stroke: '#7a5c3a', weight: PEN.hair }); }
+  void s;
+  dimMm(k, [p.clear.x, p.clear.x + p.clear.w], 'x', B.y + B.h, 300 * k.scale + 24, 'floor width');
+  dimMm(k, [p.clear.y, p.clear.y + p.clear.h], 'y', B.x + B.w, 300 * k.scale + 24, 'floor depth');
+  const areaSqft = p.clear.w * p.clear.h / 1e6 * 10.7639, perimFt = 2 * (p.clear.w + p.clear.h) / 1000 * 3.28084;
+  const y = table(c, 1290, 150, [{ h: 'ITEM', w: 230 }, { h: 'VALUE', w: 230 }], [
+    ['Material', (fl?.name ?? '—').slice(0, 36)], ['Finish', (fl?.finish ?? '—').slice(0, 36)], ['Module', `${tw} × ${th} mm${m ? '' : ' (typical)'}`],
+    ['Floor area (= BOQ)', `${areaSqft.toFixed(1)} sqft`], ['Skirting (= BOQ)', `${perimFt.toFixed(1)} rft, 100 mm`], ['Clear floor', `${round(p.clear.w)} × ${round(p.clear.h)} mm`], ['Wastage allowance', '5–8% (cutting)']], 'FLOORING SCHEDULE', 22);
+  legend(c, 1290, y + 34, 'NOTES', ['Lay from the room centre lines (green); cut pieces ≥ half a module at walls.', 'Granite threshold at every door (grey strip).', 'Skirting brown line; 3 mm joints, epoxy grout in wet zones.', ...intNotes(k).slice(0, 1)]);
+  viewTitle(k, `${p.roomName.toUpperCase()} — FLOORING LAYOUT`, 80, 130);
+}
+/* I-501 four wall elevations, viewed from inside the room */
+function intElevations(k: Context): void {
+  const c = k.c, p = k.int!.plan, it = k.int!.interior, r = intRoom(k), cl = p.clear;
+  const soffit = FLOOR_TO_FLOOR_MM - 150, fc = it?.ceilingType && it.ceilingType !== 'plain' ? Math.min(positive(it.ceilingHeight, 2750), soffit - 150) : soffit;
+  const sides: [Side, string][] = [['rear', 'A'], ['right', 'B'], ['front', 'C'], ['left', 'D']];
+  const lens = sides.map(([sd]) => (sd === 'front' || sd === 'rear' ? cl.w : cl.h));
+  const den = STD_SCALES.find(d => Math.max(...lens) * PX_PER_PAPER_MM / d <= 560 && (soffit + 200) * PX_PER_PAPER_MM / d <= 360) ?? 100, s = PX_PER_PAPER_MM / den; k.views.push(den);
+  const ops = roomWallOpenings(k, r), pts = intPoints(k);
+  sides.forEach(([sd, letter], i) => {
+    const ox = 90 + (i % 2) * 640, base = 470 + Math.floor(i / 2) * 470, L = lens[i];
+    // horizontal coordinate as seen from inside facing this wall
+    const u = (x: number, y: number) => sd === 'rear' ? cl.x + cl.w - x : sd === 'front' ? x - cl.x : sd === 'left' ? cl.y + cl.h - y : y - cl.y;
+    const X = (mm: number) => ox + mm * s, Y = (mm: number) => base - mm * s;
+    drawRect(c, X(0), Y(soffit), L * s, soffit * s, { fill: '#fff', stroke: COLORS.wall, weight: PEN.cut });
+    if (fc < soffit) hatchBox(c, { x: X(0), y: Y(soffit), w: L * s, h: (soffit - fc) * s }, '#eef1f5', 45, 8, PEN.hair);
+    drawRect(c, X(0), Y(100), L * s, 100 * s, { fill: '#e8e2d6', stroke: COLORS.dim, weight: PEN.hair });
+    for (const { o, side } of ops.filter(v => v.side === sd)) {
+      const a = o.axis === 'horizontal' ? u(o.a, 0) : u(0, o.a), b = o.axis === 'horizontal' ? u(o.b, 0) : u(0, o.b), u0 = Math.max(0, Math.min(a, b)), u1 = Math.min(L, Math.max(a, b));
+      if (u1 - u0 < 100) continue;
+      const sill = o.source.type === 'door' ? 0 : finite(o.source.sillHeightMm, 900), h = positive(o.source.heightMm, o.source.type === 'door' ? 2100 : 1200);
+      drawRect(c, X(u0), Y(sill + h), (u1 - u0) * s, h * s, { fill: o.source.type === 'door' ? '#f4efe6' : '#e8f3f8', stroke: COLORS.wall, weight: PEN.medium }); void side;
+    }
+    for (const fi of p.items.filter(v => v.side === sd)) {
+      const a = sd === 'front' || sd === 'rear' ? u(fi.x, 0) : u(0, fi.y), b = sd === 'front' || sd === 'rear' ? u(fi.x + fi.w, 0) : u(0, fi.y + fi.d), u0 = Math.min(a, b), u1 = Math.max(a, b);
+      const inCounter = fi.kind === 'fixture' && p.items.some(cn => cn.kind === 'counter' && ovl({ x: cn.x, y: cn.y, w: cn.w, h: cn.d }, { x: fi.x, y: fi.y, w: fi.w, h: fi.d }));
+      if (inCounter) { drawRect(c, X(u0), Y(900), (u1 - u0) * s, 60 * s + 2, { fill: '#c9d3da', stroke: COLORS.wall, weight: PEN.hair }); continue; }
+      const z0 = fi.kind === 'upper' ? 1500 : 0, h = fi.kind === 'upper' ? 700 : fi.category === 'bed' ? 1050 : Math.max(50, fi.h);
+      drawRect(c, X(u0), Y(z0 + h), (u1 - u0) * s, h * s, { fill: fi.kind === 'counter' ? '#efe9df' : '#f6f6f4', stroke: COLORS.wall, weight: PEN.medium });
+      if (u1 - u0 > 500 && h > 300) { const tW = textWidth(c, shortName(fi.name), 9); if (tW < (u1 - u0) * s - 4) label(c, shortName(fi.name), X((u0 + u1) / 2), Y(z0 + h / 2), 9, 'center', COLORS.dim); }
+    }
+    for (const so of pts.sockets) { const onS = sd === 'front' ? Math.abs(so.p.y - cl.y) < 100 : sd === 'rear' ? Math.abs(so.p.y - cl.y - cl.h) < 100 : sd === 'left' ? Math.abs(so.p.x - cl.x) < 100 : Math.abs(so.p.x - cl.x - cl.w) < 100;
+      if (!onS) continue; const uu = u(so.p.x, so.p.y), z = so.kind === 'TV' ? 1100 : so.kind === 'P' ? 1100 : 300; drawRect(c, X(uu) - 4, Y(z) - 4, 8, 8, { fill: '#fff', stroke: SVC.power, weight: 1 }); }
+    if (pts.sb) { const sb = pts.sb, onS = sd === 'front' ? Math.abs(sb.y - cl.y) < 120 : sd === 'rear' ? Math.abs(sb.y - cl.y - cl.h) < 120 : sd === 'left' ? Math.abs(sb.x - cl.x) < 120 : Math.abs(sb.x - cl.x - cl.w) < 120;
+      if (onS) drawRect(c, X(u(sb.x, sb.y)) - 7, Y(1200) - 5, 14, 10, { fill: COLORS.wall, stroke: COLORS.wall, weight: 1 }); }
+    drawDimensionChain(c, [Y(soffit), ...(fc < soffit ? [Y(fc)] : []), Y(0)], X(L), 22, 'vertical', s);
+    drawDimensionChain(c, [X(0), X(L)], Y(0), 24, 'horizontal', s);
+    label(c, `ELEVATION ${letter} — ${sd.toUpperCase()} WALL`, X(0), Y(soffit) - 26, 13, 'left', COLORS.green, true);
+    label(c, `SCALE 1:${den}`, X(0), Y(soffit) - 10, 10, 'left', COLORS.dim);
+  });
+  // key plan
+  const kp = { x: 1450, y: 160, w: 300, h: 300 }, sc = Math.min(kp.w / cl.w, kp.h / cl.h) * 0.7;
+  const kw = clamp(cl.w * sc, 200, 300), kh = clamp(cl.h * sc, 200, 300), kx = kp.x + (kp.w - kw) / 2, ky = kp.y + (kp.h - kh) / 2;
+  drawRect(c, kx, ky, kw, kh, { stroke: COLORS.wall, weight: PEN.cut });
+  for (const [sd, letter] of sides) { const pt = sd === 'rear' ? { x: kx + kw / 2, y: ky + kh - 30 } : sd === 'front' ? { x: kx + kw / 2, y: ky + 30 } : sd === 'left' ? { x: kx + 30, y: ky + kh / 2 } : { x: kx + kw - 30, y: ky + kh / 2 };
+    circle(c, pt.x, pt.y, 12, '#fff', COLORS.wall, 1.2); label(c, letter, pt.x, pt.y + 0.5, 11, 'center', COLORS.text, true); }
+  label(c, 'KEY PLAN (NTS, road at top)', kp.x, kp.y - 8, 12, 'left', COLORS.green, true);
+  legend(c, 1450, 520, 'NOTES', [`Wall finish: ${(it?.wallFinish?.name ?? 'paint').slice(0, 40)}`, `Skirting 100; ${fc < soffit ? `false ceiling +${(fc / 1000).toFixed(3)}` : 'plain ceiling'}; soffit +${(soffit / 1000).toFixed(3)}`, 'Sockets 300 / 1100; switch boards 1200 FFL.', 'Each elevation viewed from inside the room.']);
+}
+/* I-601 woodwork: front elevations of the storage units at the largest scale that fits */
+function intWoodwork(k: Context): void {
+  const c = k.c, p = k.int!.plan, it = k.int!.interior;
+  const units = p.items.filter(i => ['wardrobe', 'crockery', 'tv_unit', 'bookshelf', 'dressing', 'shoe_rack', 'pooja_unit', 'bar_unit', 'kitchen_cabinet'].includes(i.category) && i.kind !== 'fixture').slice(0, 4);
+  if (!units.length) { label(c, 'No built-in woodwork selected for this room.', 120, 300, 16, 'left', COLORS.dim); viewTitle(k, `${p.roomName.toUpperCase()} — WOODWORK`, 80, 130); return; }
+  units.forEach((u0, i) => {
+    const len = u0.side === 'front' || u0.side === 'rear' || u0.side === 'free' ? u0.w : u0.d, H = u0.kind === 'upper' ? 700 : u0.h;
+    const one = units.length <= 2, cellH = one ? 760 : 330;
+    const den = [10, 20, 25, 50, 100].find(d => len * PX_PER_PAPER_MM / d <= 520 && H * PX_PER_PAPER_MM / d <= cellH) ?? 100, s = PX_PER_PAPER_MM / den; k.views.push(den);
+    const ox = 110 + (i % 2) * 640, base = one ? 1000 : 520 + Math.floor(i / 2) * 470;
+    drawRect(c, ox, base - H * s, len * s, H * s, { fill: '#faf7f1', stroke: COLORS.wall, weight: PEN.cut });
+    const n = Math.max(1, Math.round(len / 550)), loft = u0.category === 'wardrobe' && H >= 2100 ? 600 : 0;
+    for (let j = 1; j < n; j++) drawLine(c, ox + len * s * j / n, base - H * s, ox + len * s * j / n, base, PEN.medium);
+    if (loft) drawLine(c, ox, base - (H - loft) * s, ox + len * s, base - (H - loft) * s, PEN.medium);
+    if (u0.kind === 'counter') drawLine(c, ox, base - (H - 40) * s, ox + len * s, base - (H - 40) * s, PEN.cut);
+    for (let j = 0; j < n; j++) { const hx = ox + len * s * (j + (j % 2 ? 0.12 : 0.88)) / n; drawLine(c, hx, base - Math.min(H, 1100) * s, hx, base - Math.min(H, 1100) * s + 18, 2.2); }
+    drawDimensionChain(c, [ox, ox + len * s], base, 26, 'horizontal', s);
+    drawDimensionChain(c, [base - H * s, ...(loft ? [base - (H - loft) * s] : []), base], ox + len * s, 22, 'vertical', s);
+    label(c, `${shortName(u0.name).toUpperCase()} — FRONT ELEVATION`, ox, base - H * s - 34, 13, 'left', COLORS.green, true);
+    label(c, `SCALE 1:${den}  •  ${n} shutters${loft ? ' + loft' : ''}`, ox, base - H * s - 17, 10, 'left', COLORS.dim);
+    const spec = u0.category === 'wardrobe' ? 'hanging rod 1050 + 4 shelves @ 350; 2 drawers; loft over' : u0.category === 'kitchen_cabinet' ? 'base modules 600: drawers / shutters; carcass BWP ply' : u0.category === 'tv_unit' ? 'wall-hung; open niche + 2 drawers; cable duct' : 'shelves @ 350 c/c';
+    label(c, `Internal: ${spec}`, ox, base + 58, 10.5, 'left', COLORS.text);
+  });
+  legend(c, 1300, 1060, 'WOODWORK NOTES', [`Carcass 18 mm BWP ply; ${(it?.style ?? 'modern').replace(/_/g, ' ')} finish laminate 1 mm.`, 'Soft-close hinges and channels; handles as shown.', 'Sizes from the furniture schedule (I-101) = BOQ woodwork.']);
+  viewTitle(k, `${p.roomName.toUpperCase()} — WOODWORK DETAILS`, 80, 130);
+}
+
 /** Drawing types that have programmatic (non-AI) renderers. */
 export const PROGRAMMATIC_TYPES = [
   'excavation', 'column_layout', 'footing_detail', 'beam_slab',
@@ -3403,6 +3732,8 @@ export const PROGRAMMATIC_TYPES = [
 export function generateProgrammaticDrawing(
   drawingType: string, layout: Layout, requirements: ProjectRequirements,
   structuralResult?: any, boq?: BOQ | null, floor?: 'GF' | 'FF',
+  /** interior sheets: which room, the customer's selection for it, and the chosen arrangement */
+  interiorOpts?: { roomId: string; interior?: RoomInterior; option?: number },
 ): string {
   if (typeof document === 'undefined') throw new Error('Canvas drawing requires a browser document.');
   SYM_SCALE = 1;
@@ -3414,11 +3745,19 @@ export function generateProgrammaticDrawing(
   const drawing = drawingType as DrawingType;
   if (!Object.prototype.hasOwnProperty.call(titleFor, drawing))
     throw new Error(`Unsupported programmatic drawing type: ${drawingType}`);
-  const level: Level = floor === 'FF' && g.floors > 1 ? 1 : 0;
+  let level: Level = floor === 'FF' && g.floors > 1 ? 1 : 0;
+  let intCtx: Context['int'];
+  if (INT_BASE[drawing]) {
+    if (!interiorOpts) throw new Error('Interior sheets need a room.');
+    const opts = interiorOptions(layout, requirements, interiorOpts.roomId, interiorOpts.interior);
+    const plan = opts[interiorOpts.option ?? 0] ?? opts[0] ?? planInteriorRoom(layout, requirements, interiorOpts.roomId, interiorOpts.interior, 0);
+    if (!plan) throw new Error(`Room ${interiorOpts.roomId} not found in the locked plan.`);
+    level = (plan.floor > 0 ? 1 : 0) as Level; intCtx = { plan, interior: interiorOpts.interior };
+  }
   const k: Context = { c, g, layout, req: requirements, data, boq: boq ?? null,
     level, frame: { x: 0, y: 0, s: 1, width: 0, height: 0 }, scale: 1,
     title: titleFor[drawing], views: [], type: drawing, sheetNo: sheetNumber(drawing, level),
-    rev: Math.max(1, Math.round(finite((layout as Layout & { revision?: number }).revision, 1))) };
+    rev: Math.max(1, Math.round(finite((layout as Layout & { revision?: number }).revision, 1))), int: intCtx };
   AUDIT = { labels: [], checks: [], scales: [] };
   SOFT = [];
   try {
@@ -3451,13 +3790,19 @@ export function generateProgrammaticDrawing(
     case 'cover_sheet': coverSheet(k); break;
     case 'wet_areas': wetAreas(k); break;
     case 'typical_details': typicalDetails(k); break;
+    case 'int_furniture': intFurniture(k); break;
+    case 'int_rcp': intRcp(k); break;
+    case 'int_electrical': intElectrical(k); break;
+    case 'int_flooring': intFlooring(k); break;
+    case 'int_elevations': intElevations(k); break;
+    case 'int_woodwork': intWoodwork(k); break;
   }
   resolveSoft();
   c.restore();
   titleBlock(k);
   // ── drafting audit: preferred scales, overlapping text ──
   const a = AUDIT;
-  const odd = k.views.filter(d => !STD_SCALES.includes(d));
+  const odd = k.views.filter(d => !STD_SCALES.includes(d) && !(k.int && d === 25));
   a.checks.push({ item: 'Preferred scale (IS 962)', status: odd.length ? 'ERROR' : 'PASS', detail: k.views.length ? k.views.map(d => `1:${d}`).join(', ') : 'diagrammatic sheet (NTS)' });
   const L = a.labels.filter(l => l.x1 - l.x0 > 2);
   const clashes: string[] = [];

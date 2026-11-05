@@ -221,11 +221,12 @@ export default function InteriorMoodBoard({ layout, onComplete }: Props) {
 
   /* ---------- Sub-step 3 ---------- */
 
+  // Everything the customer keeps is "selected": the BOQ bills exactly these items and the drawings place exactly these
+  // (an optional item opted into here used to be drawn and costed on this screen but left out of the BOQ).
   const getFinalRooms = (): RoomInterior[] =>
     roomInteriors.map(ri => {
       const excluded = excludedFurniture[ri.roomId];
-      if (!excluded || excluded.size === 0) return ri;
-      return { ...ri, furniture: ri.furniture.filter(f => !excluded.has(f.id)) };
+      return { ...ri, furniture: ri.furniture.filter(f => !(excluded && excluded.has(f.id))).map(f => ({ ...f, defaultSelected: true })) };
     });
 
   const roomFurnitureCost = (ri: RoomInterior): number => {
