@@ -3,6 +3,7 @@ import {
   FLOOR_TO_FLOOR_MM, PLINTH_HEIGHT_MM, PARAPET_HEIGHT_MM, STAIR_HEAD_ROOM_MM, COMPOUND_WALL_HEIGHT_MM, COMPOUND_WALL_THICKNESS_MM,
   gateCentreM, gateWidthM, mainDoorCentreM, ohtPlacement, sumpPlacement, placeOpenings, openingsOnRoomWall, type Face, type PlacedOpening,
 } from './buildingModel';
+import { styleFor, roofFaces3D } from './designStyles';
 
 // Vertical datum shared with the drawings (sections/elevations) and the BOQ.
 const FLOOR_HEIGHT = FLOOR_TO_FLOOR_MM / 1000;
@@ -511,12 +512,15 @@ export function buildScene(
     addBox(benchX - 0.5, 0.50, benchZ - 0.2, 1.0, 0.05, 0.4, benchMat);
   }
 
-  // ── Materials ──
-  const frontExtMat = makeMat('#D49428', { roughness: 0.6 });
-  const sideExtMat = makeMat('#70B8D8', { roughness: 0.65 });
-  const rearExtMat = makeMat('#E0D4C0', { roughness: 0.8 });
+  // ── Materials ── (a chosen regional style sets one facade colour, frames, roof and plinth)
+  const ds = requirements?.designStyle ? styleFor(requirements) : null;
+  const pitched = !!ds && ds.roof.type !== 'flat';
+  const facadeMat = ds ? makeMat(ds.walls.color, { roughness: ds.walls.cladding === 'brick' ? 0.95 : 0.85 }) : null;
+  const frontExtMat = facadeMat ?? makeMat('#D49428', { roughness: 0.6 });
+  const sideExtMat = facadeMat ?? makeMat('#70B8D8', { roughness: 0.65 });
+  const rearExtMat = facadeMat ?? makeMat('#E0D4C0', { roughness: 0.8 });
   const woodCladdingMat = makeMat('#6B4B2A', { roughness: 0.5 });
-  const accentGreenMat = makeMat('#88C898', { roughness: 0.65 });
+  const accentGreenMat = facadeMat ?? makeMat('#88C898', { roughness: 0.65 });
 
   const intWallColorMap: Record<string, string> = {
     bedroom: '#A0CFF0',
@@ -551,7 +555,7 @@ export function buildScene(
   const doorFrameMat = makeMat('#3A2510', { roughness: 0.6 });
   // Enhanced glass and window materials
   const glassMat = makeMat('#40A8E0', { transparent: true, opacity: 0.6, roughness: 0.05, metalness: 0.6, side: THREE.DoubleSide });
-  const winFrameMat = makeMat('#E8E8F0', { roughness: 0.4, metalness: 0.2 }); // white UPVC frame
+  const winFrameMat = makeMat(ds?.openings.frame ?? '#E8E8F0', { roughness: 0.4, metalness: 0.2 }); // white UPVC frame unless styled
   const railMat = makeMat('#666666', { roughness: 0.4, metalness: 0.4 });
   const colMat = makeMat('#D0C8BC', { roughness: 0.7 });
 
@@ -560,6 +564,7 @@ export function buildScene(
 
   function getWallMat(isExterior: boolean, roomType: string, direction?: 'front' | 'rear' | 'left' | 'right') {
     if (isExterior) {
+      if (facadeMat) return facadeMat;
       if (roomType === 'toilet' || roomType === 'utility') return wetWallMat;
       if (direction === 'front') return frontExtMat;
       if (direction === 'rear') return rearExtMat;
@@ -610,7 +615,7 @@ export function buildScene(
     const chajjaThick = 0.10;
     const sillDepth = 0.18;
     const mullionW = 0.05;
-    const surroundMat = makeMat('#E8E8F0', { roughness: 0.4, metalness: 0.2 }); // white surround
+    const surroundMat = makeMat(ds?.walls.accent && ds.walls.cladding === 'brick' ? ds.walls.accent : '#E8E8F0', { roughness: 0.4, metalness: 0.2 }); // white surround
     const sillMat = makeMat('#D0C4B0', { roughness: 0.7 });
     const chajjaMat = makeMat('#C8B8A0', { roughness: 0.7 });
 
@@ -1037,7 +1042,7 @@ export function buildScene(
   const bW = layout.buildableWidthM;
   const bD = layout.buildableDepthM;
   const bandMat = makeMat('#604020', { roughness: 0.6 });
-  const plinthMat = makeMat('#606060', { roughness: 0.8 });
+  const plinthMat = makeMat(ds?.walls.plinthStone ? '#8A7F72' : '#606060', { roughness: 0.8 });
 
   // Plinth (NGL to GF finished floor, as in the section and elevations)
   addBox(buildMinX, 0.05, buildMinZ, bW, PLINTH - SLAB_THICKNESS - 0.05, bD, plinthMat);
@@ -1084,8 +1089,12 @@ export function buildScene(
       const sy = (i + 1) * porchH / (numSteps + 1);
       addBox(porchX + 0.1, 0.05, porchZ - stepD * (numSteps - i), porchW - 0.2, sy, stepD, porchMat);
     }
-    const canopyMat = makeMat('#606068', { roughness: 0.6 });
+    const canopyMat = makeMat(ds ? ds.roof.color : '#606068', { roughness: 0.6 });
     addBox(porchX - 0.2, PLINTH + 2.1 + 0.3, porchZ - 0.3, porchW + 0.4, 0.08, porchD + 0.6, canopyMat);
+    if (ds?.porchColumns) { // verandah / porch columns carrying the canopy
+      const pcMat = makeMat(ds.walls.accent, { roughness: 0.6 });
+      for (const cx of [porchX - 0.05, porchX + porchW - 0.15]) addBox(cx, PLINTH - 0.05, porchZ - 0.2, 0.2, 2.1 + 0.4, 0.2, pcMat);
+    }
   }
 
   // Underground sump cover in the front setback (site plan A-001 / plumbing P-101)
@@ -1147,7 +1156,36 @@ export function buildScene(
   const topFloorNum = Math.max(...layout.floors.map(f => f.floor));
   const roofY = PLINTH + (topFloorNum + 1) * FLOOR_HEIGHT - SLAB_THICKNESS;
   // roof, parapet, stair head room and tanks only in the whole-building view; a single-floor view is open from above
-  if (options.showFloor === 'all') {
+  if (options.showFloor === 'all' && pitched && ds) {
+    // Top slab, then the pitched roof of the chosen style over it (same geometry as the elevations)
+    addBox(buildMinX, roofY, buildMinZ, bW, SLAB_THICKNESS, bD, slabMat);
+    const faces = roofFaces3D(ds, bW, bD);
+    const baseY = roofY + SLAB_THICKNESS;
+    const mesh = (polys: [number, number, number][][], mat: any) => {
+      const pos: number[] = [];
+      for (const f of polys) for (let i = 1; i < f.length - 1; i++) for (const v of [f[0], f[i], f[i + 1]]) pos.push(buildMinX + v[0], baseY + v[1], buildMinZ + v[2]);
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+      geo.computeVertexNormals();
+      const m = new THREE.Mesh(geo, mat); m.castShadow = true; m.receiveShadow = true; scene.add(m);
+    };
+    if (faces) {
+      mesh(faces.roof, makeMat(ds.roof.color, { roughness: /metal/i.test(ds.roof.material) ? 0.45 : 0.8, metalness: /metal/i.test(ds.roof.material) ? 0.4 : 0.05, side: THREE.DoubleSide }));
+      mesh(faces.gableWalls, makeMat(ds.walls.color, { roughness: 0.85, side: THREE.DoubleSide }));
+      // fascia board along the eaves
+      const fasciaMat = makeMat(ds.walls.accent, { roughness: 0.6 });
+      const o = ds.roof.overhangM, drop = Math.tan(ds.roof.pitchDeg * Math.PI / 180) * o;
+      const fy = baseY - drop - 0.18;
+      const alongX = bW >= bD;
+      if (ds.roof.type === 'hip' || alongX) { addBox(buildMinX - o, fy, buildMinZ - o - 0.03, bW + 2 * o, 0.18, 0.03, fasciaMat); addBox(buildMinX - o, fy, buildMaxZ + o, bW + 2 * o, 0.18, 0.03, fasciaMat); }
+      if (ds.roof.type === 'hip' || !alongX) { addBox(buildMinX - o - 0.03, fy, buildMinZ - o, 0.03, 0.18, bD + 2 * o, fasciaMat); addBox(buildMaxX + o, fy, buildMinZ - o, 0.03, 0.18, bD + 2 * o, fasciaMat); }
+    }
+    if (ds.id === 'uk_brick_gable') { // chimney stack through the roof
+      const chMat = makeMat(ds.walls.color, { roughness: 0.95 });
+      const ridgeH = Math.tan(ds.roof.pitchDeg * Math.PI / 180) * Math.min(bW, bD) / 2;
+      if (bW >= bD) addBox(buildMaxX - 1.2, baseY, buildMinZ + bD / 2 - 0.35, 0.7, ridgeH + 0.9, 0.7, chMat); else addBox(buildMinX + bW / 2 - 0.35, baseY, buildMaxZ - 1.2, 0.7, ridgeH + 0.9, 0.7, chMat);
+    }
+  } else if (options.showFloor === 'all') {
     // Top slab
     addBox(buildMinX, roofY, buildMinZ, bW, SLAB_THICKNESS, bD, slabMat);
 

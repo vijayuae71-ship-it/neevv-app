@@ -52,6 +52,10 @@ export interface ProjectRequirements {
   floorsPreference?: 'auto' | 1 | 2;
   /** Customer-entered setbacks in metres; omitted → assumed defaults (to be confirmed locally). */
   setbacks?: { front: number; rear: number; left: number; right: number };
+  /** Villa / bungalow / townhouse (see utils/designStyles). Omitted = independent house. */
+  buildingType?: 'independent' | 'villa' | 'bungalow' | 'townhouse';
+  /** Regional exterior style id from utils/designStyles (roof, facade, openings). Omitted = contemporary Indian. */
+  designStyle?: string;
 }
 
 export interface Room {

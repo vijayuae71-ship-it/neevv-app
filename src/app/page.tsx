@@ -200,7 +200,7 @@ export default function HomePage() {
             const br = engineResult?.bbsResult ?? undefined;
             if (sr) {
               const materialRates = data.customRates?.materials ?? [];
-              const b = calculateBOQ(data.selectedLayout, materialRates, data.requirements.floors?.length || 1, sr, br, { city: data.requirements.city, budget: data.requirements.budget });
+              const b = calculateBOQ(data.selectedLayout, materialRates, data.requirements.floors?.length || 1, sr, br, { city: data.requirements.city, budget: data.requirements.budget, designStyle: data.requirements.designStyle });
               setBOQ(b);
             }
           }
@@ -349,7 +349,7 @@ export default function HomePage() {
       const materialRates = customRates?.materials ?? [];
       const sr = engineResult?.structuralResult ?? null;
       const br = engineResult?.bbsResult ?? undefined;
-      const b = sr ? calculateBOQ(layout, materialRates, req.floors.length, sr, br, { city: req.city, budget: req.budget }) : calculateBOQ(layout, req.floors.length, customRates);
+      const b = sr ? calculateBOQ(layout, materialRates, req.floors.length, sr, br, { city: req.city, budget: req.budget, designStyle: req.designStyle }) : calculateBOQ(layout, req.floors.length, customRates);
       setBOQ(b);
     }
     analytics.layoutSelected(layout.id);
@@ -414,7 +414,7 @@ export default function HomePage() {
     const materialRates = customRates?.materials ?? [];
     const sr = engineResult?.structuralResult ?? null;
     const br = engineResult?.bbsResult ?? undefined;
-    const b = sr ? calculateBOQ(layout, materialRates, req.floors.length, sr, br, { city: req.city, budget: req.budget }) : calculateBOQ(layout, req.floors.length, customRates);
+    const b = sr ? calculateBOQ(layout, materialRates, req.floors.length, sr, br, { city: req.city, budget: req.budget, designStyle: req.designStyle }) : calculateBOQ(layout, req.floors.length, customRates);
     setBOQ(b);
     setMotherLayoutLocked(true);
     setMode('new_build');
@@ -458,7 +458,7 @@ export default function HomePage() {
       const req = officeAsProject(officeRequirements);
       const engineResult = runStructuralDesign(layout, req);
       const sr = engineResult?.structuralResult ?? null;
-      setBOQ(sr ? calculateBOQ(layout, customRates?.materials ?? [], req.floors.length, sr, engineResult?.bbsResult ?? undefined, { city: req.city, budget: req.budget }) : calculateBOQ(layout, req.floors.length, customRates));
+      setBOQ(sr ? calculateBOQ(layout, customRates?.materials ?? [], req.floors.length, sr, engineResult?.bbsResult ?? undefined, { city: req.city, budget: req.budget, designStyle: req.designStyle }) : calculateBOQ(layout, req.floors.length, customRates));
     }
     setOfficeStep('drawings');
   };
@@ -654,7 +654,7 @@ const BRAND_GREEN = '#4f6f52';
                 if (project.requirements) {
                   const materialRates = customRates?.materials ?? [];
                   const b = sr
-                    ? calculateBOQ(project.selectedLayout, materialRates, project.requirements.floors?.length || 1, sr, br, { city: project.requirements.city, budget: project.requirements.budget })
+                    ? calculateBOQ(project.selectedLayout, materialRates, project.requirements.floors?.length || 1, sr, br, { city: project.requirements.city, budget: project.requirements.budget, designStyle: project.requirements.designStyle })
                     : calculateBOQ(project.selectedLayout, project.requirements.floors?.length || 1, customRates);
                   setBOQ(b);
                   recalculatedBOQ = true;
@@ -984,7 +984,7 @@ const BRAND_GREEN = '#4f6f52';
                   // reverting to area-based estimates.
                   const materialRates = rates?.materials ?? [];
                   const b = structuralResult
-                    ? calculateBOQ(selectedLayout, materialRates, requirements.floors.length, structuralResult, bbsResult ?? undefined, { city: requirements.city, budget: requirements.budget })
+                    ? calculateBOQ(selectedLayout, materialRates, requirements.floors.length, structuralResult, bbsResult ?? undefined, { city: requirements.city, budget: requirements.budget, designStyle: requirements.designStyle })
                     : calculateBOQ(selectedLayout, requirements.floors.length, rates);
                   setBOQ(b);
                   setStep('boq');
@@ -994,7 +994,7 @@ const BRAND_GREEN = '#4f6f52';
                   // Use default rates
                   setCustomRates(null);
                   const b = structuralResult
-                    ? calculateBOQ(selectedLayout, [], requirements.floors.length, structuralResult, bbsResult ?? undefined, { city: requirements.city, budget: requirements.budget })
+                    ? calculateBOQ(selectedLayout, [], requirements.floors.length, structuralResult, bbsResult ?? undefined, { city: requirements.city, budget: requirements.budget, designStyle: requirements.designStyle })
                     : calculateBOQ(selectedLayout, requirements.floors.length, null);
                   setBOQ(b);
                   setStep('boq');

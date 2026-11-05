@@ -7,6 +7,7 @@ import { VectorContext, type VectorSheet } from './vectorCanvas';
 import { officeServices, isOfficeLayout, type ServicePoint } from './officeServices';
 import { getDefaultFurniture, mapRoomTypeToFinish } from './interiorTemplates';
 import { wallTileBand, floorModule, skirtingMm } from './interiorSpecs';
+import { styleFor, roofGeom, roofProfile } from './designStyles';
 import { computeTakeoff, bathWallTileSqM, kitchenCounterRmt, KITCHEN_DADO_HEIGHT_M, type Takeoff } from './quantityTakeoff';
 
 /**
@@ -1693,9 +1694,9 @@ function sectionAA(k: Context): void {
   const found = footingSpec(k, 0);
   const cutY = sectionCutY(k);
   const stairRooms = Array.from({ length: floors }, (_, f) => (k.g.rooms[f] ?? []).find(r => r.source.type === 'staircase' && cutY >= r.y && cutY <= r.y + r.d));
-  const st0 = stairRooms[0];
+  const st0 = stairRooms[0], pitched = isPitched(k);
   const roofZ = PL + floors * H, mumtyZ = roofZ + STAIR_HEAD_ROOM_MM;
-  const top = (st0 ? mumtyZ + 150 : roofZ + PARAPET_HEIGHT_MM) + 400, bottom = -FD - found.pcc - 500;
+  const top = Math.max(st0 && !pitched ? mumtyZ + 150 : 0, roofZ + roofRiseMm(k)) + 400, bottom = -FD - found.pcc - 500;
   setFrame(k, { x: b.x - 600, y: bottom, w: b.w + 1200, h: top - bottom }, { x: 110, y: 120, w: 1220, h: 1120 }, 60);
   const project = (x: number, z: number): Point => at(k, x, top - z + bottom);
   const s = k.scale, wallE = WALL_EXTERNAL_MM * s;
@@ -1775,13 +1776,19 @@ function sectionAA(k: Context): void {
       label(c, `${risers} R × ${rz.toFixed(0)}`, project((x0 + x1) / 2, 0).x, project(0, baseZ + H * 0.82).y, 11, 'center', COLORS.dim);
     }
   }
-  // roof: parapet (and stair-head room when the stair continues to the terrace)
+  // roof: parapet (and stair-head room when the stair continues to the terrace), or the pitched roof over the slab
   const roofY = project(0, roofZ).y, parapetY = project(0, roofZ + PARAPET_HEIGHT_MM).y;
-  for (const x of [left, right - wallE]) hatchBox(c, { x, y: parapetY, w: wallE, h: roofY - parapetY }, '#eeeae4', -45, 9, PEN.cut);
-  drawRect(c, left - 4, parapetY - 6, right - left + 8, 6, { fill: '#d6d6d3', stroke: COLORS.wall, weight: PEN.thin });
   levelMark(c, right + 70, roofY, `TOS ROOF ${fmtLvl(roofZ)}`);
-  levelMark(c, right + 70, parapetY - 6, `TOP OF PARAPET ${fmtLvl(roofZ + PARAPET_HEIGHT_MM)}`);
-  const stTop = (k.g.rooms[floors - 1] ?? []).find(r => r.source.type === 'staircase' && cutY >= r.y && cutY <= r.y + r.d);
+  if (pitched) {
+    const rz = drawPitchedRoof(k, 'front', project, b.x, roofZ, true);
+    levelMark(c, right + 70, project(0, rz).y, `RIDGE ${fmtLvl(Math.round(rz))}`);
+    label(c, `${kStyle(k).roof.material.toUpperCase()} — ${kStyle(k).roof.pitchDeg}° PITCH ON RCC ROOF SLAB`, (left + right) / 2, project(0, rz + 450).y, 11, 'center', COLORS.dim, true);
+  } else {
+    for (const x of [left, right - wallE]) hatchBox(c, { x, y: parapetY, w: wallE, h: roofY - parapetY }, '#eeeae4', -45, 9, PEN.cut);
+    drawRect(c, left - 4, parapetY - 6, right - left + 8, 6, { fill: '#d6d6d3', stroke: COLORS.wall, weight: PEN.thin });
+    levelMark(c, right + 70, parapetY - 6, `TOP OF PARAPET ${fmtLvl(roofZ + PARAPET_HEIGHT_MM)}`);
+  }
+  const stTop = pitched ? undefined : (k.g.rooms[floors - 1] ?? []).find(r => r.source.type === 'staircase' && cutY >= r.y && cutY <= r.y + r.d);
   if (stTop) {
     const mx0 = project(stTop.x, 0).x, mx1 = project(stTop.x + stTop.w, 0).x, my = project(0, mumtyZ).y;
     for (const x of [mx0, mx1 - wallE]) hatchBox(c, { x, y: my, w: wallE, h: roofY - my }, '#eeeae4', -45, 9, PEN.cut);
@@ -1792,7 +1799,7 @@ function sectionAA(k: Context): void {
   levelMark(c, right + 70, ngl, 'NGL ±0.000');
   levelMark(c, right + 70, project(0, -FD).y, `FOUNDING LEVEL ${fmtLvl(-FD)} (ASSUMED — VERIFY BY SOIL REPORT)`);
   // vertical dimension string on the left, horizontal string below ground
-  const vz = [-FD, 0, ...Array.from({ length: floors + 1 }, (_, i) => PL + i * H), roofZ + PARAPET_HEIGHT_MM];
+  const vz = [-FD, 0, ...Array.from({ length: floors + 1 }, (_, i) => PL + i * H), ...(pitched ? [] : [roofZ + PARAPET_HEIGHT_MM])];
   const ys = vz.map(z => project(0, z).y);
   drawDimensionChain(c, ys, left - 40, -50, 'vertical', s);
   const outer = unique([b.x, ...sectionRooms(k, 0, cutY).flatMap(r => [r.x, r.x + r.w]), b.x + b.w]);
@@ -1813,9 +1820,9 @@ function sectionAA(k: Context): void {
 function sectionBB(k: Context): void {
   const c = k.c, b = k.g.building, floors = Math.min(k.g.floors, 5);
   const FD = ASSUMED_FOUNDING_DEPTH_M * 1000, H = FLOOR_TO_FLOOR_MM, PL = PLINTH_HEIGHT_MM, cutX = sectionCutX(k);
-  const roofZ = PL + floors * H;
-  const stTop = (k.g.rooms[floors - 1] ?? []).find(r => r.source.type === 'staircase' && cutX >= r.x && cutX <= r.x + r.w);
-  const top = (stTop ? roofZ + STAIR_HEAD_ROOM_MM + 150 : roofZ + PARAPET_HEIGHT_MM) + 400, bottom = -FD - 150 - 500;
+  const roofZ = PL + floors * H, pitched = isPitched(k);
+  const stTop = pitched ? undefined : (k.g.rooms[floors - 1] ?? []).find(r => r.source.type === 'staircase' && cutX >= r.x && cutX <= r.x + r.w);
+  const top = Math.max(stTop ? roofZ + STAIR_HEAD_ROOM_MM + 150 : 0, roofZ + roofRiseMm(k)) + 400, bottom = -FD - 150 - 500;
   setFrame(k, { x: b.y - 600, y: bottom, w: b.h + 1200, h: top - bottom }, { x: 110, y: 120, w: 1220, h: 1120 }, 60);
   const project = (u: number, z: number): Point => at(k, u, top - z + bottom);
   const s = k.scale, wallE = WALL_EXTERNAL_MM * s;
@@ -1862,8 +1869,13 @@ function sectionBB(k: Context): void {
     levelMark(c, right + 70, baseY, `${story === 0 ? 'FFL GF' : `FFL F${story}`} ${fmtLvl(baseZ)}`);
   }
   const roofY = project(0, roofZ).y, parapetY = project(0, roofZ + PARAPET_HEIGHT_MM).y;
-  for (const x of [left, right - wallE]) hatchBox(c, { x, y: parapetY, w: wallE, h: roofY - parapetY }, '#eeeae4', -45, 9, PEN.cut);
-  drawRect(c, left - 4, parapetY - 6, right - left + 8, 6, { fill: '#d6d6d3', stroke: COLORS.wall, weight: PEN.thin });
+  if (pitched) {
+    const rz = drawPitchedRoof(k, 'left', project, b.y, roofZ, true);
+    levelMark(c, right + 70, project(0, rz).y, `RIDGE ${fmtLvl(Math.round(rz))}`);
+  } else {
+    for (const x of [left, right - wallE]) hatchBox(c, { x, y: parapetY, w: wallE, h: roofY - parapetY }, '#eeeae4', -45, 9, PEN.cut);
+    drawRect(c, left - 4, parapetY - 6, right - left + 8, 6, { fill: '#d6d6d3', stroke: COLORS.wall, weight: PEN.thin });
+  }
   if (stTop) {
     const m0 = project(stTop.y, 0).x, m1 = project(stTop.y + stTop.d, 0).x, my = project(0, roofZ + STAIR_HEAD_ROOM_MM).y;
     for (const x of [m0, m1 - wallE]) hatchBox(c, { x, y: my, w: wallE, h: roofY - my }, '#eeeae4', -45, 9, PEN.cut);
@@ -1871,10 +1883,10 @@ function sectionBB(k: Context): void {
     label(c, 'STAIR HEAD ROOM', (m0 + m1) / 2, (my + roofY) / 2, 12, 'center', COLORS.text, true);
   }
   levelMark(c, right + 70, roofY, `TOS ROOF ${fmtLvl(roofZ)}`);
-  levelMark(c, right + 70, parapetY - 6, `TOP OF PARAPET ${fmtLvl(roofZ + PARAPET_HEIGHT_MM)}`);
+  if (!pitched) levelMark(c, right + 70, parapetY - 6, `TOP OF PARAPET ${fmtLvl(roofZ + PARAPET_HEIGHT_MM)}`);
   levelMark(c, right + 70, ngl, 'NGL ±0.000');
   levelMark(c, right + 70, project(0, -FD).y, `FOUNDING ${fmtLvl(-FD)} (ASSUMED)`);
-  const vz = [-FD, 0, ...Array.from({ length: floors + 1 }, (_, i) => PL + i * H), roofZ + PARAPET_HEIGHT_MM];
+  const vz = [-FD, 0, ...Array.from({ length: floors + 1 }, (_, i) => PL + i * H), ...(pitched ? [] : [roofZ + PARAPET_HEIGHT_MM])];
   drawDimensionChain(c, vz.map(z => project(0, z).y), left - 40, -50, 'vertical', s);
   const outer = unique([b.y, ...(k.g.rooms[0] ?? []).filter(r => !isNiche(r.source) && cutX >= r.x && cutX <= r.x + r.w).flatMap(r => [r.y, r.y + r.d]), b.y + b.h]);
   dimMm(k, outer, 'x', botY + 34, -0.0001, 'section depths');
@@ -2133,6 +2145,74 @@ function elevAxis(k: Context, side: ElevSide): { len: number; u: (along: number)
   if (side === 'left') return { len: b.h, u: y => y - b.y, line: b.x, axis: 'vertical' };
   return { len: b.h, u: y => b.y + b.h - y, line: b.x + b.w, axis: 'vertical' };
 }
+/** Chosen exterior style (designStyles); a pitched roof replaces the parapet on elevations and sections. */
+const kStyle = (k: Context) => styleFor(k.req);
+const isPitched = (k: Context) => !!k.req?.designStyle && kStyle(k).roof.type !== 'flat';
+/** Height above roof slab top (mm) the drawing must leave room for. */
+function roofRiseMm(k: Context): number {
+  if (!isPitched(k)) return PARAPET_HEIGHT_MM;
+  const b = k.g.building, g = roofGeom(kStyle(k), b.w / 1000, b.h / 1000);
+  return g ? Math.round(g.ridge * 1000) + 250 : PARAPET_HEIGHT_MM;
+}
+/**
+ * Pitched roof outline of the chosen style, seen from `side`, drawn over the roof slab at roofZ (mm).
+ * project(u, z): u in the view's own coordinate starting at u0 for the building edge.
+ */
+function drawPitchedRoof(k: Context, side: ElevSide, project: (u: number, z: number) => Point, u0: number, roofZ: number, section = false): number {
+  const st = kStyle(k), b = k.g.building, c = k.c;
+  const prof = roofProfile(st, side, b.w / 1000, b.h / 1000);
+  if (!prof) return roofZ;
+  const P = (pts: [number, number][]) => pts.map(([u, z]) => project(u0 + u * 1000, roofZ + z * 1000));
+  const poly = (pts: Point[], fill: string, w = PEN.medium) => {
+    c.save(); c.beginPath(); pts.forEach((p, i) => (i ? c.lineTo(p.x, p.y) : c.moveTo(p.x, p.y))); c.closePath();
+    c.fillStyle = fill; c.fill(); c.strokeStyle = COLORS.wall; c.lineWidth = w; c.stroke(); c.restore();
+  };
+  if (prof.gable) {
+    const gp = P(prof.gable); poly(gp, section ? '#fbfbfa' : '#f7f7f6', PEN.medium);
+    if (st.walls.cladding === 'brick' && !section) { // brick courses in the gable
+      c.save(); c.beginPath(); gp.forEach((p, i) => (i ? c.lineTo(p.x, p.y) : c.moveTo(p.x, p.y))); c.closePath(); c.clip();
+      const y0 = Math.min(...gp.map(p => p.y)), y1 = Math.max(...gp.map(p => p.y)), step = Math.max(3, 75 * k.scale);
+      for (let y = y1; y > y0; y -= step) drawLine(c, Math.min(...gp.map(p => p.x)), y, Math.max(...gp.map(p => p.x)), y, PEN.hair, COLORS.grid);
+      c.restore();
+    }
+  }
+  const rp = P(prof.roof);
+  poly(rp, section ? '#f2efe9' : '#e9e4dc', section ? PEN.medium : PEN.cut);
+  if (!section) { // tile / slate / shingle courses parallel to the eave, or standing seams
+    c.save(); c.beginPath(); rp.forEach((p, i) => (i ? c.lineTo(p.x, p.y) : c.moveTo(p.x, p.y))); c.closePath(); c.clip();
+    const xs = rp.map(p => p.x), ys = rp.map(p => p.y), x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+    if (/metal/i.test(st.roof.material)) for (let x = x0; x < x1; x += Math.max(4, 450 * k.scale)) drawLine(c, x, y0, x, y1, PEN.hair, COLORS.dim);
+    else for (let y = y1; y > y0; y -= Math.max(3, 260 * k.scale)) drawLine(c, x0, y, x1, y, PEN.hair, COLORS.grid);
+    c.restore();
+  }
+  return roofZ + prof.ridge * 1000;
+}
+function roofNote(k: Context): string {
+  if (!k.req?.designStyle) return `Parapet ${PARAPET_HEIGHT_MM} mm; coping shown`;
+  const st = kStyle(k);
+  return st.roof.type === 'flat' ? `Parapet ${PARAPET_HEIGHT_MM} mm; coping shown` : `${st.roof.type === 'gable' ? 'Gable' : 'Hipped'} roof ${st.roof.pitchDeg}°, eaves ${st.roof.overhangM * 1000} mm`;
+}
+/** Arched head / shutters / mashrabiya on an elevation window, per the chosen style. */
+function styleWindowDress(k: Context, x: number, y: number, w: number, ht: number, upper: boolean, maxRise = 40): number {
+  if (!k.req?.designStyle) return 0;
+  const st = kStyle(k), c = k.c;
+  let rise = 0;
+  if (st.openings.arch && maxRise > 4) { // pointed arch over the window head, kept clear of the slab band
+    rise = Math.min(w * 0.5, 40, maxRise);
+    c.save(); c.beginPath(); c.moveTo(x, y); c.quadraticCurveTo(x + w * 0.05, y - rise * 0.9, x + w / 2, y - rise); c.quadraticCurveTo(x + w * 0.95, y - rise * 0.9, x + w, y);
+    c.closePath(); c.fillStyle = '#fff'; c.fill(); c.strokeStyle = COLORS.wall; c.lineWidth = 1.6; c.stroke(); c.restore();
+  }
+  if (st.openings.shutters) for (const sx of [x - w / 2 - 3, x + w + 3]) {
+    drawRect(c, sx, y, w / 2, ht, { fill: '#f1f3f1', stroke: COLORS.wall, weight: 1 });
+    for (let yy = y + 5; yy < y + ht - 2; yy += 6) drawLine(c, sx + 2, yy, sx + w / 2 - 2, yy, PEN.hair, COLORS.dim);
+  }
+  if (st.openings.mashrabiya && upper) {
+    const step = Math.max(4, w / 8);
+    for (let xx = x + step; xx < x + w - 1; xx += step) drawLine(c, xx, y + 2, xx, y + ht - 2, PEN.hair, COLORS.wall);
+    for (let yy = y + step; yy < y + ht - 1; yy += step) drawLine(c, x + 2, yy, x + w - 2, yy, PEN.hair, COLORS.wall);
+  }
+  return rise;
+}
 function elevOpenings(k: Context, side: ElevSide): OpeningPlacement[] {
   const ax = elevAxis(k, side);
   return k.g.openings.filter(o => o.face === side && o.axis === ax.axis && Math.abs(o.fixed - ax.line) < 500);
@@ -2140,11 +2220,12 @@ function elevOpenings(k: Context, side: ElevSide): OpeningPlacement[] {
 /** Elevation of one side into `target`; `den` forces a common scale for several views on one sheet. */
 function elevationView(k: Context, side: ElevSide, target: Bounds, title: string, den?: number, levels = true): { right: number; ngl: number } {
   const c = k.c, floors = Math.min(k.g.floors, 5), ax = elevAxis(k, side);
-  const roofZ = roofLevelMm(floors);
-  const stTop = (k.g.rooms[floors - 1] ?? []).find(r => r.source.type === 'staircase');
-  const tanks = ohtPlacement(k.layout);
+  const roofZ = roofLevelMm(floors), pitched = isPitched(k);
+  // under a pitched roof the stair head room and the tank sit inside the roof void
+  const stTop = pitched ? undefined : (k.g.rooms[floors - 1] ?? []).find(r => r.source.type === 'staircase');
+  const tanks = pitched ? [] : ohtPlacement(k.layout);
   const tankTop = Math.max(0, ...tanks.map(t => (t.baseM + t.heightM) * 1000));
-  const maxZ = Math.max(roofZ + PARAPET_HEIGHT_MM, stTop ? roofZ + STAIR_HEAD_ROOM_MM + 150 : 0, tankTop) + 300;
+  const maxZ = Math.max(roofZ + roofRiseMm(k), stTop ? roofZ + STAIR_HEAD_ROOM_MM + 150 : 0, tankTop) + 300;
   const geo = { x: -300, y: -250, w: ax.len + 1700, h: maxZ + 600 };
   if (den) { const s0 = PX_PER_PAPER_MM / den; k.frame = { x: target.x + 300 * s0, y: target.y + target.h - geo.h * s0, s: s0, width: geo.x, height: geo.y }; k.scale = s0; k.views.push(den); }
   else setFrame(k, geo, target, 50);
@@ -2159,6 +2240,15 @@ function elevationView(k: Context, side: ElevSide, target: Bounds, title: string
     const z = floorLevelMm(story), topZ = z + FLOOR_TO_FLOOR_MM, slab = storyThickness(k, story);
     const topY = project(0, topZ).y, baseY = project(0, z).y;
     drawRect(c, left, topY, right - left, baseY - topY, { fill: story % 2 ? '#f7f7f6' : '#fafafa', stroke: COLORS.wall, weight: 2 });
+    if (k.req?.designStyle) { // facade cladding texture of the chosen style
+      const cl = kStyle(k).walls.cladding, y0 = topY + slab * s;
+      if (cl === 'brick') for (let y = baseY - 75 * s; y > y0; y -= Math.max(3, 75 * s)) drawLine(c, left, y, right, y, PEN.hair, COLORS.grid);
+      else if (cl === 'board_batten') for (let x = left + 400 * s; x < right - 2; x += Math.max(4, 400 * s)) drawLine(c, x, y0, x, baseY, PEN.hair, COLORS.dim);
+      else if (cl === 'stone') for (let y = baseY - 600 * s, i = 0; y > y0; y -= Math.max(6, 600 * s), i++) {
+        drawLine(c, left, y, right, y, PEN.hair, COLORS.grid);
+        for (let x = left + (i % 2 ? 600 : 1200) * s; x < right; x += Math.max(10, 1200 * s)) drawLine(c, x, y, x, Math.min(baseY, y + 600 * s), PEN.hair, COLORS.grid);
+      }
+    }
     hatchBox(c, { x: left, y: topY, w: right - left, h: Math.max(5, slab * s) }, '#e2e4e2', 45, 14, 2);
     // open balconies on this face: recessed (shaded) wall behind a 1000 mm railing, as in the plans and 3D
     for (const r of (k.g.rooms[story] ?? []).filter(rr => rr.source.type === 'balcony')) {
@@ -2183,7 +2273,8 @@ function elevationView(k: Context, side: ElevSide, target: Bounds, title: string
       const p0 = project(u0, z + sill + h), p1 = project(u1, z + sill);
       const x = p0.x, y = p0.y, w = p1.x - p0.x, ht = p1.y - p0.y;
       if (w < 2 || ht < 2) continue;
-      if (o.source.type !== 'door') { // chajja 450 mm over windows, drawn first so marks stay readable
+      let archRise = 0;
+      if (o.source.type !== 'door' && !(k.req?.designStyle && (kStyle(k).openings.arch || pitched))) { // chajja 450 mm over windows, drawn first so marks stay readable
         const l0 = project(u0 - 150, z + sill + h + 250), l1 = project(u1 + 150, z + sill + h + 150);
         hatchBox(c, { x: l0.x, y: l0.y, w: l1.x - l0.x, h: Math.max(3, l1.y - l0.y) }, '#e2e4e2', 45, 6, PEN.thin);
       }
@@ -2196,9 +2287,10 @@ function elevationView(k: Context, side: ElevSide, target: Bounds, title: string
         if (w > 45) drawLine(c, x + w / 2, y + 2, x + w / 2, y + ht - 2, 0.8, COLORS.dim);
         drawLine(c, x - 4, y + ht, x + w + 4, y + ht, 1.6);
         if (o.source.type === 'ventilator') for (let yy = y + 7; yy < y + ht - 4; yy += 9) drawLine(c, x + 5, yy, x + w - 5, yy, 0.5, COLORS.dim);
+        else archRise = styleWindowDress(k, x, y, w, ht, story > 0, y - (topY + slab * s) - 6);
       }
       const m = marks.get(o);
-      const tagY = o.source.type === 'door' ? y - 12 : project(0, z + sill + h + 250).y - 12;
+      const tagY = archRise > 0 ? y + 12 : o.source.type === 'door' ? y - 12 : project(0, z + sill + h + 250).y - 12;
       if (m) label(c, m, x + w / 2, tagY, 11, 'center', COLORS.text, true);
     }
   }
@@ -2216,12 +2308,18 @@ function elevationView(k: Context, side: ElevSide, target: Bounds, title: string
     drawRect(c, p0.x, p0.y, p1.x - p0.x, p1.y - p0.y, { fill: '#e8f3f8', stroke: '#4b9eb3', weight: 1.2 });
     label(c, 'OHT', (p0.x + p1.x) / 2, (p0.y + p1.y) / 2, 10, 'center', '#2e7d8f', true);
   }
-  const ry = project(0, roofZ).y, py = project(0, roofZ + PARAPET_HEIGHT_MM).y;
-  hatchBox(c, { x: left, y: py, w: right - left, h: ry - py }, '#f0eee9', 45, 17);
-  drawRect(c, left - 5, py - 10, right - left + 10, 10, { fill: '#d6d6d3', stroke: COLORS.wall, weight: 1 });
+  const ry = project(0, roofZ).y;
+  if (pitched) {
+    const ridgeZ = drawPitchedRoof(k, side, project, 0, roofZ);
+    if (levels) levelMark(c, right + 60, project(0, ridgeZ).y, `RIDGE ${fmtLvl(Math.round(ridgeZ))}`);
+  } else {
+    const py = project(0, roofZ + PARAPET_HEIGHT_MM).y;
+    hatchBox(c, { x: left, y: py, w: right - left, h: ry - py }, '#f0eee9', 45, 17);
+    drawRect(c, left - 5, py - 10, right - left + 10, 10, { fill: '#d6d6d3', stroke: COLORS.wall, weight: 1 });
+    if (levels) levelMark(c, right + 60, py, `TOP OF COPING ${fmtLvl(roofZ + PARAPET_HEIGHT_MM)}`);
+  }
   if (levels) levelMark(c, right + 60, ngl, 'NGL ±0.000');
   if (levels) levelMark(c, right + 60, ry, `TOS ROOF ${fmtLvl(roofZ)}`);
-  if (levels) levelMark(c, right + 60, py, `TOP OF COPING ${fmtLvl(roofZ + PARAPET_HEIGHT_MM)}`);
   drawDimensionChain(c, [left, right], ngl, 40, 'horizontal', s);
   const gf = ops.filter(o => o.floor === 0);
   const us = unique([0, ...gf.flatMap(o => [ax.u(o.a), ax.u(o.b)]), ax.len]).map(u => project(u, 0).x);
@@ -2236,10 +2334,10 @@ function frontElevation(k: Context): void {
     `Building width ${round(b.w)} mm`,
     `Front setback ${round(k.g.setbacks.front)} mm`,
     `Plinth +${PLINTH_HEIGHT_MM} mm; storeys ${FLOOR_TO_FLOOR_MM} mm`,
-    `Parapet ${PARAPET_HEIGHT_MM} mm; coping shown`,
+    roofNote(k),
     'Openings, sills and heights from the',
     `locked plan; marks as per ${sheetNumber('door_window_schedule', 0)}.`,
-    'Chajja 450 mm over every window.',
+    isPitched(k) || (k.req?.designStyle && kStyle(k).openings.arch) ? 'Window heads as per the chosen style.' : 'Chajja 450 mm over every window.',
     `Side elevations: ${sheetNumber('side_elevation', 0)}.`,
   ]);
   const ax = elevAxis(k, 'front');
@@ -2259,9 +2357,9 @@ function frontElevation(k: Context): void {
 /* A-202: Left, right and rear elevations at one common scale. */
 function sideElevations(k: Context): void {
   const c = k.c, b = k.g.building, floors = Math.min(k.g.floors, 5);
-  const tanks = ohtPlacement(k.layout);
-  const st = (k.g.rooms[floors - 1] ?? []).find(r => r.source.type === 'staircase');
-  const maxZ = Math.max(roofLevelMm(floors) + PARAPET_HEIGHT_MM, st ? roofLevelMm(floors) + STAIR_HEAD_ROOM_MM + 150 : 0, ...tanks.map(t => (t.baseM + t.heightM) * 1000)) + 300;
+  const tanks = isPitched(k) ? [] : ohtPlacement(k.layout);
+  const st = isPitched(k) ? undefined : (k.g.rooms[floors - 1] ?? []).find(r => r.source.type === 'staircase');
+  const maxZ = Math.max(roofLevelMm(floors) + roofRiseMm(k), st ? roofLevelMm(floors) + STAIR_HEAD_ROOM_MM + 150 : 0, ...tanks.map(t => (t.baseM + t.heightM) * 1000)) + 300;
   // all three views in one row on a common ground line and scale; levels once, on the right
   const GAP = 2000, total = b.h + b.w + b.h + 2 * GAP + 600;
   const den = STD_SCALES.find(d => total * PX_PER_PAPER_MM / d + 300 <= 1960 && (maxZ + 600) * PX_PER_PAPER_MM / d <= 700) ?? 500;
@@ -2274,8 +2372,8 @@ function sideElevations(k: Context): void {
   });
   legend(c, 90, 1070, 'ELEVATION NOTES', [
     'Each view is drawn as seen from outside that side; left/right as seen from the road.',
-    `Plinth +${PLINTH_HEIGHT_MM}; storeys ${FLOOR_TO_FLOOR_MM}; parapet ${PARAPET_HEIGHT_MM} mm with coping.`,
-    `Stair head room ${STAIR_HEAD_ROOM_MM} mm above terrace; OHT on its roof (capacity as BOQ / ${sheetNumber('water_tank', 0)}).`,
+    `Plinth +${PLINTH_HEIGHT_MM}; storeys ${FLOOR_TO_FLOOR_MM}; ${roofNote(k)}.`,
+    isPitched(k) ? 'Stair head room and OHT inside the roof void (loft); access hatch from the stair.' : `Stair head room ${STAIR_HEAD_ROOM_MM} mm above terrace; OHT on its roof (capacity as BOQ / ${sheetNumber('water_tank', 0)}).`,
     `Opening marks as per ${sheetNumber('door_window_schedule', 0)}; chajja 450 mm over windows. Front elevation: ${sheetNumber('front_elevation', 0)}.`,
     `RWPs at the four corners (see ${sheetNumber('terrace_plan', 0)}).`,
   ]);
