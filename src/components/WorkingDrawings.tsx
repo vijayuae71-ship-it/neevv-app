@@ -15,6 +15,7 @@ import { getCachedDrawing, setCachedDrawing, getAllCachedDrawings, clearCachedDr
 import { buildDrawingPrompt, DrawingType as ApiDrawingType, StructuralPromptData } from '../utils/drawingPrompts';
 import { generateProgrammaticDrawing, PROGRAMMATIC_TYPES } from '../utils/drawingEngine';
 import { buildingSheets, downloadVectorPDF, downloadCADSet } from '../utils/drawingSetExport';
+import { isOfficeLayout } from '../utils/officeServices';
 
 interface Props {
   onDrawingGenerated?: (drawingType: string) => void;
@@ -51,7 +52,10 @@ type DrawingType =
   | 'coverSheet'
   | 'sectionBB'
   | 'wetAreas'
-  | 'typicalDetails';
+  | 'typicalDetails'
+  | 'officeFurniture'
+  | 'hvac'
+  | 'fireSafety';
 
 /* Map internal drawing types to API drawing types */
 const aiDrawingMap: Record<DrawingType, string> = {
@@ -80,10 +84,15 @@ const aiDrawingMap: Record<DrawingType, string> = {
   sectionBB: 'section_bb',
   wetAreas: 'wet_areas',
   typicalDetails: 'typical_details',
+  officeFurniture: 'office_furniture',
+  hvac: 'hvac',
+  fireSafety: 'fire_safety',
 };
 
 /* Drawing types that differ between Ground Floor and First Floor and need separate generation/caching */
-const FLOOR_SPECIFIC: DrawingType[] = ['workingPlan', 'electrical', 'plumbing', 'tiling', 'brickwork'];
+const FLOOR_SPECIFIC: DrawingType[] = ['workingPlan', 'electrical', 'plumbing', 'tiling', 'brickwork', 'officeFurniture', 'hvac', 'fireSafety'];
+/** Shown only for office buildings. */
+const OFFICE_ONLY: DrawingType[] = ['officeFurniture', 'hvac', 'fireSafety'];
 
 export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq, onDrawingGenerated, structuralResult, bbsResult, statusBadge }) => {
   const structuralOverlay = useMemo(() => {
@@ -175,6 +184,7 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq, on
   }, [drawingsStorageKey]);
 
   const isMultiFloor = (requirements?.floors?.length || layout?.floors?.length || 1) > 1;
+  const office = useMemo(() => isOfficeLayout(layout), [layout]);
 
   /* Cache key: floor-specific drawings get a separate key per floor, shared drawings don't */
   const getCacheKey = useCallback((dt: DrawingType, floor: 'GF' | 'FF') => {
@@ -262,7 +272,7 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq, on
   const generateAll = useCallback(async () => {
     setGeneratingAll(true);
     setAiError(null);
-    const allTypes = Object.keys(aiDrawingMap) as DrawingType[];
+    const allTypes = (Object.keys(aiDrawingMap) as DrawingType[]).filter(t => office || !OFFICE_ONLY.includes(t));
 
     const genOne = async (dt: DrawingType, floor: 'GF' | 'FF') => {
       setSelectedFloor(floor);
@@ -318,7 +328,7 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq, on
       await genOne(dt, 'GF');
     }
     if (isMultiFloor) {
-      for (const dt of FLOOR_SPECIFIC) {
+      for (const dt of FLOOR_SPECIFIC.filter(t => office || !OFFICE_ONLY.includes(t))) {
         await genOne(dt, 'FF');
       }
     }
@@ -357,7 +367,8 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq, on
   };
 
   const generatedCount = Object.keys(aiImages).length;
-  const totalDrawings = Object.keys(aiDrawingMap).length + (isMultiFloor ? FLOOR_SPECIFIC.length : 0);
+  const shownTypes = (Object.keys(aiDrawingMap) as DrawingType[]).filter(t => office || !OFFICE_ONLY.includes(t));
+  const totalDrawings = shownTypes.length + (isMultiFloor ? FLOOR_SPECIFIC.filter(t => office || !OFFICE_ONLY.includes(t)).length : 0);
 
   const tabs: { id: DrawingType; label: string; icon: React.ReactNode; group: string }[] = [
     { id: 'coverSheet', label: 'Cover & Register', icon: <Layers size={12} />, group: 'Architecture' },
@@ -385,9 +396,14 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq, on
     { id: 'waterTank', label: 'Water Tank', icon: <Container size={12} />, group: 'MEP' },
     { id: 'waterproofing', label: 'Waterproofing', icon: <ShieldCheck size={12} />, group: 'Finishes' },
     { id: 'stp', label: 'STP', icon: <Pipette size={12} />, group: 'MEP' },
+    ...(office ? [
+      { id: 'officeFurniture' as DrawingType, label: 'Office Furniture', icon: <Columns3 size={12} />, group: 'Office' },
+      { id: 'hvac' as DrawingType, label: 'HVAC', icon: <Container size={12} />, group: 'Office' },
+      { id: 'fireSafety' as DrawingType, label: 'Fire Safety & Escape', icon: <ShieldCheck size={12} />, group: 'Office' },
+    ] : []),
   ];
 
-  const groups = ['Architecture', 'Site', 'Structure', 'Finishes', 'MEP'];
+  const groups = ['Architecture', 'Site', 'Structure', 'Finishes', 'MEP', ...(office ? ['Office'] : [])];
 
   const descriptions: Record<DrawingType, string> = {
     excavation: 'Trench excavation layout with depths, bench mark, center line pegs, and earth removal volume. Trench width: 1800mm (1200mm footing + 300mm working space each side).',
@@ -403,6 +419,9 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq, on
     coverSheet: 'Cover sheet: project data, drawing register (every sheet with number and revision), general notes, codes and abbreviations.',
     sectionBB: 'Section 2–2 from the road to the rear through the largest room: foundations cut, plinth, walls and openings cut, slabs and beams, levels and room depths.',
     wetAreas: 'Toilet and kitchen enlargements at 1:25 / 1:50: fixture set-out from the plumbing layout, counter, sink and hob, and the toilet service-wall elevation with tile height.',
+    officeFurniture: 'Whole-floor furniture: every room furnished with the same placement as its interior sheets — workstation clusters, cabins, meeting rooms, reception, toilet cubicles — with a furniture count.',
+    hvac: 'HVAC: cooling load room by room (TR), ceiling cassettes and wall units, exhaust fans, refrigerant routes to the riser and VRV outdoor units on the terrace. Counts equal the fit-out BOQ.',
+    fireSafety: 'Fire safety and escape: sprinklers, smoke detectors, extinguishers, call points, hooters, exit signs, emergency lights, hose reel, escape routes and the NBC travel-distance check. Counts equal the fit-out BOQ.',
     typicalDetails: 'Typical details: lintel & chajja (1:10), plinth / DPC / plinth protection, stair railing and parapet coping with roof upstand (1:20).',
     sideElevation: 'Left, right and rear elevations at one common scale, each as seen from outside that side: openings from the locked plan, levels, stair head room and overhead tank.',
     sitePlan: 'Site plan: plot, setbacks (required vs provided), building footprint, main gate, parking, sump, manhole, rain-water pipes and an area statement (coverage, built-up, FSI) matching the planner and BOQ.',

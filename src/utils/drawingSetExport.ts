@@ -1,5 +1,6 @@
 import type { Layout, ProjectRequirements, BOQ, RoomInterior } from '../types';
 import { generateVectorDrawing, sheetIndex, INTERIOR_SHEET_TYPES, sheetNumber } from './drawingEngine';
+import { isOfficeLayout } from './officeServices';
 import { sheetsToPDF, sheetToDXF, dxfBytes, zipFiles } from './vectorExport';
 import type { VectorSheet } from './vectorCanvas';
 
@@ -30,7 +31,7 @@ const slug = (s: string) => s.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '')
 
 /** Every sheet of the building set as vector data, in register order. */
 export function buildingSheets(layout: Layout, req: ProjectRequirements, structural: unknown, boq: BOQ | null): VectorSheet[] {
-  return sheetIndex(Math.max(1, req.floors?.length || layout.floors.length)).map((s) => generateVectorDrawing(s.type, layout, req, structural, boq, s.level === 1 ? 'FF' : 'GF'));
+  return sheetIndex(Math.max(1, req.floors?.length || layout.floors.length), isOfficeLayout(layout)).map((s) => generateVectorDrawing(s.type, layout, req, structural, boq, s.level === 1 ? 'FF' : 'GF'));
 }
 /** The six interior sheets of one room, in the chosen arrangement. */
 export function interiorSheets(layout: Layout, req: ProjectRequirements, roomId: string, interior: RoomInterior | undefined, option: number): VectorSheet[] {

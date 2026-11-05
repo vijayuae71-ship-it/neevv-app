@@ -520,12 +520,12 @@ function planOfficeFloor(items: Item[], W: number, D: number, floorIndex: number
     if (seats < opts.requestedSeats) warnings.push(`${opts.floorLabel}: ${seats} of ${opts.requestedSeats} workstations fit in the open office.`);
     if (c1) { addOpening(open, 'door', 'front', 1.2, 1500, false); if (W > 12) addOpening(open, 'door', 'front', W - 1.2, 1500, false); }
     if (useC2) addOpening(open, 'door', 'rear', W / 2, 1500, false);
-    else addOpening(open, 'door', 'left', openD / 2, 1000, true); // fire exit from the office
+    else if (floorIndex === 0) addOpening(open, 'door', 'left', openD / 2, 1000, true); // fire exit from the office
     const nWin = Math.max(1, Math.floor(openD / 3));
     for (let i = 0; i < nWin; i++) { addOpening(open, 'window', 'left', openD * (i + 0.5) / nWin, 1800, true); addOpening(open, 'window', 'right', openD * (i + 0.5) / nWin, 1800, true); }
     y += openD;
   }
-  const c2 = useC2 ? addRoom('passage', 'Corridor (rear)', 0, y, W, C2) : null; if (c2) { addOpening(c2, 'door', 'left', C2 / 2, 1000, true); y += C2; } // fire exit at the corridor end
+  const c2 = useC2 ? addRoom('passage', 'Corridor (rear)', 0, y, W, C2) : null; if (c2) { if (floorIndex === 0) addOpening(c2, 'door', 'left', C2 / 2, 1000, true); else addOpening(c2, 'window', 'left', C2 / 2, 900, true); y += C2; } // fire exit at the corridor end (ground floor; upper floors exit by the stair)
   band(rear, y, rD, 'front', 'rear');
   // main entrance from the road: through the reception, else the front corridor
   const rec = rooms.find(r => (r.type as string) === 'reception');

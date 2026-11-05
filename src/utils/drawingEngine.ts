@@ -4,6 +4,8 @@ import type { Layout, Room, ProjectRequirements, BOQ, Column, Setbacks, LayoutOp
 import { planCircuits, circuitDemand, ASSUMED_FOUNDING_DEPTH_M, PARAPET_HEIGHT_MM, ELEC_KINDS, electricalBreakdown, electricalPoints, fixturesFor, fixtureTotals, isNiche, WALL_EXTERNAL_MM, WALL_INTERNAL_MM } from './quantityRules';
 import { COMPOUND_WALL_HEIGHT_MM, COMPOUND_WALL_THICKNESS_MM, FLOOR_TO_FLOOR_MM, PLINTH_HEIGHT_MM, STAIR_HEAD_ROOM_MM, floorLevelMm, gateCentreM, gateWidthM, mainDoorCentreM, ohtPlacement, ohtTanks, rainwaterPipes, roofLevelMm, sumpPlacement, sumpSizeM, waterStorage } from './buildingModel';
 import { VectorContext, type VectorSheet } from './vectorCanvas';
+import { officeServices, isOfficeLayout, type ServicePoint } from './officeServices';
+import { getDefaultFurniture, mapRoomTypeToFinish } from './interiorTemplates';
 import { computeTakeoff, bathWallTileSqM, kitchenCounterRmt, KITCHEN_DADO_HEIGHT_M, type Takeoff } from './quantityTakeoff';
 
 /**
@@ -44,7 +46,8 @@ type DrawingType = 'excavation' | 'column_layout' | 'footing_detail' | 'beam_sla
   'staircase_detail' | 'water_tank' | 'waterproofing' | 'stp_detail' |
   'electrical' | 'plumbing' | 'tiling_layout' | 'brickwork_detail' |
   'working_plan' | 'door_window_schedule' | 'site_plan' | 'terrace_plan' | 'side_elevation' | 'section_bb' | 'cover_sheet' | 'wet_areas' | 'typical_details'
-  | 'int_furniture' | 'int_rcp' | 'int_electrical' | 'int_flooring' | 'int_elevations' | 'int_woodwork';
+  | 'int_furniture' | 'int_rcp' | 'int_electrical' | 'int_flooring' | 'int_elevations' | 'int_woodwork'
+  | 'office_furniture' | 'hvac' | 'fire_safety';
 
 /* ── neevv Drafting Standard v1 (IS 962 / SP 46) ──
  * Sheet = A3 landscape (420 × 297 mm) rendered at 5 px per paper-mm.
@@ -120,6 +123,7 @@ const titleFor: Record<DrawingType, string> = {
   site_plan: 'SITE PLAN', terrace_plan: 'TERRACE / ROOF PLAN', side_elevation: 'SIDE & REAR ELEVATIONS',
   section_bb: 'BUILDING SECTION 2–2', cover_sheet: 'COVER SHEET & DRAWING REGISTER',
   wet_areas: 'TOILET & KITCHEN ENLARGEMENTS', typical_details: 'TYPICAL CONSTRUCTION DETAILS',
+  office_furniture: 'OFFICE FURNITURE LAYOUT', hvac: 'HVAC LAYOUT', fire_safety: 'FIRE SAFETY & ESCAPE PLAN',
   int_furniture: 'INTERIOR FURNITURE LAYOUT', int_rcp: 'REFLECTED CEILING PLAN', int_electrical: 'INTERIOR ELECTRICAL & LIGHTING',
   int_flooring: 'FLOORING LAYOUT', int_elevations: 'INTERIOR WALL ELEVATIONS', int_woodwork: 'WOODWORK DETAILS',
 };
@@ -897,8 +901,11 @@ const SHEET_BASE: Partial<Record<DrawingType, string>> = {
   excavation: 'S-101', column_layout: 'S-102', footing_detail: 'S-103', beam_slab: 'S-104', column_detail: 'S-105', bar_bending: 'S-106',
   brickwork_detail: 'M-101', electrical: 'E-101', plumbing: 'P-101', water_tank: 'P-201', stp_detail: 'P-202',
   tiling_layout: 'F-101', waterproofing: 'D-101',
+  office_furniture: 'A-701', hvac: 'M-201', fire_safety: 'FP-101',
 };
-const PER_FLOOR: DrawingType[] = ['working_plan', 'brickwork_detail', 'electrical', 'plumbing', 'tiling_layout'];
+const PER_FLOOR: DrawingType[] = ['working_plan', 'brickwork_detail', 'electrical', 'plumbing', 'tiling_layout', 'office_furniture', 'hvac', 'fire_safety'];
+/** Sheets drawn only for office buildings. */
+const OFFICE_ONLY: DrawingType[] = ['office_furniture', 'hvac', 'fire_safety'];
 /** Interior sheets: one set per room, not part of the building register. */
 const INT_BASE: Record<string, string> = { int_furniture: 'I-101', int_rcp: 'I-201', int_electrical: 'I-301', int_flooring: 'I-401', int_elevations: 'I-501', int_woodwork: 'I-601' };
 export const INTERIOR_SHEET_TYPES = Object.keys(INT_BASE);
@@ -909,9 +916,10 @@ export function sheetNumber(type: string, level: number): string {
   return base;
 }
 /** The complete sheet list of a set, in issue order. */
-export function sheetIndex(floors: number): { type: string; level: number; no: string; title: string }[] {
+export function sheetIndex(floors: number, office = false): { type: string; level: number; no: string; title: string }[] {
   const out: { type: string; level: number; no: string; title: string }[] = [];
   for (const t of Object.keys(SHEET_BASE) as DrawingType[]) {
+    if (!office && OFFICE_ONLY.includes(t)) continue;
     const levels = PER_FLOOR.includes(t) ? Array.from({ length: Math.min(2, Math.max(1, floors)) }, (_, i) => i) : [0];
     for (const l of levels) out.push({ type: t, level: l, no: sheetNumber(t, l), title: titleFor[t] });
   }
@@ -1901,7 +1909,7 @@ function coverSheet(k: Context): void {
     ['Levels', `NGL ±0.000, GF FFL +${(PLINTH_HEIGHT_MM / 1000).toFixed(3)}, roof +${(roofLevelMm(g.floors) / 1000).toFixed(3)}`],
   ];
   let y = table(c, 80, 250, [{ h: 'PROJECT DATA', w: 170 }, { h: '', w: 400 }], proj, 'PROJECT', 22);
-  const idx = sheetIndex(g.floors);
+  const idx = sheetIndex(g.floors, isOfficeLayout(k.layout));
   const reg = idx.map(e => [e.no, e.level > 0 && PER_FLOOR.includes(e.type as DrawingType) ? `${e.title} — FIRST FLOOR` : (PER_FLOOR.includes(e.type as DrawingType) && g.floors > 1 ? `${e.title} — GROUND FLOOR` : e.title), `P${k.rev}`]);
   table(c, 720, 140, [{ h: 'DRG NO', w: 80 }, { h: 'TITLE', w: 380 }, { h: 'REV', w: 50 }], reg, `DRAWING REGISTER (${idx.length} SHEETS)`, Math.min(22, Math.floor(1000 / (reg.length + 2))));
   legend(c, 80, y + 40, 'GENERAL NOTES', [
@@ -3170,7 +3178,7 @@ function titleBlock(k: Context): void {
   label(c, `ROAD FACING ${k.req.facing}  •  LOCKED PLAN REV ${k.rev}`, x + 16, y + 128, 13);
   label(c, `DATE ${new Date().toLocaleDateString('en-GB')}`, x + 16, y + 148, 12, 'left', COLORS.dim);
   const cell = (cx: number, cy: number, h: string, v: string, big = false) => { label(c, h, x + cx + 8, y + cy + 9, 9, 'left', COLORS.dim, true); label(c, v, x + cx + 8, y + cy + 24, big ? 16 : 13, 'left', COLORS.text, true); };
-  const idx = sheetIndex(k.g.floors), pos = idx.findIndex(e => e.no === k.sheetNo);
+  const idx = sheetIndex(k.g.floors, isOfficeLayout(k.layout)), pos = idx.findIndex(e => e.no === k.sheetNo);
   cell(560, 58, 'DRG NO', k.sheetNo, true); cell(730, 58, 'REV', `P${k.rev}`, true);
   cell(560, 92, 'SCALE (A3)', scaleText(k)); cell(730, 92, 'SHEET', pos >= 0 ? `${pos + 1} of ${idx.length}` : '—');
   cell(560, 126, 'DRAWN', 'neevv engine'); cell(730, 126, 'CHECKED', 'pending');
@@ -3776,6 +3784,114 @@ function intWoodwork(k: Context): void {
   viewTitle(k, `${p.roomName.toUpperCase()} — WOODWORK DETAILS`, 80, 130);
 }
 
+
+/* ── Office sheets (per floor): A-701 furniture, M-201 HVAC, FP-101 fire safety ── */
+/** Building-local metres (as the Layout rooms) → model mm. */
+function officeXY(k: Context): (x: number, y: number) => Point {
+  const r = (k.g.rooms[k.level] ?? [])[0];
+  const ox = r ? r.x - r.source.x * 1000 : k.g.building.x, oy = r ? r.y - r.source.y * 1000 : k.g.building.y;
+  return (x, y) => at(k, ox + x * 1000, oy + y * 1000);
+}
+/** Symbol placement that steps aside from symbols already on the sheet. */
+function declutter(): (p: Point, r: number) => Point {
+  const placed: { x: number; y: number; r: number }[] = [];
+  return (p, r) => {
+    const free = (q: Point) => placed.every(o => Math.hypot(o.x - q.x, o.y - q.y) >= o.r + r + 2);
+    let q = p;
+    for (let ring = 1; ring <= 6 && !free(q); ring++) for (let a = 0; a < 8; a++) { const t = { x: p.x + Math.cos(a * Math.PI / 4) * ring * (r + 3), y: p.y + Math.sin(a * Math.PI / 4) * ring * (r + 3) }; if (free(t)) { q = t; break; } }
+    placed.push({ ...q, r }); return q;
+  };
+}
+function officeFurniture(k: Context): void {
+  const c = k.c; svcFrame(k); servicesBase(k);
+  const counts = new Map<string, number>();
+  let seats = 0;
+  for (const r of svcRooms(k)) {
+    const t = r.source.type as string; if (t === 'passage' || t === 'staircase') continue;
+    const fin = mapRoomTypeToFinish(r.source.type), area = r.source.width * r.source.depth;
+    const furniture = getDefaultFurniture(fin, 'modern_minimalist', t, area).filter(f => f.defaultSelected === true);
+    const interior = { roomId: r.source.id, roomName: r.source.name, roomType: fin, style: 'modern_minimalist', furniture } as unknown as RoomInterior;
+    const plan = planInteriorRoom(k.layout, k.req, r.source.id, interior, 0);
+    if (!plan) continue;
+    for (const it of plan.items.filter(i => i.kind === 'upper')) drawItem(k, it, true);
+    for (const it of plan.items.filter(i => i.kind !== 'upper')) {
+      drawItem(k, it);
+      const name = it.category === 'study_table' && (it.qty ?? 1) >= 4 ? 'Workstation (4-seat cluster)' : shortName(it.name).replace(/\s+\d+$/, '');
+      counts.set(name, (counts.get(name) ?? 0) + 1);
+      if (it.category === 'study_table') seats += it.qty ?? 1;
+    }
+  }
+  const rows = [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 22).map(([n, q]) => [n.slice(0, 34), `${q}`]);
+  rows.push(['Desk seats placed (workstations + cabins)', `${seats}`]);
+  const y = table(c, 1420, 150, [{ h: 'ITEM', w: 300 }, { h: 'QTY', w: 70 }], rows, `FURNITURE — ${floorName(k).toUpperCase()}`, 20);
+  legend(c, 1420, y + 30, 'NOTES', ['Same placement as each room’s interior sheets (I-101).', 'Clear aisles 1200 between clusters, 900 at desks.', 'Final sizes from the furniture vendor.']);
+  viewTitle(k, `${floorName(k).toUpperCase()} — FURNITURE LAYOUT`, 80, 112);
+}
+const HV = '#1f6fb2', FIRE = '#c62828', EXIT = '#2e7d32';
+function hvacPlan(k: Context): void {
+  const c = k.c; svcFrame(k); servicesBase(k);
+  const S = officeServices(k.layout), f = S.floors[k.level], P = officeXY(k), place = declutter(), s = k.scale;
+  if (!f) return;
+  // refrigerant riser by the stair (or the rear-right corner) up to the terrace VRV units
+  const st = (k.g.rooms[k.level] ?? []).find(r => r.source.type === 'staircase');
+  const riser = st ? at(k, st.x + 150, st.y + 150) : at(k, k.g.building.x + k.g.building.w - 300, k.g.building.y + k.g.building.h - 300);
+  for (const p of f.points.filter(q => q.kind === 'cassette' || q.kind === 'wall_unit')) {
+    const q = P(p.x, p.y);
+    ortho(c, q, riser, HV, 0.9, [6, 3]);
+  }
+  for (const p of f.points) {
+    const q = P(p.x, p.y);
+    if (p.kind === 'cassette') { const h = 420 * s; drawRect(c, q.x - h, q.y - h, 2 * h, 2 * h, { fill: '#eaf3fb', stroke: HV, weight: 1.4 }); drawLine(c, q.x - h, q.y - h, q.x + h, q.y + h, 0.7, HV); drawLine(c, q.x + h, q.y - h, q.x - h, q.y + h, 0.7, HV); const t = place(q, 12); sym(c, t, 'C', HV, 'square', 10); }
+    else if (p.kind === 'wall_unit') { drawRect(c, q.x - 450 * s, q.y - 125 * s, 900 * s, 250 * s, { fill: '#eaf3fb', stroke: HV, weight: 1.4 }); sym(c, place({ x: q.x, y: q.y - 16 }, 12), 'AC', HV, 'square', 11); }
+    else if (p.kind === 'exhaust') sym(c, place(q, 12), 'EF', '#6a4c93', 'circle', 11);
+  }
+  circle(c, riser.x, riser.y, 9, '#fff', HV, 2); label(c, 'R', riser.x, riser.y + 0.5, 10, 'center', HV, true);
+  const rows = f.cooling.map(r => [r.name.slice(0, 26), `${Math.round(r.areaSqFt)}`, `${r.tr}`, `${r.units} × ${r.unitType === 'cassette' ? 'cassette' : 'wall unit'}`]);
+  const trF = f.cooling.reduce((a, r) => a + r.tr, 0);
+  rows.push(['TOTAL THIS FLOOR', '', `${trF}`, ''], ['BUILDING (= BOQ)', '', `${S.totals.tr}`, `${S.totals.outdoorUnits} × 10 TR VRV outdoor`]);
+  const y = table(c, 1420, 150, [{ h: 'ROOM', w: 190 }, { h: 'SQ FT', w: 60 }, { h: 'TR', w: 50 }, { h: 'INDOOR UNITS', w: 150 }], rows, `COOLING LOAD — ${floorName(k).toUpperCase()}`, 20);
+  legend(c, 1420, y + 30, 'LEGEND & NOTES', ['C  4-way ceiling cassette, 2 TR (840 sq)   AC  wall-mounted VRV unit', 'EF exhaust fan   R  refrigerant riser to terrace', '- - - refrigerant + drain lines, run above the false ceiling', 'Load: 110 sq ft/TR offices & meeting, 130 cabins, 60 server room.', 'Server room: two units (one standby).', 'Fresh air by ducted inline fans; final sizing by HVAC consultant.']);
+  viewTitle(k, `${floorName(k).toUpperCase()} — HVAC LAYOUT`, 80, 112);
+}
+function firePlan(k: Context): void {
+  const c = k.c; svcFrame(k); servicesBase(k);
+  const S = officeServices(k.layout), f = S.floors[k.level], P = officeXY(k), place = declutter();
+  if (!f) return;
+  // escape routes first (under the symbols)
+  for (const r of f.routes) {
+    const pts = r.path.slice(1).map(p => P(p.x, p.y)); // drawn from the room door onward; in-room travel is in the table
+    if (pts.length < 2) continue;
+    c.save(); c.setLineDash([10, 5]); c.strokeStyle = EXIT; c.lineWidth = 1.3; c.beginPath(); c.moveTo(pts[0].x, pts[0].y); pts.slice(1).forEach(p => c.lineTo(p.x, p.y)); c.stroke(); c.restore();
+    const a = pts[pts.length - 2], b = pts[pts.length - 1]; if (a && b && Math.hypot(b.x - a.x, b.y - a.y) > 12) arrow(c, a.x + (b.x - a.x) * 0.6, a.y + (b.y - a.y) * 0.6, a.x + (b.x - a.x) * 0.9, a.y + (b.y - a.y) * 0.9, EXIT, 9);
+  }
+  const draw = (p: ServicePoint) => {
+    const q = P(p.x, p.y);
+    switch (p.kind) {
+      case 'sprinkler': circle(c, q.x, q.y, 3.2, FIRE, FIRE, 0.8); break;
+      case 'smoke': sym(c, place(q, 9), 'S', FIRE, 'circle', 8); break;
+      case 'ext_abc': sym(c, place({ x: q.x, y: q.y + 16 }, 13), 'FE', FIRE, 'square', 12); break;
+      case 'ext_co2': sym(c, place(q, 14), 'CO2', FIRE, 'square', 13); break;
+      case 'mcp': sym(c, place({ x: q.x + 18, y: q.y }, 13), 'MCP', FIRE, 'square', 13); break;
+      case 'hooter': sym(c, place({ x: q.x - 18, y: q.y }, 11), 'H', FIRE, 'circle', 10); break;
+      case 'em_light': sym(c, place(q, 11), 'EL', '#b26a00', 'circle', 10); break;
+      case 'hose_reel': sym(c, place(q, 13), 'HR', FIRE, 'square', 12); break;
+      case 'exit_sign': { const t = place({ x: q.x, y: q.y - 18 }, 16); drawRect(c, t.x - 16, t.y - 7, 32, 14, { fill: EXIT, stroke: EXIT, weight: 1 }); label(c, 'EXIT', t.x, t.y + 0.5, 9, 'center', '#ffffff', true); break; }
+      default: break;
+    }
+  };
+  for (const p of f.points.filter(q => q.kind === 'sprinkler')) draw(p);
+  for (const p of f.points.filter(q => q.kind !== 'sprinkler')) draw(p);
+  const cnt = (kd: ServicePoint['kind']) => f.points.filter(p => p.kind === kd).length;
+  const ok = f.maxTravelM <= 30;
+  const longest = [...f.routes].sort((a, b) => b.lengthM - a.lengthM).slice(0, 6).map(r => [r.name.slice(0, 24), `${r.lengthM.toFixed(1)} m`, r.exit]);
+  let y = table(c, 1420, 150, [{ h: 'DEVICE', w: 240 }, { h: 'QTY', w: 60 }], [
+    ['Sprinklers (light hazard, ≤ 4 m grid)', `${cnt('sprinkler')}`], ['Smoke detectors (≤ 7 m grid)', `${cnt('smoke')}`], ['Extinguishers ABC 6 kg', `${cnt('ext_abc')}`], ['Extinguishers CO2 4.5 kg', `${cnt('ext_co2')}`],
+    ['Manual call points / hooters', `${cnt('mcp')} / ${cnt('hooter')}`], ['Exit signs', `${cnt('exit_sign')}`], ['Emergency lights', `${cnt('em_light')}`], ['Hose reel', `${cnt('hose_reel')}`]], `FIRE SAFETY — ${floorName(k).toUpperCase()} (= BOQ)`, 20);
+  y = table(c, 1420, y + 24, [{ h: 'LONGEST ESCAPE ROUTES', w: 170 }, { h: 'TRAVEL', w: 70 }, { h: 'TO', w: 110 }], longest, `TRAVEL DISTANCE: ${f.maxTravelM.toFixed(1)} m ${ok ? '≤' : '>'} 30 m (NBC) — ${ok ? 'OK' : 'CHECK'}`, 20);
+  legend(c, 1420, y + 30, 'LEGEND & NOTES', ['• sprinkler   S smoke detector   FE / CO2 extinguisher', 'MCP manual call point   H hooter   EL emergency light   HR hose reel', '- - -> escape route from each door to the nearest exit (travel measured from the farthest point of the room)', `Exits: ${f.exits.map(e => e.name).join(', ') || 'none found'}.`, ...(k.g.floors > 1 && f.exits.filter(e => e.name === 'Staircase').length < 2 && k.level > 0 ? ['One staircase: confirm a second exit with the fire officer.'] : []), 'NBC Part 4 (business). Approval by the local fire authority.']);
+  viewTitle(k, `${floorName(k).toUpperCase()} — FIRE SAFETY & ESCAPE`, 80, 112);
+}
+
 /* ── vector output: the same sheet drawn into a recording context (for vector PDF and CAD export) ── */
 let VECTOR_TARGET: VectorContext | null = null;
 /** Same arguments as generateProgrammaticDrawing; returns the sheet as vector data instead of a PNG. */
@@ -3858,6 +3974,9 @@ export function generateProgrammaticDrawing(
     case 'cover_sheet': coverSheet(k); break;
     case 'wet_areas': wetAreas(k); break;
     case 'typical_details': typicalDetails(k); break;
+    case 'office_furniture': officeFurniture(k); break;
+    case 'hvac': hvacPlan(k); break;
+    case 'fire_safety': firePlan(k); break;
     case 'int_furniture': intFurniture(k); break;
     case 'int_rcp': intRcp(k); break;
     case 'int_electrical': intElectrical(k); break;
