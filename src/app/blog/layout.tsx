@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { BRAND_LOGO_BASE64 } from "@/utils/brand";
+import { BRAND_LOGO_URL } from "@/utils/brand";
 
 export default function BlogLayout({ children }: { children: ReactNode }) {
   return (
@@ -8,7 +8,7 @@ export default function BlogLayout({ children }: { children: ReactNode }) {
       <header className="border-b border-[#4f6f52]/15 bg-white">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
           <Link href="/" aria-label="neevv home" className="flex items-center gap-2">
-            <img src={BRAND_LOGO_BASE64} alt="neevv" className="h-9 w-auto" />
+            <img src={BRAND_LOGO_URL} alt="neevv" className="h-9 w-auto" />
           </Link>
           <nav className="flex items-center gap-5 text-sm font-medium">
             <Link href="/blog" className="text-[#4f6f52] hover:opacity-75">Blog</Link>
