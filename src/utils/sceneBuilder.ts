@@ -1146,7 +1146,8 @@ export function buildScene(
   // ── Roof/Terrace ──
   const topFloorNum = Math.max(...layout.floors.map(f => f.floor));
   const roofY = PLINTH + (topFloorNum + 1) * FLOOR_HEIGHT - SLAB_THICKNESS;
-  if (options.showFloor === 'all' || options.showFloor === topFloorNum) {
+  // roof, parapet, stair head room and tanks only in the whole-building view; a single-floor view is open from above
+  if (options.showFloor === 'all') {
     // Top slab
     addBox(buildMinX, roofY, buildMinZ, bW, SLAB_THICKNESS, bD, slabMat);
 

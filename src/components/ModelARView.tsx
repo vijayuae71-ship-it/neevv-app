@@ -2,11 +2,12 @@
 
 import React, { useRef, useEffect, useState } from 'react';
 import { Layout, ProjectRequirements } from '../types';
+import { buildScene } from '../utils/sceneBuilder';
 import { Smartphone, RotateCcw, ZoomIn, ZoomOut, Maximize, Info, ShoppingCart } from 'lucide-react';
 
 /**
- * ModelARView — Embeds the .glb villa model using Google <model-viewer>
- * with AR support (WebXR, Scene Viewer, Quick Look) and material hotspot.
+ * ModelARView — the customer's own house (the same scene as Interactive 3D, exported to GLB in the
+ * browser) in Google <model-viewer>, with AR (WebXR / Scene Viewer / Quick Look) and the material hotspot.
  */
 
 // TypeScript declaration for model-viewer custom element
@@ -56,6 +57,45 @@ export const ModelARView: React.FC<Props> = ({ layout, requirements, structuralR
   const [arSupported, setArSupported] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
   const [showQuotePanel, setShowQuotePanel] = useState(false);
+  const [modelSrc, setModelSrc] = useState<string | null>(null);
+  const [modelError, setModelError] = useState<string | null>(null);
+
+  // Build this design's GLB from the locked plan (same builder as Interactive 3D), in metres.
+  useEffect(() => {
+    let cancelled = false, url = '';
+    const waitFor = <T,>(get: () => T | undefined, tries = 100) => new Promise<T>((resolve, reject) => {
+      const tick = (n: number) => { const v = get(); if (v) resolve(v); else if (n <= 0) reject(new Error('timeout')); else setTimeout(() => tick(n - 1), 100); };
+      tick(tries);
+    });
+    const loadScript = (src: string) => new Promise<void>((resolve, reject) => {
+      const el = document.createElement('script'); el.src = src; el.onload = () => resolve(); el.onerror = () => reject(new Error('load failed')); document.head.appendChild(el);
+    });
+    (async () => {
+      try {
+        setModelSrc(null); setModelError(null); setIsLoaded(false);
+        const THREE = await waitFor(() => (window as any).THREE);
+        if (!THREE.GLTFExporter) await loadScript('https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/exporters/GLTFExporter.js');
+        const scene = new THREE.Scene();
+        buildScene(scene, layout, requirements, { showFloor: 'all', cutaway: false });
+        // AR needs the house and plot only: no on-screen labels, scene lights or the oversized lawn
+        const drop: any[] = [];
+        scene.traverse((o: any) => {
+          if (o.isSprite || o.isLight) drop.push(o);
+          else if (o.isMesh && o.geometry?.type === 'PlaneGeometry' && (o.geometry.parameters?.width ?? 0) > layout.plotWidthM * 2) drop.push(o);
+        });
+        drop.forEach((o) => o.parent?.remove(o));
+        const glb: ArrayBuffer = await new Promise((resolve, reject) => {
+          try { new THREE.GLTFExporter().parse(scene, resolve, { binary: true, onlyVisible: true }); } catch (e) { reject(e); }
+        });
+        if (cancelled) return;
+        url = URL.createObjectURL(new Blob([glb], { type: 'model/gltf-binary' }));
+        setModelSrc(url);
+      } catch {
+        if (!cancelled) setModelError('The 3D model for AR could not be prepared on this device. Interactive 3D still shows your house.');
+      }
+    })();
+    return () => { cancelled = true; if (url) URL.revokeObjectURL(url); };
+  }, [layout, requirements]);
 
   // Compute building stats for the quote panel
   // Use layout's authoritative computed values — single source of truth
@@ -103,7 +143,7 @@ export const ModelARView: React.FC<Props> = ({ layout, requirements, structuralR
       <div className="absolute top-3 left-3 z-20 flex items-center gap-2">
         <div className="bg-white/90 backdrop-blur-sm rounded-lg px-3 py-1.5 shadow-sm border border-gray-200">
           <span className="text-xs font-bold text-[#4f6f52]">
-            \uD83C\uDFE0 AR Model — {requirements.plotWidthFt}\' × {requirements.plotDepthFt}\' Villa
+            AR Model — your {requirements.plotWidthFt}′ × {requirements.plotDepthFt}′ design
           </span>
         </div>
         {arSupported && (
@@ -115,7 +155,10 @@ export const ModelARView: React.FC<Props> = ({ layout, requirements, structuralR
       </div>
 
       {/* Loading overlay */}
-      {!isLoaded && (
+      {modelError && (
+        <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/90 p-6 text-center text-sm text-gray-700">{modelError}</div>
+      )}
+      {!isLoaded && !modelError && (
         <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-white/80 backdrop-blur-sm">
           <div className="animate-spin rounded-full h-10 w-10 border-4 border-[#4f6f52] border-t-transparent" />
           <p className="mt-3 text-sm text-gray-600 font-medium">Loading 3D Model...</p>
@@ -125,8 +168,8 @@ export const ModelARView: React.FC<Props> = ({ layout, requirements, structuralR
       {/* model-viewer */}
       <model-viewer
         ref={modelRef}
-        src="/models/villa_30x40.glb"
-        alt={`${requirements.plotWidthFt}×${requirements.plotDepthFt} Villa — neevv Architecture`}
+        src={modelSrc ?? undefined}
+        alt={`Your ${requirements.plotWidthFt}×${requirements.plotDepthFt} ft design — neevv`}
         ar
         ar-modes="webxr scene-viewer quick-look"
         ar-scale="auto"
@@ -137,9 +180,9 @@ export const ModelARView: React.FC<Props> = ({ layout, requirements, structuralR
         shadow-intensity="1.2"
         shadow-softness="0.8"
         exposure="1.0"
-        camera-orbit="45deg 55deg 20m"
+        camera-orbit="-35deg 65deg auto"
         min-camera-orbit="auto auto 5m"
-        max-camera-orbit="auto auto 50m"
+        max-camera-orbit="auto auto 80m"
         field-of-view="30deg"
         loading="eager"
         style={{ width: '100%', height: '100%', minHeight: '500px' }}
@@ -157,7 +200,7 @@ export const ModelARView: React.FC<Props> = ({ layout, requirements, structuralR
         <button
           className="hotspot"
           slot="hotspot-pillar-quote"
-          data-position="-3.4m 3.5m -4.4m"
+          data-position={`${(layout.plotWidthM / 2).toFixed(2)}m ${(0.45 + Math.max(1, numFloors) * 3 + 0.4).toFixed(2)}m ${(layout.setbacks?.front ?? 1.5).toFixed(2)}m`}
           data-normal="0 0 -1"
           data-visibility-attribute="visible"
           onClick={handleHotspotClick}
@@ -229,7 +272,7 @@ export const ModelARView: React.FC<Props> = ({ layout, requirements, structuralR
           </div>
 
           <div className="text-xs text-gray-500 mb-3 pb-2 border-b border-gray-100">
-            {requirements.plotWidthFt}\' × {requirements.plotDepthFt}\' | {totalBuiltUp} sq.ft | {numFloors} Floor(s)
+            {requirements.plotWidthFt}′ × {requirements.plotDepthFt}′ | {totalBuiltUp} sq.ft | {numFloors} Floor(s)
           </div>
 
           <div className="space-y-2">
