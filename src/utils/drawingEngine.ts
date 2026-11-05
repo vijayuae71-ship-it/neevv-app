@@ -386,7 +386,9 @@ function makeGeometry(layout: Layout, req: ProjectRequirements, data: Data): Geo
     positive(mm(layout.buildableDepthM), Math.max(1000, plotD - setbacks.front - setbacks.rear)));
   const rooms: ModelRoom[][] = (layout.floors ?? []).map(f => (f.rooms ?? [])
     .filter(r => r && r.width > 0 && r.depth > 0)
-    .map(source => ({ source, x: mm(source.x), y: mm(source.y), w: mm(source.width), d: mm(source.depth) })));
+    // office washrooms are drawn, plumbed and tiled as toilets
+    .map(r0 => { const source = /^washroom/.test(String(r0.type)) ? { ...r0, type: 'toilet' as Room['type'] } : r0;
+      return { source, x: mm(source.x), y: mm(source.y), w: mm(source.width), d: mm(source.depth) }; }));
   const allRooms = rooms.flat();
   // Room coordinates in the generator are often local to the building, but can also
   // be absolute plot coordinates. Preserve the room coordinate system and place the
@@ -835,15 +837,19 @@ function dimMm(k: Context, pts: number[], axis: 'x' | 'y', fixedPx: number, offs
 function gridBubbles(k: Context, outPx: number, sides: ('top' | 'bottom' | 'left' | 'right')[] = ['top', 'left']): void {
   const c = k.c, b = k.g.building, B = box(k, b);
   const R = 15;
-  k.g.gridX.forEach((x, i) => {
-    const px = at(k, x, 0).x;
-    dashed(c, { x: px, y: B.y - outPx + R }, { x: px, y: B.y + B.h + (sides.includes('bottom') ? outPx - R : 0) }, COLORS.grid, PEN.hair, [16, 4, 3, 4]);
-    for (const sd of sides.filter(s2 => s2 === 'top' || s2 === 'bottom')) { const py = sd === 'top' ? B.y - outPx : B.y + B.h + outPx; circle(c, px, py, R, '#fff', COLORS.wall, PEN.thin); label(c, gridLetter(i), px, py, 13, 'center', COLORS.text, true); }
+  // grid lines closer than a bubble (corridor walls) alternate onto a second row
+  const stagger = (ps: number[]) => { const out: boolean[] = []; ps.forEach((p, i) => out.push(i > 0 && !out[i - 1] && p - ps[i - 1] < 2 * R + 2)); return out; };
+  const pxs = k.g.gridX.map(x => at(k, x, 0).x), sx = stagger(pxs);
+  k.g.gridX.forEach((_, i) => {
+    const px = pxs[i], extra = sx[i] ? 2 * R + 4 : 0;
+    dashed(c, { x: px, y: B.y - outPx - extra + R }, { x: px, y: B.y + B.h + (sides.includes('bottom') ? outPx + extra - R : 0) }, COLORS.grid, PEN.hair, [16, 4, 3, 4]);
+    for (const sd of sides.filter(s2 => s2 === 'top' || s2 === 'bottom')) { const py = sd === 'top' ? B.y - outPx - extra : B.y + B.h + outPx + extra; circle(c, px, py, R, '#fff', COLORS.wall, PEN.thin); label(c, gridLetter(i), px, py, 13, 'center', COLORS.text, true); }
   });
-  k.g.gridY.forEach((y, i) => {
-    const py = at(k, 0, y).y;
-    dashed(c, { x: B.x - outPx + R, y: py }, { x: B.x + B.w + (sides.includes('right') ? outPx - R : 0), y: py }, COLORS.grid, PEN.hair, [16, 4, 3, 4]);
-    for (const sd of sides.filter(s2 => s2 === 'left' || s2 === 'right')) { const px = sd === 'left' ? B.x - outPx : B.x + B.w + outPx; circle(c, px, py, R, '#fff', COLORS.wall, PEN.thin); label(c, `${i + 1}`, px, py, 13, 'center', COLORS.text, true); }
+  const pys = k.g.gridY.map(y => at(k, 0, y).y), sy = stagger(pys);
+  k.g.gridY.forEach((_, i) => {
+    const py = pys[i], extra = sy[i] ? 2 * R + 4 : 0;
+    dashed(c, { x: B.x - outPx - extra + R, y: py }, { x: B.x + B.w + (sides.includes('right') ? outPx + extra - R : 0), y: py }, COLORS.grid, PEN.hair, [16, 4, 3, 4]);
+    for (const sd of sides.filter(s2 => s2 === 'left' || s2 === 'right')) { const px = sd === 'left' ? B.x - outPx - extra : B.x + B.w + outPx + extra; circle(c, px, py, R, '#fff', COLORS.wall, PEN.thin); label(c, `${i + 1}`, px, py, 13, 'center', COLORS.text, true); }
   });
 }
 /** Section cut: thick-thin chain with split bubbles "1 / A-301" and view arrows (never a grid letter). */
@@ -1107,7 +1113,7 @@ function foundationBasis(k: Context, width = 58): string[] {
 }
 
 function excavation(k: Context): void {
-  setFrame(k, k.g.footprint, { x: 115, y: 140, w: 1450, h: 900 }, 90);
+  setFrame(k, k.g.footprint, { x: 115, y: 130, w: 1400, h: 1000 }, 90);
   drawPlot(k); grid(k);
   const c = k.c;
   const trenches: Bounds[] = [];
@@ -1944,7 +1950,25 @@ function wetAreas(k: Context): void {
     };
     const setOut: number[] = [];
     let svc: Side = 'rear', tEnd: 0 | 1 = 0;
-    if (r.source.type === 'toilet') {
+    const officeWCs = r.source.type === 'toilet' ? Number(/\((\d+) WC/.exec(r.source.name)?.[1] ?? 0) : 0;
+    if (officeWCs > 0) {
+      // office toilet block: WC cubicles on the service wall, wash counter opposite
+      const w = wetLayout(k, r); svc = w.service; tEnd = w.tEnd;
+      const L = sideLen(r, svc), tAt = (mm: number) => (w.tEnd === 0 ? mm / L : 1 - mm / L);
+      const cub = Math.min(1200, (L - 230) / officeWCs), depth = 1500;
+      for (let i = 0; i < officeWCs; i++) {
+        const a0 = 115 + i * cub, mid = a0 + cub / 2;
+        fx(onSide(r, svc, tAt(mid), 115), cub, depth, q => { drawRect(c, q.x, q.y, q.w, q.h, { stroke: COLORS.wall, weight: 1.4 }); }, svc);
+        fx(onSide(r, svc, tAt(mid), 115), 380, 600, q => { drawRect(c, q.x, q.y, q.w, q.h, { stroke: COLORS.wall, weight: 1.2, fill: '#fff' }); c.save(); c.beginPath(); c.ellipse(q.x + q.w / 2, q.y + q.h / 2, q.w / 2 - 3, q.h / 2 - 3, 0, 0, Math.PI * 2); c.strokeStyle = COLORS.wall; c.lineWidth = 1; c.stroke(); c.restore(); }, svc);
+        setOut.push(mid);
+      }
+      { const t = `${officeWCs} WC CUBICLES ${round(cub)} × ${depth}`, q = P(onSide(r, svc, tAt(115 + officeWCs * cub / 2), depth + 280).x, onSide(r, svc, tAt(115 + officeWCs * cub / 2), depth + 280).y), tw = textWidth(c, t, 10, true); soft(tw, 12, ringCands(q.x, q.y, 20, 16, 3), (x, y) => label(c, t, x, y, 10, 'center', COLORS.text, true)); }
+      const nb = Math.max(1, Math.min(Math.ceil(officeWCs / 2) + 1, Math.floor((L - 600) / 700))), opp = opposite[svc];
+      const wbLen = nb * 700; fx(onSide(r, opp, 0.5, 115), wbLen, 550, q => { hatchBox(c, q, '#efe9df', 45, 10, PEN.thin); }, opp);
+      for (let i = 0; i < nb; i++) { const t = (sideLen(r, opp) / 2 - wbLen / 2 + 350 + i * 700) / sideLen(r, opp); fx(onSide(r, opp, t, 115), 420, 380, q => { c.save(); c.beginPath(); c.ellipse(q.x + q.w / 2, q.y + q.h / 2, q.w / 2 - 4, q.h / 2 - 4, 0, 0, Math.PI * 2); c.fillStyle = '#fff'; c.fill(); c.strokeStyle = COLORS.wall; c.lineWidth = 1.2; c.stroke(); c.restore(); }, opp); }
+      { const t = `WASH COUNTER — ${nb} BASIN${nb > 1 ? 'S' : ''}`, q0 = onSide(r, opp, 0.5, 900), q = P(q0.x, q0.y), tw = textWidth(c, t, 10, true); soft(tw, 12, ringCands(q.x, q.y, 20, 16, 3), (x, y) => label(c, t, x, y, 10, 'center', COLORS.text, true)); }
+      const ft = P(r.x + r.w / 2, r.y + r.d / 2); circle(c, ft.x, ft.y, Math.max(4, 50 * s), '#fff', SVC.drain, 1.4); label(c, 'FT', ft.x + 12, ft.y, 9, 'left', SVC.drain, true);
+    } else if (r.source.type === 'toilet') {
       const w = wetLayout(k, r); svc = w.service; tEnd = w.tEnd;
       const L = sideLen(r, svc), tAt = (mm: number) => (w.tEnd === 0 ? mm / L : 1 - mm / L);
       const wallPt = (mm: number) => onSide(r, svc, tAt(mm), svc === 'front' || svc === 'left' ? 115 : 115);
@@ -1997,12 +2021,22 @@ function wetAreas(k: Context): void {
       if (tw + 4 <= ww * s) label(c, t, X(cx), Y(z0 + hh / 2), 9, 'center', COLORS.text, true);
       else soft(tw, 11, [{ x: X(cx) + ww * s / 2 + 6 + tw / 2, y: Y(z0 + hh / 2) }, { x: X(cx) - ww * s / 2 - 6 - tw / 2, y: Y(z0 + hh / 2) }, { x: X(cx), y: Y(z0 + hh) - 8 }], (x, y) => label(c, t, x, y, 9, 'center', COLORS.text, true));
     };
+    const nWC = Number(/\((\d+) WC/.exec(t0.r.source.name)?.[1] ?? 0);
+    if (nWC > 0) { // office block: cubicle partitions (2100 high, 150 clear of floor) with a WC in each
+      const cub = Math.min(1200, (L - 230) / nWC), cuts: number[] = [0];
+      for (let i = 0; i < nWC; i++) { const a0 = 115 + i * cub, mid = a0 + cub / 2; rect(mid, 0, 380, 400, 'EWC'); rect(mid, 450, 380, 300, ''); cuts.push(a0, a0 + cub);
+        drawRect(c, Math.min(X(a0), X(a0 + cub)), Y(2100), cub * s, 1950 * s, { stroke: COLORS.wall, weight: PEN.medium }); }
+      { const t = `${nWC} CUBICLES — PARTITIONS 2100 HIGH, 150 CLEAR OF FLOOR; CONCEALED CISTERNS`, tw = textWidth(c, t, 10, true); soft(tw, 12, [{ x: Math.min(X(0), X(L)) + tw / 2 + 8, y: Y(Hc) + 16 }], (x, y) => label(c, t, x, y, 10, 'center', COLORS.text, true)); }
+      drawDimensionChain(c, [Y(Hc), Y(2100), Y(150), Y(0)], Math.max(X(0), X(L)), 30, 'vertical', s);
+      drawDimensionChain(c, [...new Set([...cuts, L].map(v => X(v)))].sort((a, b) => a - b), Y(0), 30, 'horizontal', s);
+    } else {
     rect(1250, 0, 380, 400, 'EWC'); rect(1250, 450, 450, 650, 'CISTERN / FLUSH');
     rect(450, 2250, 400, 450, 'GEYSER'); circle(c, X(450), Y(2100), 6, '#fff', SVC.water, 1.4); soft(textWidth(c, 'SHOWER ROSE 2100', 9), 11, [{ x: X(450) + 60, y: Y(2100) + 14 }, { x: X(450) - 60, y: Y(2100) + 14 }], (x, y) => label(c, 'SHOWER ROSE 2100', x, y, 9, 'center', SVC.water)); drawLine(c, X(450), Y(2100), X(450), Y(1090), 1.4, SVC.water);
     rect(450, 1000, 160, 90, 'MIXER 1000'); circle(c, X(1650), Y(600), 5, SVC.water, SVC.water); label(c, 'HF 600', X(1650) + 8, Y(600), 10, 'left', SVC.water);
     if (L >= 2500) { rect(2150, 800, 500, 150, 'WB TOP 800'); rect(2150, 1300, 450, 600, 'MIRROR'); }
     drawDimensionChain(c, [Y(Hc), Y(tileH), Y(0)], Math.max(X(0), X(L)), 30, 'vertical', s);
     drawDimensionChain(c, [X(0), X(450), X(1250), X(1650), ...(L >= 2500 ? [X(2150)] : []), X(L)].sort((a, b) => a - b), Y(0), 30, 'horizontal', s);
+    }
   }
   legend(c, 1290, 780, 'WET-AREA NOTES', [
     `Bath floor sunk 300 mm; waterproofing per ${sheetNumber('waterproofing', 0)}; fall 1:100 to FT.`,
@@ -2355,7 +2389,8 @@ function terracePlan(k: Context): void {
     const hits = (t: number) => !!stB && cx + (p.x - cx) * t > stB.x && cx + (p.x - cx) * t < stB.x + stB.w && cy + (p.y - cy) * t > stB.y && cy + (p.y - cy) * t < stB.y + stB.h;
     if (![0.35, 0.5, 0.65, 0.8].some(hits)) arrow(c, cx + (p.x - cx) * 0.35, cy + (p.y - cy) * 0.35, cx + (p.x - cx) * 0.8, cy + (p.y - cy) * 0.8, COLORS.green);
     circle(c, p.x, p.y, 7, '#fff', '#4b9eb3', 1.5);
-    label(c, 'RWP Ø110', p.x + (r.side === 'left' ? 10 : -10), p.y + (p.y < cy ? 18 : -14), 10, r.side === 'left' ? 'left' : 'right', '#2e7d8f', true);
+    { const tw = textWidth(c, 'RWP Ø110', 10, true), dx = r.side === 'left' ? 10 + tw / 2 : -10 - tw / 2, dy = p.y < cy ? 18 : -14;
+      soft(tw, 12, [{ x: p.x + dx, y: p.y + dy }, { x: p.x + dx, y: p.y - dy }, { x: p.x + dx, y: p.y + dy * 2 }, { x: p.x - dx, y: p.y + dy }, { x: p.x + dx, y: p.y - dy * 2 }], (x, y) => label(c, 'RWP Ø110', x, y, 10, 'center', '#2e7d8f', true)); }
   }
   { const t2 = `TERRACE +${(roofLevelMm(g.floors) / 1000).toFixed(3)}`, w = Math.max(textWidth(c, 'FALL 1:100 TO RWPs', 12, true), textWidth(c, t2, 11));
     soft(w, 34, ringCands(cx, cy, Math.max(60, B.w / 6), Math.max(40, B.h / 6), 2), (x, y) => { label(c, 'FALL 1:100 TO RWPs', x, y - 8, 12, 'center', COLORS.green, true); label(c, t2, x, y + 12, 11, 'center', COLORS.dim); }); }
@@ -3161,6 +3196,8 @@ export interface InteriorPlan {
   roomId: string; roomName: string; roomType: string; floor: number;
   room: Bounds; clear: Bounds; option: number; label: string; keySide?: Side;
   items: PlacedFurniture[]; omitted: string[]; doorZones: Bounds[];
+  /** doors / windows / ventilators on this room's walls: side, extent along it (mm, plan coords), sill and height */
+  openings: { side: Side; a: number; b: number; type: string; sill: number; height: number }[];
 }
 const ovl = (a: Bounds, b: Bounds, gap = 0) => a.x < b.x + b.w + gap && b.x < a.x + a.w + gap && a.y < b.y + b.h + gap && b.y < a.y + a.h + gap;
 const inside = (a: Bounds, b: Bounds) => a.x >= b.x - 1 && a.y >= b.y - 1 && a.x + a.w <= b.x + b.w + 1 && a.y + a.h <= b.y + b.h + 1;
@@ -3263,11 +3300,21 @@ export function planInteriorRoom(layout: Layout, req: ProjectRequirements, roomI
       const b = hz ? { x: p.x - wAlong / 2, y: sgn > 0 ? wallC : wallC - dOut, w: wAlong, h: dOut } : { x: sgn > 0 ? wallC : wallC - dOut, y: p.y - wAlong / 2, w: dOut, h: wAlong };
       items.push(asItem(take(f => new RegExp(name.split(' ')[0], 'i').test(f.name)), name, 'bathroom_fixture', b, 800, side, 'fixture')); occupied.push(b);
     };
-    const sh = at0(450, 450); const shB = { x: sh.x - 450, y: sh.y - 450, w: 900, h: 900 };
-    items.push(asItem(take(f => /shower/i.test(f.name)), 'Shower 900×900', 'bathroom_fixture', shB, 2000, w.service, 'fixture')); occupied.push(shB);
+    const nWC = Number(/\((\d+) WC/.exec(r.source.name)?.[1] ?? 0);
+    if (nWC > 0) { // office toilet block: the same cubicles and wash counter as A-601
+      const cub = Math.min(1200, (L - 230) / nWC);
+      for (let i = 0; i < nWC; i++) fixAt(at0(115 + i * cub + cub / 2, 0), 400, 700, `WC ${i + 1}`, w.service);
+      const opp = opposite[w.service], oppL = sideLen(rc, opp), nb = Math.max(1, Math.min(Math.ceil(nWC / 2) + 1, Math.floor((oppL - 600) / 700)));
+      fixAt(onSide(rc, opp, 0.5, 0), nb * 700, 550, `Wash counter (${nb} basins)`, opp);
+    } else if (!/washroom/i.test(r.source.name)) { // homes: shower at the far end; office washrooms have none
+      const sh = at0(450, 450); const shB = { x: sh.x - 450, y: sh.y - 450, w: 900, h: 900 };
+      items.push(asItem(take(f => /shower/i.test(f.name)), 'Shower 900×900', 'bathroom_fixture', shB, 2000, w.service, 'fixture')); occupied.push(shB);
+    }
+    if (!nWC) {
     fixAt(at0(1250, 0), 400, 700, 'WC', w.service);
     const L2 = L >= 2500; const vanity = take(f => /vanity/i.test(f.name));
     fixAt(L2 ? at0(2150, 0) : onSide(rc, opposite[w.service], 0.5, 0), vanity ? 900 : 600, vanity ? 450 : 450, vanity ? 'Vanity unit' : 'Wash basin', L2 ? w.service : opposite[w.service]);
+    }
   } else if (t === 'kitchen') {
     const kc = kitchenCounter(k, r);
     for (const [s, maxLen] of [[kc.long, 99999], [kc.short, 2400]] as [Side, number][]) {
@@ -3385,7 +3432,9 @@ export function planInteriorRoom(layout: Layout, req: ProjectRequirements, roomI
   // seats drawn with their tables/desks
   for (const ch of furn.filter(f => f.category === 'chair' && !used.has(f))) used.add(ch);
   const label0 = keySide ? `${t === 'hall' || t === 'living' ? 'Sofa' : bed ? 'Bed' : 'Main piece'} on the ${keySide} wall` : 'Standard arrangement';
-  return { roomId, roomName: r.source.name, roomType: t, floor: found.floor, room: { x: r.x, y: r.y, w: r.w, h: r.d }, clear, option, label: label0, keySide, items, omitted, doorZones };
+  const openings = ops.map(({ o, side }) => ({ side, a: Math.min(o.a, o.b), b: Math.max(o.a, o.b), type: o.source.type,
+    sill: o.source.type === 'door' ? 0 : finite(o.source.sillHeightMm, o.source.type === 'ventilator' ? 1800 : 900), height: positive(o.source.heightMm, o.source.type === 'door' ? 2100 : o.source.type === 'ventilator' ? 450 : 1200) }));
+  return { roomId, roomName: r.source.name, roomType: t, floor: found.floor, room: { x: r.x, y: r.y, w: r.w, h: r.d }, clear, option, label: label0, keySide, items, omitted, doorZones, openings };
 }
 /** Up to three genuinely different arrangements: the key piece (bed, else sofa) on a different wall each time, at the
  * position along that wall that leaves room for the most furniture (fewest items that don't fit, then most central). */
@@ -3518,10 +3567,18 @@ function intPoints(k: Context): { lights: Point[]; fans: Point[]; ac: { b: Bound
   const sockets = { push: (v: { p: Point; kind: 'S' | 'P' | 'TV' | 'D' }) => {
     const onH = Math.abs(v.p.y - cl.y) < 100 || Math.abs(v.p.y - cl.y - cl.h) < 100;
     const taken = [...sockets0.map(o => ({ ...o.p, r: 350 })), ...ac.map(a => ({ x: a.b.x + a.b.w / 2, y: a.b.y + a.b.h / 2, r: 700 })), ...(sb ? [{ ...sb, r: 350 }] : [])];
-    for (let n = 0; n < 8 && taken.some(o => Math.hypot(o.x - v.p.x, o.y - v.p.y) < o.r); n++) {
-      const d = (n % 2 ? -1 : 1) * 350 * Math.ceil((n + 1) / 2);
-      v = { ...v, p: onH ? { x: clamp(v.p.x + d, cl.x + 100, cl.x + cl.w - 100), y: v.p.y } : { x: v.p.x, y: clamp(v.p.y + d, cl.y + 100, cl.y + cl.h - 100) } };
+    const clash = (q: Point) => taken.some(o => Math.hypot(o.x - q.x, o.y - q.y) < o.r);
+    if (clash(v.p)) {
+      // nearest free point on any wall (60 mm in from the finish), every 150 mm
+      const cands: Point[] = [];
+      for (let t = 100; t <= cl.w - 100; t += 150) cands.push({ x: cl.x + t, y: cl.y + 60 }, { x: cl.x + t, y: cl.y + cl.h - 60 });
+      for (let t = 100; t <= cl.h - 100; t += 150) cands.push({ x: cl.x + 60, y: cl.y + t }, { x: cl.x + cl.w - 60, y: cl.y + t });
+      const free = cands.filter(q => !clash(q) && !p.doorZones.some(z => q.x > z.x && q.x < z.x + z.w && q.y > z.y && q.y < z.y + z.h))
+        .sort((a2, b2) => Math.hypot(a2.x - v.p.x, a2.y - v.p.y) - Math.hypot(b2.x - v.p.x, b2.y - v.p.y))[0];
+      if (!free) return; // no wall space left: not drawn (the schedule still counts it)
+      v = { ...v, p: free };
     }
+    void onH;
     sockets0.push(v); } };
   const wallPt = (it2: PlacedFurniture, frac: number): Point => it2.side === 'front' ? { x: it2.x + it2.w * frac, y: cl.y + 60 } : it2.side === 'rear' ? { x: it2.x + it2.w * frac, y: cl.y + cl.h - 60 } : it2.side === 'left' ? { x: cl.x + 60, y: it2.y + it2.d * frac } : { x: cl.x + cl.w - 60, y: it2.y + it2.d * frac };
   let nS = ep.sockets, nD = ep.dataPoints;
@@ -3614,7 +3671,7 @@ function intElectrical(k: Context): void {
   if (sbP) { drawRect(c, sbP.x - 9, sbP.y - 6, 18, 12, { fill: COLORS.wall, stroke: COLORS.wall, weight: 1 }); soft(24, 12, ringCands(sbP.x + 20, sbP.y - 12, 14, 12, 2), (x, y) => label(c, 'SB', x, y, 10, 'center', COLORS.text, true)); }
   const cnt = (kd: string) => pts.sockets.filter(s2 => s2.kind === kd).length;
   const rows = [['Switch board (modular)', `${ep?.switches ?? 1}`, '1200', 'at door latch side'], ['Light points', `${ep?.lightPoints ?? pts.lights.length}`, 'ceiling', 'see I-201'], ['Fan points', `${ep?.fanPoints ?? pts.fans.length}`, 'ceiling', ''],
-    ['6A sockets (S / TV)', `${cnt('S') + cnt('TV')}`, '300 / 1100 TV', 'bedside 600'], ['16A power (P)', `${cnt('P')}`, '1100 over counter', ''], ['Data / TV (D)', `${ep?.dataPoints ?? cnt('D')}`, '300', 'Cat6'], ['AC points', `${ep?.acPoints ?? pts.ac.length}`, '2100', '16A + drain']];
+    ['6A sockets (S / TV)', `${ep ? Math.max(0, ep.sockets - cnt('P')) : cnt('S') + cnt('TV')}`, '300 / 1100 TV', 'bedside 600'], ['16A power (P)', `${cnt('P')}`, '1100 over counter', ''], ['Data / TV (D)', `${ep?.dataPoints ?? cnt('D')}`, '300', 'Cat6'], ['AC points', `${ep?.acPoints ?? pts.ac.length}`, '2100', '16A + drain']];
   const y = table(c, 1290, 150, [{ h: 'POINT (= interior BOQ)', w: 200 }, { h: 'QTY', w: 50 }, { h: 'HEIGHT mm', w: 110 }, { h: 'NOTE', w: 140 }], rows, 'ELECTRICAL POINTS', 22);
   legend(c, 1290, y + 34, 'NOTES', ['Curves: switching from the board to each light / fan.', 'Points follow the furniture: bedside, TV wall, desk, counter.', 'FRLS Cu wiring in concealed conduit; circuits on the house DB (E-sheets).', ...intNotes(k).slice(0, 1)]);
   viewTitle(k, `${p.roomName.toUpperCase()} — ELECTRICAL & LIGHTING`, 80, 130);

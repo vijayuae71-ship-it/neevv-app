@@ -21,7 +21,6 @@ import { useAuth } from '@/hooks/useAuth';
 import DrawingUpload from '@/components/DrawingUpload';
 import { OfficeRequirementForm } from '@/components/OfficeRequirementForm';
 import { computeOfficeLayout } from '@/utils/computeOfficeLayout';
-import { OfficeWorkingDrawings } from '@/components/OfficeWorkingDrawings';
 import { OfficeBOQReport } from '@/components/OfficeBOQReport';
 import { RateSheet } from '@/components/RateSheet';
 import { LandingPage } from '@/components/LandingPage';
@@ -444,9 +443,23 @@ export default function HomePage() {
     setStep('interior');
   };
 
+  /** The office brief in the shape the drawing, structure and BOQ engines take. */
+  const officeAsProject = (o: OfficeRequirements): ProjectRequirements => ({
+    city: o.city, state: o.state, plotWidthFt: o.plotWidthFt, plotDepthFt: o.plotDepthFt, facing: o.facing,
+    vastuCompliance: false, parkingType: o.parkingType, budget: o.budget, architecturalStyle: 'modern_minimalist',
+    floors: o.floors.map(f => ({ floorLabel: f.floorLabel, bedrooms: 0, halls: 0, kitchens: 0, hasDining: false, hasPuja: false })),
+  });
+
   const handleOfficeLayoutSelect = (layout: Layout) => {
     setSelectedLayout(layout);
     setMotherLayoutLocked(true);
+    // same engines as a home: structure, bar bending, BOQ — all from the locked plan
+    if (officeRequirements) {
+      const req = officeAsProject(officeRequirements);
+      const engineResult = runStructuralDesign(layout, req);
+      const sr = engineResult?.structuralResult ?? null;
+      setBOQ(sr ? calculateBOQ(layout, customRates?.materials ?? [], req.floors.length, sr, engineResult?.bbsResult ?? undefined, { city: req.city, budget: req.budget }) : calculateBOQ(layout, req.floors.length, customRates));
+    }
     setOfficeStep('drawings');
   };
 
@@ -894,7 +907,7 @@ const BRAND_GREEN = '#4f6f52';
 
           {officeStep === 'drawings' && selectedLayout && officeRequirements && (
             <div>
-              <OfficeWorkingDrawings layout={selectedLayout} officeReq={officeRequirements} />
+              <WorkingDrawings layout={selectedLayout} requirements={officeAsProject(officeRequirements)} boq={boq} structuralResult={structuralResult} bbsResult={bbsResult} />
               <div className="p-4 text-center border-t border-gray-200 bg-gray-50">
                 <button
                   className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors font-medium"
@@ -907,32 +920,18 @@ const BRAND_GREEN = '#4f6f52';
           )}
 
           {officeStep === 'interior' && selectedLayout && officeRequirements && (
-            <InteriorDesign
-              layout={selectedLayout}
-              requirements={{
-                city: officeRequirements.city,
-                state: officeRequirements.state,
-                plotWidthFt: officeRequirements.plotWidthFt,
-                plotDepthFt: officeRequirements.plotDepthFt,
-                facing: officeRequirements.facing,
-                vastuCompliance: false,
-                parkingType: officeRequirements.parkingType,
-                budget: officeRequirements.budget,
-                architecturalStyle: 'modern_minimalist',
-                floors: officeRequirements.floors.map(f => ({
-                  floorLabel: f.floorLabel,
-                  bedrooms: 0,
-                  halls: 0,
-                  kitchens: 0,
-                  hasDining: false,
-                  hasPuja: false,
-                })),
-              }}
-            />
+            <InteriorDesign layout={selectedLayout} requirements={officeAsProject(officeRequirements)} />
           )}
 
           {officeStep === 'boq' && selectedLayout && officeRequirements && (
-            <OfficeBOQReport layout={selectedLayout} officeReq={officeRequirements} />
+            <div>
+              {boq && <>
+                <div className="px-4 pt-4 text-sm font-semibold text-gray-700">Building construction BOQ — quantities from the drawings (structure, masonry, finishes, MEP)</div>
+                <BOQReport boq={boq} layout={selectedLayout} />
+              </>}
+              <div className="px-4 pt-6 text-sm font-semibold text-gray-700 border-t border-gray-200 mt-4">Office fit-out estimate — furniture, partitions, HVAC, data, fire safety, signage (in addition to construction)</div>
+              <OfficeBOQReport layout={selectedLayout} officeReq={officeRequirements} />
+            </div>
           )}
         </div>
       </div>

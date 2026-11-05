@@ -410,10 +410,10 @@ function validateLockedDesign(ctx: Ctx, idGen: () => string): CategoryResult {
   // 2. Building footprint matches post-setback calculation (within 0.1m)
   const expectedBuildableWidth = layout.plotWidthM - (layout.setbacks.left + layout.setbacks.right);
   const expectedBuildableDepth = layout.plotDepthM - (layout.setbacks.front + layout.setbacks.rear);
-  if (
-    Math.abs(expectedBuildableWidth - layout.buildableWidthM) <= 0.1 &&
-    Math.abs(expectedBuildableDepth - layout.buildableDepthM) <= 0.1
-  ) {
+  // the building must sit inside the setback envelope; it may be smaller where coverage caps it (offices)
+  const coverageCapped = typeof layout.nbcMaxCoveragePct === 'number';
+  const fitsEnvelope = (want: number, got: number) => (coverageCapped ? got <= want + 0.1 : Math.abs(want - got) <= 0.1);
+  if (fitsEnvelope(expectedBuildableWidth, layout.buildableWidthM) && fitsEnvelope(expectedBuildableDepth, layout.buildableDepthM)) {
     b.pass();
   } else {
     b.fail(
@@ -443,17 +443,18 @@ function validateLockedDesign(ctx: Ctx, idGen: () => string): CategoryResult {
   // 4. FSI compliance: total built-up <= plot area x 1.0
   const plotAreaSqM = layout.plotWidthM * layout.plotDepthM;
   const totalBuiltUpSqM = layout.totalBuiltUpSqM ?? layout.builtUpAreaSqM;
-  const maxAllowedSqM = plotAreaSqM * 1.0;
+  const fsi = typeof layout.fsiValue === 'number' && layout.fsiValue > 0 ? layout.fsiValue : 1.0;
+  const maxAllowedSqM = plotAreaSqM * fsi;
   if (totalBuiltUpSqM <= maxAllowedSqM * 1.01) {
     b.pass();
   } else {
     b.fail(
       'ERROR', 'FSI exceeded',
-      'Total built-up area exceeds the permissible Floor Space Index of 1.0 for the plot area.',
+      `Total built-up area exceeds the permissible Floor Space Index of ${fsi} for the plot area.`,
       'Locked Design Data', 'Floor Space Index (FSI)',
       `<= ${maxAllowedSqM.toFixed(2)} sqm`,
       `${totalBuiltUpSqM.toFixed(2)} sqm`,
-      'Reduce built-up area per floor or floor count to comply with FSI 1.0.',
+      `Reduce built-up area per floor or floor count to comply with FSI ${fsi}.`,
     );
   }
 
@@ -466,13 +467,16 @@ function validateLockedDesign(ctx: Ctx, idGen: () => string): CategoryResult {
   if (setbackIssues.length === 0) {
     b.pass();
   } else {
+    // the customer's own drawing is reported, not blocked: their sanction may allow it
+    const uploaded = layout.strategy === 'User Uploaded Drawing';
     b.fail(
-      'ERROR', 'Setbacks below NBC minimums',
-      'One or more setbacks are below the National Building Code minimums (front/rear 1.5m, sides 1.0m).',
+      uploaded ? 'WARNING' : 'ERROR', 'Setbacks below NBC minimums',
+      uploaded ? 'The setbacks on your drawing are below the National Building Code minimums (front/rear 1.5m, sides 1.0m). Check them against your sanctioned plan / local bylaws.'
+        : 'One or more setbacks are below the National Building Code minimums (front/rear 1.5m, sides 1.0m).',
       'Locked Design Data', 'Setbacks',
       'front/rear >= 1.5m, left/right >= 1.0m',
       setbackIssues.join('; '),
-      'Increase the deficient setback(s) to meet NBC minimums.',
+      uploaded ? 'Confirm the sanctioned setbacks with your local authority before construction.' : 'Increase the deficient setback(s) to meet NBC minimums.',
     );
   }
 

@@ -53,7 +53,7 @@ steps:
       - '--port'
       - '8080'
       - '--set-env-vars'
-      - 'NODE_ENV=production,GEMINI_API_KEY=${_GEMINI_API_KEY}'
+      - 'NODE_ENV=production,GEMINI_API_KEY=${_GEMINI_API_KEY},ANTHROPIC_API_KEY=${_ANTHROPIC_API_KEY}'
 
   # Step 4: Deploy Firebase Hosting (clean URL → Cloud Run)
   - name: 'node:18'
@@ -78,6 +78,7 @@ steps:
 substitutions:
   # Set both in the Cloud Build trigger (never commit their values):
   _GEMINI_API_KEY: ''
+  _ANTHROPIC_API_KEY: ''
   _BUILD_WEBHOOK_URL: ''
 
 images:

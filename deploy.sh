@@ -50,6 +50,7 @@ gcloud run deploy $SERVICE_NAME \
   --port 8080 \
   --set-env-vars "NODE_ENV=production" \
   --set-env-vars "GEMINI_API_KEY=${GEMINI_API_KEY:?ERROR: GEMINI_API_KEY must be set. Use Secret Manager or export it before running.}" \
+  --set-env-vars "ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:?ERROR: ANTHROPIC_API_KEY must be set (used to read uploaded drawings).}" \
   --set-env-vars "GCP_PROJECT_ID=${PROJECT_ID}" \
   --set-env-vars "GCS_BUCKET_NAME=neevv-renders" \
   --set-env-vars "NEXT_PUBLIC_FIREBASE_PROJECT_ID=${PROJECT_ID}" \
