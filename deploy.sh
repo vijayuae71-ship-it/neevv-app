@@ -10,7 +10,7 @@ echo ""
 
 PROJECT_ID="neev-491312"
 REGION="asia-south1"
-SERVICE_NAME="neevv-app"
+SERVICE_NAME="${SERVICE_NAME:-neevv-app}"   # SERVICE_NAME=neevv-app-staging ./deploy.sh for a staging copy
 IMAGE="gcr.io/$PROJECT_ID/$SERVICE_NAME"
 
 # Step 1: Set project
