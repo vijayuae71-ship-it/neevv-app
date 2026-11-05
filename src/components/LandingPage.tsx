@@ -5,7 +5,7 @@ import {
   ArrowRight, ShieldCheck, ChevronLeft, ChevronRight,
   CheckCircle2, HardHat, Upload, Clock, Play,
 } from 'lucide-react';
-import { BRAND_LOGO_BASE64 } from '@/utils/brand';
+import { BRAND_LOGO_URL } from '@/utils/brand';
 
 /* Scroll-reveal */
 function useRevealOnScroll() {
@@ -140,7 +140,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
       <header className="sticky top-0 z-50 backdrop-blur-md bg-white/90 border-b border-gray-100">
         <div className="max-w-7xl mx-auto px-5 md:px-10 h-14 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <img src={BRAND_LOGO_BASE64} alt="neevv" className="h-8" />
+            <img src={BRAND_LOGO_URL} alt="neevv" className="h-8" />
             <div className="h-6 w-px bg-gray-200 hidden sm:block" />
             <span className="text-xs tracking-wide uppercase hidden sm:inline" style={{ color: BRAND }}>
               Architecture • Structure • MEP • Interiors
@@ -464,7 +464,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
       <footer className="py-8 border-t border-gray-200 bg-white">
         <div className="max-w-6xl mx-auto px-5 md:px-10 flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <img src={BRAND_LOGO_BASE64} alt="neevv" className="h-8" />
+            <img src={BRAND_LOGO_URL} alt="neevv" className="h-8" />
             <span className="text-xs text-gray-300">|</span>
             <span className="text-xs text-gray-400">Architecture • Structure • MEP • Interiors</span>
           </div>

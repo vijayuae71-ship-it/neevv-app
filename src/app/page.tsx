@@ -16,7 +16,7 @@ import { generateLayoutsDetailed, requirementsForLayout } from '@/utils/layoutGe
 import { buildSingleRoom, type Wall } from '@/utils/singleRoom';
 import type { PlannerSummary } from '@/components/LayoutSelector';
 import { calculateBOQ } from '@/utils/boqCalculator';
-import { BRAND_LOGO_BASE64 } from '@/utils/brand';
+import { BRAND_LOGO_URL } from '@/utils/brand';
 import { useAuth } from '@/hooks/useAuth';
 import DrawingUpload from '@/components/DrawingUpload';
 import { OfficeRequirementForm } from '@/components/OfficeRequirementForm';
@@ -476,7 +476,7 @@ export default function HomePage() {
       return (
         <nav className="fixed top-0 left-0 right-0 z-50 px-4 md:px-8 py-3 flex items-center justify-between shrink-0" style={{ backgroundColor: '#fff', borderBottom: '1px solid #e5e5e5' }}>
           <div className="flex items-center gap-3">
-            <img src={BRAND_LOGO_BASE64} alt="neevv" className="h-8" />
+            <img src={BRAND_LOGO_URL} alt="neevv" className="h-8" />
             <div className="h-6 w-px" style={{ backgroundColor: '#e5e5e5' }} />
             <span className="text-xs tracking-wide uppercase hidden sm:inline" style={{ color: '#4f6f52' }}>
               Architecture • Structure • MEP • Interiors
@@ -503,7 +503,7 @@ export default function HomePage() {
             title="Back to Home"
           >
             <span className="text-gray-400 text-lg">←</span>
-            <img src={BRAND_LOGO_BASE64} alt="neevv" className="h-8" />
+            <img src={BRAND_LOGO_URL} alt="neevv" className="h-8" />
           </button>
           <div className="h-6 w-px bg-gray-300 hidden sm:block" />
           <span className="text-xs opacity-80 tracking-wide uppercase hidden sm:inline">

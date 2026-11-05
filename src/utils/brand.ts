@@ -18,3 +18,6 @@ export function getTitleBlockBrand(x: number, y: number, blockW: number): string
     <image href="${BRAND_LOGO_BASE64}" x="${logoX}" y="${logoY}" width="${logoW}" opacity="0.35" />
   `;
 }
+
+/** The same logo as a static file (use for <img>; keeps the page HTML light). */
+export const BRAND_LOGO_URL = '/brand-logo.png';

@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { authFetch } from '@/utils/authFetch';
 import { Layout, ProjectRequirements, BOQ } from '@/types';
-import { BRAND_LOGO_BASE64 } from '@/utils/brand';
+import { BRAND_LOGO_URL } from '@/utils/brand';
 import {
   Home,
   Building2,
@@ -278,7 +278,7 @@ export function Dashboard({ onNewProject, onOpenProject }: DashboardProps) {
       {/* Header */}
       <div style={styles.header}>
         <div style={styles.headerLeft}>
-          <img src={BRAND_LOGO_BASE64} alt="neevv" style={styles.logo} />
+          <img src={BRAND_LOGO_URL} alt="neevv" style={styles.logo} />
         </div>
         <div style={styles.headerCenter}>
           <LayoutDashboard size={22} color={BRAND_GREEN} />

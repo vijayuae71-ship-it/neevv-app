@@ -4,7 +4,7 @@ import { FormEvent, useState } from 'react';
 import Link from 'next/link';
 import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import { auth, db, ensureAuth } from '@/lib/firebase';
-import { BRAND_LOGO_BASE64 } from '@/utils/brand';
+import { BRAND_LOGO_URL } from '@/utils/brand';
 
 type Profession = 'Contractor' | 'Interior Designer' | 'Architect' | 'Home Owner' | 'Other' | '';
 type Price = 'Free only' | '₹499/month' | '₹999/month' | '₹1,999/month' | '';
@@ -54,7 +54,7 @@ export default function FeedbackPage() {
     return (
       <main className="min-h-screen bg-[#f5f5f5] px-4 py-10 sm:py-16">
         <div className="mx-auto flex max-w-lg flex-col items-center rounded-2xl bg-white px-6 py-12 text-center shadow-sm sm:px-10">
-          <img src={BRAND_LOGO_BASE64} alt="neevv" className="mb-10 h-10 w-auto object-contain" />
+          <img src={BRAND_LOGO_URL} alt="neevv" className="mb-10 h-10 w-auto object-contain" />
           <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-full bg-[#e8f0e8] text-3xl text-[#4f6f52]" aria-hidden="true">✓</div>
           <h1 className="text-2xl font-semibold text-gray-900">Thank you for your feedback!</h1>
           <p className="mt-3 text-gray-600">Your input helps us make neevv better for you.</p>
@@ -68,7 +68,7 @@ export default function FeedbackPage() {
     <main className="min-h-screen bg-[#f5f5f5] px-4 py-8 sm:py-12">
       <div className="mx-auto max-w-lg rounded-2xl bg-white px-5 py-7 shadow-sm sm:px-9 sm:py-9">
         <div className="mb-8 text-center">
-          <img src={BRAND_LOGO_BASE64} alt="neevv" className="mx-auto mb-7 h-10 w-auto object-contain" />
+          <img src={BRAND_LOGO_URL} alt="neevv" className="mx-auto mb-7 h-10 w-auto object-contain" />
           <h1 className="text-2xl font-semibold tracking-tight text-gray-900 sm:text-3xl">We&apos;d love your feedback</h1>
           <p className="mt-2 text-sm text-gray-600">Help us build a better tool for you — takes 30 seconds</p>
         </div>
