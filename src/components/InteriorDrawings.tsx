@@ -5,6 +5,7 @@ import { Layout, ProjectRequirements, RoomInterior } from '../types';
 import { Download, AlertTriangle, FileDown, Loader2 } from 'lucide-react';
 import { generateProgrammaticDrawing, interiorOptions, sheetNumber } from '@/utils/drawingEngine';
 import Room3D from './Room3D';
+import { interiorSheets, downloadVectorPDF, downloadCADSet } from '@/utils/drawingSetExport';
 
 /**
  * Interior sheets for each room, drawn in code from the locked plan and the customer's selection
@@ -46,15 +47,13 @@ const InteriorDrawings: React.FC<Props> = ({ layout, rooms, requirements }) => {
   const fileName = (type: string) => `neevv-${sheetNumber(type, 0)}-${(room?.name || 'room').replace(/\W+/g, '-')}.png`;
   const download = (uri: string, name: string) => { const a = document.createElement('a'); a.href = uri; a.download = name; document.body.appendChild(a); a.click(); a.remove(); };
 
-  /** All six sheets of the selected room on A3 pages, printed (or saved as PDF) by the browser. */
-  const downloadSet = () => {
+  /** All six sheets of the selected room as a vector PDF, or as CAD (one DXF per sheet). */
+  const downloadSet = async (kind: 'pdf' | 'cad') => {
     setBusy(true);
     try {
-      const imgs = SHEETS.map(s => render(s.key).uri).filter(Boolean);
-      const w = window.open('', '_blank'); if (!w) return;
-      const title = `neevv interior — ${room?.name ?? 'room'}`;
-      w.document.write(`<!doctype html><html><head><title>${title.replace(/</g, '')}</title><style>@page{size:A3 landscape;margin:0}body{margin:0}img{width:420mm;height:297mm;display:block;page-break-after:always}</style></head><body>${imgs.map(u => `<img src="${u}">`).join('')}</body></html>`);
-      w.document.close(); w.onload = () => { w.focus(); w.print(); };
+      await new Promise(r => setTimeout(r, 30));
+      const sheets = interiorSheets(layout, requirements, roomId, interior, option), name = `neevv-interior-${room?.name || 'room'}`;
+      if (kind === 'pdf') await downloadVectorPDF(sheets, name, `${room?.name ?? 'Room'} — interior drawings`); else downloadCADSet(sheets, name);
     } finally { setBusy(false); }
   };
 
@@ -80,8 +79,10 @@ const InteriorDrawings: React.FC<Props> = ({ layout, rooms, requirements }) => {
     <div className="flex items-center gap-2">
       <button onClick={() => current.uri && download(current.uri, fileName(sheet))} disabled={!current.uri || sheet === '3d'}
         className="border border-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-100 disabled:opacity-50 flex items-center gap-2 text-sm"><Download size={14} /> This sheet (PNG)</button>
-      <button onClick={downloadSet} disabled={busy}
-        className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-60 flex items-center gap-2 text-sm">{busy ? <Loader2 size={14} className="animate-spin" /> : <FileDown size={14} />} All 6 sheets (print / PDF)</button>
+      <button onClick={() => downloadSet('pdf')} disabled={busy}
+        className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-60 flex items-center gap-2 text-sm">{busy ? <Loader2 size={14} className="animate-spin" /> : <FileDown size={14} />} All 6 sheets — vector PDF</button>
+      <button onClick={() => downloadSet('cad')} disabled={busy}
+        className="border border-blue-600 text-blue-700 px-4 py-2 rounded-lg hover:bg-blue-50 disabled:opacity-60 flex items-center gap-2 text-sm"><FileDown size={14} /> CAD (DXF → DWG)</button>
     </div>
 
     {current.error && <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-2 flex items-center gap-2"><AlertTriangle size={16} className="text-red-600" /><span className="text-sm text-red-800">{current.error}</span></div>}

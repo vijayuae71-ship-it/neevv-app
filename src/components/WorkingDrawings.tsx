@@ -15,6 +15,7 @@ import { authFetch } from '@/utils/authFetch';
 import { getCachedDrawing, setCachedDrawing, getAllCachedDrawings, clearCachedDrawings, migrateFromLocalStorage } from '../utils/drawingCache';
 import { buildDrawingPrompt, DrawingType as ApiDrawingType, StructuralPromptData } from '../utils/drawingPrompts';
 import { generateProgrammaticDrawing, PROGRAMMATIC_TYPES } from '../utils/drawingEngine';
+import { buildingSheets, downloadVectorPDF, downloadCADSet } from '../utils/drawingSetExport';
 
 interface Props {
   onDrawingGenerated?: (drawingType: string) => void;
@@ -349,6 +350,21 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq, on
     }
   };
 
+  /* ---------- Vector PDF and CAD (DXF) of the whole set, straight from the engine ---------- */
+  const [vecBusy, setVecBusy] = useState<null | 'pdf' | 'cad'>(null);
+  const exportVector = async (kind: 'pdf' | 'cad') => {
+    setVecBusy(kind); setExportError(null);
+    try {
+      await new Promise(r => setTimeout(r, 30)); // let the button show its busy state
+      const sheets = buildingSheets(layout, requirements, mergedStructuralData, boq || null);
+      const name = `neevv-${requirements.plotWidthFt}x${requirements.plotDepthFt}-${layout.name || 'plan'}`;
+      if (kind === 'pdf') await downloadVectorPDF(sheets, name, `${layout.name || 'neevv'} — working drawings`);
+      else downloadCADSet(sheets, name);
+    } catch (e: unknown) {
+      setExportError(e instanceof Error ? e.message : 'Export failed');
+    } finally { setVecBusy(null); }
+  };
+
   /* ---------- Download single image ---------- */
   const downloadImage = (drawingType: DrawingType) => {
     const cacheKey = getCacheKey(drawingType, selectedFloor);
@@ -548,7 +564,15 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq, on
           onClick={handleExportPDF}
           disabled={exporting || generatedCount === 0}
         >
-          <Download size={12} /> {exporting ? 'Exporting...' : 'Download PDF'}
+          <Download size={12} /> {exporting ? 'Exporting...' : 'PDF (images)'}
+        </button>
+        <button className={`btn btn-xs gap-1 ${vecBusy ? 'btn-disabled' : 'btn-primary'}`} onClick={() => exportVector('pdf')} disabled={!!vecBusy}
+          title="Every sheet as a sharp vector PDF (A3) — zoom without blur, print to scale">
+          {vecBusy === 'pdf' ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />} Vector PDF
+        </button>
+        <button className={`btn btn-xs gap-1 ${vecBusy ? 'btn-disabled' : 'btn-outline'}`} onClick={() => exportVector('cad')} disabled={!!vecBusy}
+          title="One DXF per sheet in a ZIP — opens in AutoCAD, BricsCAD, LibreCAD; Save As DWG in AutoCAD">
+          {vecBusy === 'cad' ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />} CAD (DXF → DWG)
         </button>
       </div>
 

@@ -3,6 +3,7 @@
 import type { Layout, Room, ProjectRequirements, BOQ, Column, Setbacks, LayoutOpening, RoomInterior, FurnitureItem } from '../types';
 import { planCircuits, circuitDemand, ASSUMED_FOUNDING_DEPTH_M, PARAPET_HEIGHT_MM, ELEC_KINDS, electricalBreakdown, electricalPoints, fixturesFor, fixtureTotals, isNiche, WALL_EXTERNAL_MM, WALL_INTERNAL_MM } from './quantityRules';
 import { COMPOUND_WALL_HEIGHT_MM, COMPOUND_WALL_THICKNESS_MM, FLOOR_TO_FLOOR_MM, PLINTH_HEIGHT_MM, STAIR_HEAD_ROOM_MM, floorLevelMm, gateCentreM, gateWidthM, mainDoorCentreM, ohtPlacement, ohtTanks, rainwaterPipes, roofLevelMm, sumpPlacement, sumpSizeM, waterStorage } from './buildingModel';
+import { VectorContext, type VectorSheet } from './vectorCanvas';
 import { computeTakeoff, bathWallTileSqM, kitchenCounterRmt, KITCHEN_DADO_HEIGHT_M, type Takeoff } from './quantityTakeoff';
 
 /**
@@ -3775,6 +3776,16 @@ function intWoodwork(k: Context): void {
   viewTitle(k, `${p.roomName.toUpperCase()} — WOODWORK DETAILS`, 80, 130);
 }
 
+/* ── vector output: the same sheet drawn into a recording context (for vector PDF and CAD export) ── */
+let VECTOR_TARGET: VectorContext | null = null;
+/** Same arguments as generateProgrammaticDrawing; returns the sheet as vector data instead of a PNG. */
+export function generateVectorDrawing(...args: Parameters<typeof generateProgrammaticDrawing>): VectorSheet {
+  const v = new VectorContext(SHEET_W, SHEET_H);
+  VECTOR_TARGET = v;
+  try { generateProgrammaticDrawing(...args); } finally { VECTOR_TARGET = null; }
+  const type = args[0], floor = args[5], ff = floor === 'FF' ? 1 : 0;
+  return v.sheet({ title: titleFor[type as DrawingType], sheetNo: sheetNumber(type, ff) });
+}
 /** Drawing types that have programmatic (non-AI) renderers. */
 export const PROGRAMMATIC_TYPES = [
   'excavation', 'column_layout', 'footing_detail', 'beam_slab',
@@ -3794,8 +3805,8 @@ export function generateProgrammaticDrawing(
 ): string {
   if (typeof document === 'undefined') throw new Error('Canvas drawing requires a browser document.');
   SYM_SCALE = 1;
-  const canvas = document.createElement('canvas'); canvas.width = SHEET_W; canvas.height = SHEET_H;
-  const c = canvas.getContext('2d');
+  const canvas = VECTOR_TARGET ? null : document.createElement('canvas'); if (canvas) { canvas.width = SHEET_W; canvas.height = SHEET_H; }
+  const c = VECTOR_TARGET ? (VECTOR_TARGET as unknown as CanvasRenderingContext2D) : canvas!.getContext('2d');
   if (!c) throw new Error('Unable to obtain Canvas 2D context.');
   const data = obj(structuralResult as unknown);
   const g = makeGeometry(layout, requirements, data);
@@ -3872,6 +3883,6 @@ export function generateProgrammaticDrawing(
   }
   a.checks.push({ item: 'No overlapping text', status: clashes.length ? 'WARNING' : 'PASS', detail: clashes.length ? `${clashes.length}: ${clashes.slice(0, 6).join('; ')}` : `${L.length} labels clear` });
   DRAFTING_AUDIT[`${drawing}-${level === 0 ? 'GF' : 'FF'}`] = a.checks;
-  return canvas.toDataURL('image/png');
+  return canvas ? canvas.toDataURL('image/png') : '';
   } finally { AUDIT = null; SOFT = null; }
 }
