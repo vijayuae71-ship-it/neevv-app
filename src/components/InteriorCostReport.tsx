@@ -1,11 +1,16 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
-import { InteriorDesignData, RoomInterior } from '../types';
+import { InteriorDesignData, RoomInterior, Layout } from '../types';
+import MaterialListTable from './MaterialListTable';
+import { interiorMaterialList } from '@/utils/materialList';
 
 interface Props {
   data: InteriorDesignData;
   rooms: RoomInterior[];
+  /** with the plan and the clear room sizes, the Materials tab shows the full purchase list */
+  layout?: Layout;
+  clear?: Record<string, { width: number; depth: number }>;
 }
 
 const formatCurrency = (v: number): string =>
@@ -541,7 +546,7 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: 'materials', label: '📦 Materials' },
 ];
 
-export default function InteriorCostReport({ data, rooms }: Props) {
+export default function InteriorCostReport({ data, rooms, layout, clear }: Props) {
   const [activeTab, setActiveTab] = useState<TabKey>('summary');
 
   if (!data || !data.boqItems) {
@@ -574,7 +579,9 @@ export default function InteriorCostReport({ data, rooms }: Props) {
         {activeTab === 'summary' && <CostSummaryTab data={data} />}
         {activeTab === 'rooms' && <RoomBreakdownTab data={data} rooms={rooms} />}
         {activeTab === 'categories' && <CategoryDetailsTab data={data} />}
-        {activeTab === 'materials' && <MaterialScheduleTab data={data} rooms={rooms} />}
+        {activeTab === 'materials' && (layout
+          ? <MaterialListTable lines={interiorMaterialList(rooms, layout, clear)} title="Material list — interiors" compareTotal={data.totalCost} compareLabel="Interior BOQ total" fileName="neevv-interior-materials" />
+          : <MaterialScheduleTab data={data} rooms={rooms} />)}
       </div>
     </div>
   );

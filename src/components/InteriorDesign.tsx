@@ -22,11 +22,12 @@ export const InteriorDesign: React.FC<Props> = ({ layout, requirements }) => {
   const [rooms, setRooms] = useState<RoomInterior[] | null>(null);
   const [activeTab, setActiveTab] = useState<InteriorTab>('moodboard');
 
+  const clearDims = useMemo(() => roomClearM(layout, requirements), [layout, requirements]);
   const interiorData = useMemo<InteriorDesignData | null>(() => {
     if (!rooms) return null;
     // quantities on the finished (clear) room size — the same figures the interior sheets show
-    return generateInteriorDesign(rooms, layout, roomClearM(layout, requirements));
-  }, [rooms, layout, requirements]);
+    return generateInteriorDesign(rooms, layout, clearDims);
+  }, [rooms, layout, clearDims]);
 
   const handleMoodBoardComplete = (configuredRooms: RoomInterior[]) => {
     setRooms(configuredRooms);
@@ -100,7 +101,7 @@ export const InteriorDesign: React.FC<Props> = ({ layout, requirements }) => {
           <InteriorMoodBoard layout={layout} onComplete={handleMoodBoardComplete} />
         )}
         {activeTab === 'drawings' && (
-          <InteriorDrawings layout={layout} rooms={rooms} requirements={requirements} />
+          <InteriorDrawings layout={layout} rooms={rooms} requirements={requirements} onRoomChange={(next) => setRooms(prev => (prev ?? []).map(r => (r.roomId === next.roomId ? next : r)))} />
         )}
         {activeTab === 'ai_renders' && (() => {
           const selectionsMap: Record<string, RoomInterior> = {};
@@ -119,7 +120,7 @@ export const InteriorDesign: React.FC<Props> = ({ layout, requirements }) => {
           <InteriorTimeline phases={interiorData.executionPlan} totalDays={interiorData.totalDurationDays} />
         )}
         {activeTab === 'cost' && interiorData && (
-          <InteriorCostReport data={interiorData} rooms={rooms} />
+          <InteriorCostReport data={interiorData} rooms={rooms} layout={layout} clear={clearDims} />
         )}
       </div>
     </div>

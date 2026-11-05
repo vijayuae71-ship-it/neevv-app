@@ -1003,7 +1003,7 @@ const BRAND_GREEN = '#4f6f52';
               />
             )}
             {step === 'boq' && boq && selectedLayout && (
-              <BOQReport boq={boq} layout={selectedLayout} statusBadge={statusBadge} />
+              <BOQReport boq={boq} layout={selectedLayout} statusBadge={statusBadge} steelByDia={(bbsResult as unknown as { summary?: { byDiameter?: { diaMm: number; totalWeightKg: number }[] } } | null)?.summary?.byDiameter} />
             )}
             {step === 'verification' && selectedLayout && requirements && (
               <VerificationReport layout={selectedLayout} requirements={requirements} boq={boq} generatedDrawingTypes={generatedDrawingTypes} onValidationResult={handleValidationResult} />

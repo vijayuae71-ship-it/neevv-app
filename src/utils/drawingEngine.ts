@@ -6,6 +6,7 @@ import { COMPOUND_WALL_HEIGHT_MM, COMPOUND_WALL_THICKNESS_MM, FLOOR_TO_FLOOR_MM,
 import { VectorContext, type VectorSheet } from './vectorCanvas';
 import { officeServices, isOfficeLayout, type ServicePoint } from './officeServices';
 import { getDefaultFurniture, mapRoomTypeToFinish } from './interiorTemplates';
+import { wallTileBand, floorModule, skirtingMm } from './interiorSpecs';
 import { computeTakeoff, bathWallTileSqM, kitchenCounterRmt, KITCHEN_DADO_HEIGHT_M, type Takeoff } from './quantityTakeoff';
 
 /**
@@ -3497,6 +3498,13 @@ function roomFrame(k: Context, target: Bounds = { x: 60, y: 150, w: 1200, h: 107
   c.restore();
   return G;
 }
+/** The room's finish spec: the customer's selection, or its room type's defaults when there is none. */
+function intSpec(k: Context): RoomInterior {
+  const it = k.int!.interior;
+  if (it) return it;
+  const t = k.int!.plan.roomType;
+  return { roomType: t === 'toilet' ? 'bathroom' : t === 'kitchen' ? 'kitchen' : 'bedroom', ceilingHeight: 2700, flooring: { name: '', finish: '' }, wallFinish: { name: '' } } as unknown as RoomInterior;
+}
 function intRoom(k: Context): ModelRoom { const p = k.int!.plan; return (k.g.rooms[k.level] ?? []).find(r => r.source.id === p.roomId)!; }
 const shortName = (n: string) => n.replace(/\s*[—–-]\s.*$/, '').replace(/\s*\(.*?\)\s*/g, ' ').trim();
 /** Furniture / fixture symbol. light = grey context on services sheets. */
@@ -3688,9 +3696,8 @@ function intElectrical(k: Context): void {
 /* I-401 flooring */
 function intFlooring(k: Context): void {
   const c = k.c, p = k.int!.plan, it = k.int!.interior; roomFrame(k);
-  const fl = it?.flooring, txt = `${fl?.name ?? ''} ${fl?.finish ?? ''}`, m = /(\d{3,4})\s*[x×]\s*(\d{2,4})/.exec(txt);
-  const wood = /wood|laminate|plank|vinyl/i.test(txt);
-  const tw = m ? Number(m[1]) : wood ? 1200 : 600, th = m ? Number(m[2]) : wood ? 200 : 600;
+  const fl = it?.flooring, spec = intSpec(k), mod = floorModule(spec), m = !!spec.floorTileSize || /(\d{3,4})\s*[x×]\s*(\d{2,4})/.test(`${fl?.name ?? ''} ${fl?.finish ?? ''}`);
+  const tw = mod.w, th = mod.h, skirt = skirtingMm(spec), band = wallTileBand(spec);
   const B = box(k, p.clear), s = k.scale, cx = p.clear.x + p.clear.w / 2, cy = p.clear.y + p.clear.h / 2;
   c.save(); c.beginPath(); c.rect(B.x, B.y, B.w, B.h); c.clip(); c.fillStyle = '#fbfaf7'; c.fillRect(B.x, B.y, B.w, B.h);
   for (let x = cx - Math.ceil(p.clear.w / 2 / tw + 1) * tw; x <= p.clear.x + p.clear.w; x += tw) { const q = at(k, x, 0).x; drawLine(c, q, B.y, q, B.y + B.h, PEN.hair, '#b8b1a5'); }
@@ -3705,14 +3712,18 @@ function intFlooring(k: Context): void {
   const areaSqft = p.clear.w * p.clear.h / 1e6 * 10.7639, perimFt = 2 * (p.clear.w + p.clear.h) / 1000 * 3.28084;
   const y = table(c, 1290, 150, [{ h: 'ITEM', w: 230 }, { h: 'VALUE', w: 230 }], [
     ['Material', (fl?.name ?? '—').slice(0, 36)], ['Finish', (fl?.finish ?? '—').slice(0, 36)], ['Module', `${tw} × ${th} mm${m ? '' : ' (typical)'}`],
-    ['Floor area (= BOQ)', `${areaSqft.toFixed(1)} sqft`], ['Skirting (= BOQ)', `${perimFt.toFixed(1)} rft, 100 mm`], ['Clear floor', `${round(p.clear.w)} × ${round(p.clear.h)} mm`], ['Wastage allowance', '5–8% (cutting)']], 'FLOORING SCHEDULE', 22);
-  legend(c, 1290, y + 34, 'NOTES', ['Lay from the room centre lines (green); cut pieces ≥ half a module at walls.', 'Granite threshold at every door (grey strip).', 'Skirting brown line; 3 mm joints, epoxy grout in wet zones.', ...intNotes(k).slice(0, 1)]);
+    ['Floor area (= BOQ)', `${areaSqft.toFixed(1)} sqft`], ['Skirting (= BOQ)', skirt > 0 ? `${perimFt.toFixed(1)} rft, ${skirt} mm` : 'none — walls tiled to floor'],
+    ['Wall tiles', band ? (band.full ? 'full height' : `${band.fromMm ? `${band.fromMm}–` : 'to '}${band.toMm} mm`) : 'none'], ['Clear floor', `${round(p.clear.w)} × ${round(p.clear.h)} mm`], ['Wastage allowance', '5–8% (cutting)']], 'FLOORING SCHEDULE', 22);
+  legend(c, 1290, y + 34, 'NOTES', ['Lay from the room centre lines (green); cut pieces ≥ half a module at walls.', 'Granite threshold at every door (grey strip).', `${skirt > 0 ? 'Skirting brown line; ' : ''}3 mm joints, epoxy grout in wet zones.`, ...intNotes(k).slice(0, 1)]);
   viewTitle(k, `${p.roomName.toUpperCase()} — FLOORING LAYOUT`, 80, 130);
 }
 /* I-501 four wall elevations, viewed from inside the room */
 function intElevations(k: Context): void {
   const c = k.c, p = k.int!.plan, it = k.int!.interior, r = intRoom(k), cl = p.clear;
   const soffit = FLOOR_TO_FLOOR_MM - 150, fc = it?.ceilingType && it.ceilingType !== 'plain' ? Math.min(positive(it.ceilingHeight, 2750), soffit - 150) : soffit;
+  const spec = intSpec(k), band0 = wallTileBand(spec), skirt = skirtingMm(spec);
+  // tiles stop at the false ceiling (or the soffit) whatever the stored ceiling height
+  const band = band0 ? { ...band0, toMm: Math.min(band0.full ? fc : band0.toMm, fc) } : null;
   const sides: [Side, string][] = [['rear', 'A'], ['right', 'B'], ['front', 'C'], ['left', 'D']];
   const lens = sides.map(([sd]) => (sd === 'front' || sd === 'rear' ? cl.w : cl.h));
   const den = STD_SCALES.find(d => Math.max(...lens) * PX_PER_PAPER_MM / d <= 560 && (soffit + 200) * PX_PER_PAPER_MM / d <= 360) ?? 100, s = PX_PER_PAPER_MM / den; k.views.push(den);
@@ -3724,7 +3735,16 @@ function intElevations(k: Context): void {
     const X = (mm: number) => ox + mm * s, Y = (mm: number) => base - mm * s;
     drawRect(c, X(0), Y(soffit), L * s, soffit * s, { fill: '#fff', stroke: COLORS.wall, weight: PEN.cut });
     if (fc < soffit) hatchBox(c, { x: X(0), y: Y(soffit), w: L * s, h: (soffit - fc) * s }, '#eef1f5', 45, 8, PEN.hair);
-    drawRect(c, X(0), Y(100), L * s, 100 * s, { fill: '#e8e2d6', stroke: COLORS.dim, weight: PEN.hair });
+    if (band) { // wall tiles: band with the tile joints (300 × 600 laid vertical)
+      const y0 = Y(band.toMm), hgt = (band.toMm - band.fromMm) * s;
+      drawRect(c, X(0), y0, L * s, hgt, { fill: '#e6f0f4', stroke: '#7aa5b8', weight: PEN.hair });
+      c.save(); c.beginPath(); c.rect(X(0), y0, L * s, hgt); c.clip();
+      for (let u = 300; u < L; u += 300) drawLine(c, X(u), y0, X(u), y0 + hgt, 0.5, '#9fc0cf');
+      for (let z = band.fromMm + 600; z < band.toMm; z += 600) drawLine(c, X(0), Y(z), X(L), Y(z), 0.5, '#9fc0cf');
+      c.restore();
+      if (i === 0) { const t = band.full ? 'WALL TILES FULL HEIGHT' : `WALL TILES ${band.fromMm ? `${band.fromMm}–` : 'TO '}${band.toMm}`, tw2 = textWidth(c, t, 10, true); soft(tw2, 12, [{ x: X(0) + tw2 / 2 + 6, y: y0 + 10 }, { x: X(L) - tw2 / 2 - 6, y: y0 + 10 }, { x: X(0) + tw2 / 2 + 6, y: y0 - 10 }], (x2, y2) => label(c, t, x2, y2, 10, 'center', '#2b6f8a', true)); }
+    }
+    if (skirt > 0) drawRect(c, X(0), Y(skirt), L * s, skirt * s, { fill: '#e8e2d6', stroke: COLORS.dim, weight: PEN.hair });
     for (const { o, side } of ops.filter(v => v.side === sd)) {
       const a = o.axis === 'horizontal' ? u(o.a, 0) : u(0, o.a), b = o.axis === 'horizontal' ? u(o.b, 0) : u(0, o.b), u0 = Math.max(0, Math.min(a, b)), u1 = Math.min(L, Math.max(a, b));
       if (u1 - u0 < 100) continue;
@@ -3755,7 +3775,7 @@ function intElevations(k: Context): void {
   for (const [sd, letter] of sides) { const pt = sd === 'rear' ? { x: kx + kw / 2, y: ky + kh - 30 } : sd === 'front' ? { x: kx + kw / 2, y: ky + 30 } : sd === 'left' ? { x: kx + 30, y: ky + kh / 2 } : { x: kx + kw - 30, y: ky + kh / 2 };
     circle(c, pt.x, pt.y, 12, '#fff', COLORS.wall, 1.2); label(c, letter, pt.x, pt.y + 0.5, 11, 'center', COLORS.text, true); }
   label(c, 'KEY PLAN (NTS, road at top)', kp.x, kp.y - 8, 12, 'left', COLORS.green, true);
-  legend(c, 1450, 520, 'NOTES', [`Wall finish: ${(it?.wallFinish?.name ?? 'paint').slice(0, 40)}`, `Skirting 100; ${fc < soffit ? `false ceiling +${(fc / 1000).toFixed(3)}` : 'plain ceiling'}; soffit +${(soffit / 1000).toFixed(3)}`, 'Sockets 300 / 1100; switch boards 1200 FFL.', 'Each elevation viewed from inside the room.']);
+  legend(c, 1450, 520, 'NOTES', [`Wall finish: ${(it?.wallFinish?.name ?? 'paint').slice(0, 40)}${band ? `; wall tiles ${band.full ? 'full height' : `${band.fromMm ? `${band.fromMm}–` : 'to '}${band.toMm} mm`}` : ''}`, `${skirt > 0 ? `Skirting ${skirt}; ` : ''}${fc < soffit ? `false ceiling +${(fc / 1000).toFixed(3)}` : 'plain ceiling'}; soffit +${(soffit / 1000).toFixed(3)}`, 'Sockets 300 / 1100; switch boards 1200 FFL.', 'Each elevation viewed from inside the room.']);
 }
 /* I-601 woodwork: front elevations of the storage units at the largest scale that fits */
 function intWoodwork(k: Context): void {

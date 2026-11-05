@@ -337,6 +337,13 @@ export interface RoomInterior {
     acPoints: number;
   };
   specialFeatures: string[];
+  /** Customer edits (Edit on the interior drawings). Unset = the room type's default. */
+  /** Wall tiles: height in mm from the floor (kitchen: from the counter top). 0 = none; ≥ ceiling height = full height. */
+  wallTileHeightMm?: number;
+  /** Floor tile / plank module, e.g. '600x600', '800x800', '1200x600', '300x300', '1200x200'. */
+  floorTileSize?: string;
+  /** Skirting height in mm (0 = none). Ignored where the walls are tiled to the floor. */
+  skirtingHeightMm?: number;
 }
 
 export interface InteriorMoodBoard {
