@@ -104,9 +104,11 @@ export function buildScene(
     mesh.position.set(x + w / 2, y + h / 2, z + d / 2);
     mesh.castShadow = shadows;
     mesh.receiveShadow = shadows;
+    if (inDoor) mesh.userData.passable = true; // walk-through: doors open as you walk through them
     scene.add(mesh);
     return mesh;
   }
+  let inDoor = false;
 
   function addCylinder(
     x: number, y: number, z: number,
@@ -677,6 +679,16 @@ export function buildScene(
     wallThick: number,
     isAlongX: boolean,
     isExterior: boolean = false
+  ) {
+    inDoor = true;
+    try { addDoorParts(ox, oy, oz, dWidth, dHeight, wallThick, isAlongX, isExterior); } finally { inDoor = false; }
+  }
+  function addDoorParts(
+    ox: number, oy: number, oz: number,
+    dWidth: number, dHeight: number,
+    wallThick: number,
+    isAlongX: boolean,
+    isExterior: boolean
   ) {
     const frameT = 0.06;
     const panelThick = 0.06;
