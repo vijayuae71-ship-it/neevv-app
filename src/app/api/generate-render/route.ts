@@ -8,6 +8,7 @@ import { checkAndIncrementUsage } from '@/utils/usageTracker';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 120;
 
+const ASPECTS = ['1:1', '2:3', '3:2', '3:4', '4:3', '4:5', '5:4', '9:16', '16:9', '21:9'];
 const IMG_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 const MAX_IMG_BYTES = 6 * 1024 * 1024;
 
@@ -62,7 +63,9 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const { prompt, renderType, projectId, images } = await request.json();
+    const { prompt, renderType, projectId, images, aspectRatio } = await request.json();
+    // edits keep the shape of the image being edited (otherwise the model returns a square)
+    const ratio = typeof aspectRatio === 'string' && ASPECTS.includes(aspectRatio) ? aspectRatio : undefined;
 
     if (!prompt) {
       return NextResponse.json({ success: false, error: 'Prompt is required' }, { status: 400 });
@@ -86,6 +89,7 @@ export async function POST(request: NextRequest) {
       contents: [{ role: 'user', parts: [...imageParts, { text: prompt }] }],
       config: {
         responseModalities: ['TEXT', 'IMAGE'],
+        ...(ratio ? { imageConfig: { aspectRatio: ratio } } : {}),
       },
     });
 

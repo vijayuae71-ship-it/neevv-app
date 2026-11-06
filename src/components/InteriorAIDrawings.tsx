@@ -355,12 +355,23 @@ const InteriorAIDrawings: React.FC<Props> = ({ layout, interiorSelections, moodB
 Image 1 is the current render of the room. Image 2 is a photo of the customer's chosen sample (${t.label}).
 Edit image 1: replace ONLY ${t.change} with the product / material shown in image 2. Match its colour, pattern, veining, texture, sheen and finish as closely as possible${sampleNote.trim() ? `. Customer's note: ${sampleNote.trim().slice(0, 300)}` : ''}.
 Keep everything else exactly as in image 1: the same camera angle and framing, room layout, walls, openings, furniture, other materials, and lighting mood. Keep realistic scale (e.g. tile size and grout lines in proportion to the room). Do not add text or watermarks. Output one photorealistic image.`;
+    // keep the edited image the same shape as the render being edited
+    const aspectRatio = await new Promise<string | undefined>((resolve) => {
+      const im = new Image();
+      im.onload = () => {
+        const r = im.naturalWidth / Math.max(1, im.naturalHeight);
+        const opts: [string, number][] = [['1:1', 1], ['4:3', 4 / 3], ['3:2', 1.5], ['16:9', 16 / 9], ['21:9', 21 / 9], ['3:4', 0.75], ['2:3', 2 / 3], ['9:16', 9 / 16]];
+        resolve(opts.reduce((b, o) => (Math.abs(Math.log(o[1] / r)) < Math.abs(Math.log(b[1] / r)) ? o : b))[0]);
+      };
+      im.onerror = () => resolve(undefined);
+      im.src = base;
+    });
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), Math.max(RENDER_TIMEOUT_MS, 90000));
     try {
       const response = await authFetch('/api/generate-render', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt, images: [base, sampleImg], projectId: 'interior-project', renderType: `interior_${selectedType}_sample` }),
+        body: JSON.stringify({ prompt, images: [base, sampleImg], aspectRatio, projectId: 'interior-project', renderType: `interior_${selectedType}_sample` }),
         signal: controller.signal,
       });
       const data = await response.json().catch(() => ({ error: response.status === 504 ? 'This took too long. Please try again.' : `Server error (${response.status})` }));
