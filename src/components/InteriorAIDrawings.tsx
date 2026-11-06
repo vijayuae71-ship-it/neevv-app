@@ -4,7 +4,8 @@ import React, { useState, useCallback, useRef } from 'react';
 import type { Room, RoomInterior, InteriorMoodBoard, Layout } from '../types';
 import { buildInteriorRoomPrompt, InteriorRenderType } from '../utils/interiorRenderPrompt';
 import { STYLE_TEMPLATES } from '../utils/interiorTemplates';
-import { Camera, RefreshCw, Download, AlertTriangle, Sparkles, Eye, ChevronRight, Pencil, X } from 'lucide-react';
+import { Camera, RefreshCw, Download, AlertTriangle, Sparkles, Eye, ChevronRight, Pencil, X, ImagePlus } from 'lucide-react';
+import { shrinkImage, fileToDataUri } from '@/utils/imageShrink';
 import { authFetch } from '@/utils/authFetch';
 
 /* ------------------------------------------------------------------ */
@@ -183,6 +184,21 @@ function roomLabel(room: Room): string {
   return room.name || base;
 }
 
+/** What a customer's sample photo can replace in a render, and what the image model should change. */
+const SAMPLE_TARGETS: { key: string; label: string; change: string }[] = [
+  { key: 'floor', label: 'Floor tiles', change: 'the floor tiles / flooring on the whole floor' },
+  { key: 'wall_tiles', label: 'Wall tiles', change: 'the wall tiles (dado / bathroom / kitchen backsplash tiles) wherever walls are tiled' },
+  { key: 'feature_wall', label: 'Feature wall / wallpaper', change: 'the finish of the main feature wall (behind the bed / TV / sofa)' },
+  { key: 'paint', label: 'Wall paint colour', change: 'the paint colour of the painted walls (match the colour shade in the photo)' },
+  { key: 'ceiling', label: 'False ceiling', change: 'the false ceiling design (shape, profile, cove and finish)' },
+  { key: 'lights', label: 'Lights / chandelier', change: 'the decorative light fittings (pendant, chandelier, wall lights) — same positions' },
+  { key: 'cp', label: 'Taps & shower (CP fittings)', change: 'the taps, mixers and shower fittings (match the design and finish: chrome, matte black, gold…)' },
+  { key: 'sanitary', label: 'WC / basin (sanitaryware)', change: 'the WC and wash basin (match the product design and colour)' },
+  { key: 'wood', label: 'Wood / laminate', change: 'the wood or laminate finish of wardrobes, cabinets and panelling' },
+  { key: 'counter', label: 'Countertop / stone', change: 'the countertop / vanity top stone' },
+  { key: 'fabric', label: 'Curtains / fabric', change: 'the curtains and soft-furnishing fabric' },
+];
+
 /* ------------------------------------------------------------------ */
 /*  Component                                                          */
 /* ------------------------------------------------------------------ */
@@ -204,6 +220,10 @@ const InteriorAIDrawings: React.FC<Props> = ({ layout, interiorSelections, moodB
   const [editPanelOpen, setEditPanelOpen] = useState(false);
   const [editOptions, setEditOptions] = useState<Record<string, string>>({});
   const [editFreeText, setEditFreeText] = useState('');
+  /* ---------- swap a material from the customer's sample photo ---------- */
+  const [sampleTarget, setSampleTarget] = useState('floor');
+  const [sampleImg, setSampleImg] = useState<string | null>(null);
+  const [sampleNote, setSampleNote] = useState('');
 
   /* ---------- generate single image via API route ---------- */
   const generateImage = useCallback(
@@ -319,6 +339,40 @@ const InteriorAIDrawings: React.FC<Props> = ({ layout, interiorSelections, moodB
     if (!modString) return;
     handleGenerate(undefined, modString);
   }, [editOptions, editFreeText, handleGenerate]);
+
+  const pickSample = useCallback(async (file: File | undefined) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { setError('Please choose a photo (JPG or PNG).'); return; }
+    try { setSampleImg(await fileToDataUri(await shrinkImage(file, 1280))); } catch { setError('Could not read that photo.'); }
+  }, []);
+
+  /** Re-render the current image with only the chosen element changed to the customer's sample. */
+  const handleSampleRerender = useCallback(async (base: string) => {
+    const t = SAMPLE_TARGETS.find(x => x.key === sampleTarget);
+    if (!t || !sampleImg) return;
+    setLoading(true); setError(null); setProgress(`Re-rendering with your ${t.label.toLowerCase()}…`);
+    const prompt = `You are editing an interior design render for a customer.
+Image 1 is the current render of the room. Image 2 is a photo of the customer's chosen sample (${t.label}).
+Edit image 1: replace ONLY ${t.change} with the product / material shown in image 2. Match its colour, pattern, veining, texture, sheen and finish as closely as possible${sampleNote.trim() ? `. Customer's note: ${sampleNote.trim().slice(0, 300)}` : ''}.
+Keep everything else exactly as in image 1: the same camera angle and framing, room layout, walls, openings, furniture, other materials, and lighting mood. Keep realistic scale (e.g. tile size and grout lines in proportion to the room). Do not add text or watermarks. Output one photorealistic image.`;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), Math.max(RENDER_TIMEOUT_MS, 90000));
+    try {
+      const response = await authFetch('/api/generate-render', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt, images: [base, sampleImg], projectId: 'interior-project', renderType: `interior_${selectedType}_sample` }),
+        signal: controller.signal,
+      });
+      const data = await response.json().catch(() => ({ error: response.status === 504 ? 'This took too long. Please try again.' : `Server error (${response.status})` }));
+      if (!response.ok || !data.success) throw new Error(response.status === 429 ? 'Render limit reached. Please wait and try again.' : data.error || 'No image generated');
+      const imageUrl = data.imageUrl || data.imageDataUri;
+      if (!imageUrl) throw new Error('No image returned');
+      const key = cacheKey(selectedRoomId, selectedType);
+      setRenderCache(prev => ({ ...prev, [key]: [...(prev[key] || []), { roomId: selectedRoomId, type: selectedType, imageData: imageUrl, timestamp: Date.now(), isEdited: true }] }));
+    } catch (err: unknown) {
+      setError(err instanceof Error && err.name === 'AbortError' ? 'This took too long. Please try again.' : err instanceof Error ? err.message : 'Re-render failed');
+    } finally { clearTimeout(timeoutId); setLoading(false); setProgress(''); }
+  }, [sampleTarget, sampleImg, sampleNote, selectedRoomId, selectedType]);
 
   const handleResetEdit = useCallback(() => {
     setEditOptions({});
@@ -529,7 +583,7 @@ const InteriorAIDrawings: React.FC<Props> = ({ layout, interiorSelections, moodB
 
         {/* ========== EDIT DESIGN PANEL ========== */}
         {editPanelOpen && (
-          <div className="bg-amber-50 border-b border-amber-200 px-4 py-3 space-y-3 overflow-y-auto max-h-64">
+          <div className="bg-amber-50 border-b border-amber-200 px-4 py-3 space-y-3 overflow-y-auto max-h-[70vh]">
             <div className="flex items-center justify-between">
               <h4 className="text-sm font-semibold text-gray-800 flex items-center gap-1.5">
                 <Pencil size={14} className="text-amber-600" />
@@ -570,6 +624,38 @@ const InteriorAIDrawings: React.FC<Props> = ({ layout, interiorSelections, moodB
                 </div>
               </div>
             ))}
+
+            {/* Customer's own sample photo */}
+            <div className="bg-white border border-amber-200 rounded-lg p-3 space-y-2">
+              <label className="text-xs font-semibold text-gray-700 flex items-center gap-1"><ImagePlus size={13} className="text-amber-600" /> Use my own sample — photo of a tile, light, tap, laminate…</label>
+              <div className="flex flex-wrap gap-1.5">
+                {SAMPLE_TARGETS.map(t => (
+                  <button key={t.key} onClick={() => setSampleTarget(t.key)}
+                    className={`px-2.5 py-1 rounded-full text-xs border ${sampleTarget === t.key ? 'text-white border-transparent' : 'bg-white text-gray-600 border-gray-300 hover:border-gray-500'}`}
+                    style={sampleTarget === t.key ? { backgroundColor: BRAND_GREEN } : undefined}>{t.label}</button>
+                ))}
+              </div>
+              <div className="flex items-center gap-3">
+                <label className="cursor-pointer text-xs border border-dashed border-gray-400 rounded-lg px-3 py-2 bg-gray-50 hover:bg-gray-100 flex items-center gap-1.5">
+                  <Camera size={13} /> {sampleImg ? 'Change photo' : 'Take / choose photo'}
+                  <input type="file" accept="image/*" className="hidden" onChange={e => { pickSample(e.target.files?.[0]); e.target.value = ''; }} />
+                </label>
+                {sampleImg && <img src={sampleImg} alt="Your sample" className="w-14 h-14 object-cover rounded border border-gray-300" />}
+                {sampleImg && <button className="text-xs text-gray-500 underline" onClick={() => setSampleImg(null)}>Remove</button>}
+              </div>
+              <input className="w-full text-xs border border-gray-300 rounded-lg px-2 py-1.5" placeholder="Optional: size / finish, e.g. 600×1200 matte, brand & code"
+                value={sampleNote} onChange={e => setSampleNote(e.target.value)} maxLength={300} />
+              <button
+                className="text-sm text-white px-4 py-1.5 rounded-lg hover:opacity-90 disabled:opacity-50 flex items-center gap-1.5 font-medium"
+                style={{ backgroundColor: BRAND_GREEN }}
+                disabled={loading || !sampleImg || !latestRender}
+                onClick={() => latestRender && handleSampleRerender(latestRender.imageData)}
+              >
+                <Sparkles size={13} /> Re-render with my sample
+              </button>
+              {!latestRender && <p className="text-[11px] text-gray-500">Generate a render of this view first; your sample is applied to it.</p>}
+              <p className="text-[11px] text-gray-400">Only the chosen item changes; layout, furniture and camera stay the same. The look is AI-generated — confirm the actual product, size and price with your supplier.</p>
+            </div>
 
             {/* Free text */}
             <div>

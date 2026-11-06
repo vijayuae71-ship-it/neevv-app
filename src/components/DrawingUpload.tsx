@@ -5,24 +5,9 @@ import { Upload, FileImage, Loader2, CheckCircle, AlertCircle, ArrowLeft, ArrowR
 import { ProjectRequirements, Layout } from '@/types';
 import { uploadedPlanToLayout, planIssues, ROOM_TYPES, type ExtractedPlan, type ExtractedRoom as ExtractedPlanRoom } from '@/utils/uploadedPlan';
 import { authFetch } from '@/utils/authFetch';
+import { shrinkImage } from '@/utils/imageShrink';
 
 type ExtractedRoom = ExtractedPlanRoom;
-
-/** Phone photos are often 4–12 MB; the reader works from ~2000 px anyway, so shrink to a JPEG before sending. */
-async function shrinkImage(file: File): Promise<File> {
-  if (!file.type.startsWith('image/') || (file.size < 1.5 * 1024 * 1024 && file.type !== 'image/heic')) return file;
-  try {
-    const bmp = await createImageBitmap(file);
-    const k = Math.min(1, 2000 / Math.max(bmp.width, bmp.height));
-    const canvas = document.createElement('canvas');
-    canvas.width = Math.round(bmp.width * k); canvas.height = Math.round(bmp.height * k);
-    const ctx = canvas.getContext('2d'); if (!ctx) return file;
-    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.drawImage(bmp, 0, 0, canvas.width, canvas.height);
-    const blob: Blob | null = await new Promise((r) => canvas.toBlob(r, 'image/jpeg', 0.88));
-    return blob ? new File([blob], file.name.replace(/\.\w+$/, '') + '.jpg', { type: 'image/jpeg' }) : file;
-  } catch { return file; }
-}
 
 /** Cloud Run's own address for the analysis call (Firebase Hosting stops proxied requests at 60 s). */
 let directUrlPromise: Promise<string> | null = null;
