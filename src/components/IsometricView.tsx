@@ -6,7 +6,8 @@ import { buildScene } from '../utils/sceneBuilder';
 import { AIRenderView } from './AIRenderView';
 import { ModelARView } from './ModelARView';
 import { PlanSketch } from './PlanSketch';
-import { Box, Sparkles, Ruler, Smartphone, LayoutGrid } from 'lucide-react';
+import { WalkThrough } from './WalkThrough';
+import { Box, Sparkles, Ruler, Smartphone, LayoutGrid, Footprints } from 'lucide-react';
 
 /** Floating dimension info panel */
 const DimensionPanel: React.FC<{ layout: Layout; requirements: ProjectRequirements; structuralResult?: any }> = ({ layout, requirements, structuralResult }) => {
@@ -63,7 +64,7 @@ export const IsometricView: React.FC<Props> = ({ layout, requirements, structura
   const [showFloor, setShowFloor] = useState<number | 'all'>('all');
   const [cutaway, setCutaway] = useState(false);
   const [showDimensions, setShowDimensions] = useState(true);
-  const [viewMode, setViewMode] = useState<'plan' | '3d' | 'ai' | 'ar'>(layout.plannerVersion ? 'plan' : '3d');
+  const [viewMode, setViewMode] = useState<'plan' | '3d' | 'walk' | 'ai' | 'ar'>(layout.plannerVersion ? 'plan' : '3d');
 
   // Setup scene once on mount / layout change
   useEffect(() => {
@@ -221,6 +222,13 @@ export const IsometricView: React.FC<Props> = ({ layout, requirements, structura
           Interactive 3D
         </button>
         <button
+          className={`btn btn-sm gap-1 ${viewMode === 'walk' ? 'btn-primary' : 'btn-ghost'}`}
+          onClick={() => setViewMode('walk')}
+        >
+          <Footprints size={14} />
+          Walk Inside
+        </button>
+        <button
           className={`btn btn-sm gap-1 ${viewMode === 'ai' ? 'btn-secondary' : 'btn-ghost'}`}
           onClick={() => setViewMode('ai')}
         >
@@ -339,6 +347,10 @@ export const IsometricView: React.FC<Props> = ({ layout, requirements, structura
             ))}
           </div>
         </>
+      ) : viewMode === 'walk' ? (
+        <div className="flex-1 min-h-0" style={{ minHeight: '460px' }}>
+          <WalkThrough layout={layout} requirements={requirements} />
+        </div>
       ) : viewMode === 'ai' ? (
         <AIRenderView layout={layout} requirements={requirements} />
       ) : (
