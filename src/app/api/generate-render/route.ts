@@ -8,6 +8,39 @@ import { checkAndIncrementUsage } from '@/utils/usageTracker';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 120;
 
+const IMG_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+const MAX_IMG_BYTES = 6 * 1024 * 1024;
+
+/**
+ * Up to 3 images as data: URIs, or addresses of earlier renders in this app's own bucket (signed GCS
+ * URLs), fetched here so the browser does not need cross-origin access to the bucket.
+ */
+async function referenceImages(images: unknown): Promise<{ inlineData: { mimeType: string; data: string } }[]> {
+  if (images == null) return [];
+  if (!Array.isArray(images) || images.length > 3) throw new Error('Up to 3 images can be sent.');
+  const bucket = process.env.GCS_BUCKET_NAME;
+  const out: { inlineData: { mimeType: string; data: string } }[] = [];
+  for (const img of images) {
+    if (typeof img !== 'string') throw new Error('Image not accepted.');
+    const m = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/.exec(img);
+    if (m) {
+      if (m[2].length * 0.75 > MAX_IMG_BYTES) throw new Error('Image too large (max 6 MB).');
+      out.push({ inlineData: { mimeType: m[1], data: m[2] } });
+      continue;
+    }
+    if (bucket && img.startsWith(`https://storage.googleapis.com/${bucket}/renders/`)) {
+      const res = await fetch(img);
+      const type = (res.headers.get('content-type') || '').split(';')[0];
+      const buf = Buffer.from(await res.arrayBuffer());
+      if (!res.ok || !IMG_TYPES.includes(type) || buf.length > MAX_IMG_BYTES) throw new Error('The earlier render could not be loaded. Please generate it again.');
+      out.push({ inlineData: { mimeType: type, data: buf.toString('base64') } });
+      continue;
+    }
+    throw new Error('Image not accepted.');
+  }
+  return out;
+}
+
 export async function POST(request: NextRequest) {
   const auth = await verifyAuthOptional(request);
 
@@ -29,7 +62,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const { prompt, renderType, projectId } = await request.json();
+    const { prompt, renderType, projectId, images } = await request.json();
 
     if (!prompt) {
       return NextResponse.json({ success: false, error: 'Prompt is required' }, { status: 400 });
@@ -41,11 +74,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Service configuration error' }, { status: 500 });
     }
 
+    // optional reference images (edit an earlier render with a customer's material photo), in order
+    let imageParts: { inlineData: { mimeType: string; data: string } }[];
+    try { imageParts = await referenceImages(images); }
+    catch (e: any) { return NextResponse.json({ success: false, error: e?.message || 'Image not accepted' }, { status: 400 }); }
+
     const ai = new GoogleGenAI({ apiKey });
 
     const response = await ai.models.generateContent({
       model: 'gemini-3-pro-image',
-      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      contents: [{ role: 'user', parts: [...imageParts, { text: prompt }] }],
       config: {
         responseModalities: ['TEXT', 'IMAGE'],
       },
