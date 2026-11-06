@@ -52,19 +52,27 @@ interface Props {
   structuralResult?: any;
 }
 
+/** Longest side of the plot in table-top AR, in metres. */
+const TABLE_M = 1.5;
+
 export const ModelARView: React.FC<Props> = ({ layout, requirements, structuralResult }) => {
   const modelRef = useRef<HTMLElement>(null);
   const [arSupported, setArSupported] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
   const [showQuotePanel, setShowQuotePanel] = useState(false);
-  const [modelSrc, setModelSrc] = useState<string | null>(null);
+  /** saved model addresses: table-top (plot ~1.5 m across) and life size */
+  const [srcs, setSrcs] = useState<{ table: string | null; life: string | null }>({ table: null, life: null });
+  const [arSize, setArSize] = useState<'table' | 'life'>('table');
+  const [arMsg, setArMsg] = useState<string | null>(null);
+  const tableScale = TABLE_M / Math.max(layout.plotWidthM, layout.plotDepthM, 1);
+  const modelSrc = srcs[arSize];
   const [modelError, setModelError] = useState<string | null>(null);
   /** whether the model was saved where the phone's AR app can fetch it */
   const [arStatus, setArStatus] = useState<{ state: 'preparing' | 'ready' | 'failed'; detail?: string }>({ state: 'preparing' });
 
   // Build this design's GLB from the locked plan (same builder as Interactive 3D), in metres.
   useEffect(() => {
-    let cancelled = false, url = '';
+    let cancelled = false; const urls: string[] = [];
     const waitFor = <T,>(get: () => T | undefined, tries = 100) => new Promise<T>((resolve, reject) => {
       const tick = (n: number) => { const v = get(); if (v) resolve(v); else if (n <= 0) reject(new Error('timeout')); else setTimeout(() => tick(n - 1), 100); };
       tick(tries);
@@ -74,38 +82,47 @@ export const ModelARView: React.FC<Props> = ({ layout, requirements, structuralR
     });
     (async () => {
       try {
-        setModelSrc(null); setModelError(null); setIsLoaded(false);
+        setSrcs({ table: null, life: null }); setModelError(null); setIsLoaded(false); setArStatus({ state: 'preparing' });
         const THREE = await waitFor(() => (window as any).THREE);
         if (!THREE.GLTFExporter) await loadScript('https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/exporters/GLTFExporter.js');
-        const scene = new THREE.Scene();
-        buildScene(scene, layout, requirements, { showFloor: 'all', cutaway: false });
-        // AR needs the house and plot only: no on-screen labels, scene lights or the oversized lawn
-        const drop: any[] = [];
-        scene.traverse((o: any) => {
-          if (o.isSprite || o.isLight) drop.push(o);
-          else if (o.isMesh && o.geometry?.type === 'PlaneGeometry' && (o.geometry.parameters?.width ?? 0) > layout.plotWidthM * 2) drop.push(o);
-        });
-        drop.forEach((o) => o.parent?.remove(o));
-        const glb: ArrayBuffer = await new Promise((resolve, reject) => {
-          try { new THREE.GLTFExporter().parse(scene, resolve, { binary: true, onlyVisible: true }); } catch (e) { reject(e); }
-        });
-        if (cancelled) return;
-        // show it straight away from memory; then save it so the phone's AR app (Scene Viewer / Quick Look) can fetch it
-        url = URL.createObjectURL(new Blob([glb], { type: 'model/gltf-binary' }));
-        setModelSrc(url);
-        try {
-          setArStatus({ state: 'preparing' });
+        // one GLB per size: the house model at a given scale (AR apps place the model at its own size)
+        const exportAt = async (scale: number): Promise<ArrayBuffer> => {
+          const scene = new THREE.Scene();
+          buildScene(scene, layout, requirements, { showFloor: 'all', cutaway: false });
+          // AR needs the house and plot only: no on-screen labels, scene lights or the oversized lawn
+          const drop: any[] = [];
+          scene.traverse((o: any) => {
+            if (o.isSprite || o.isLight || o.isLine) drop.push(o);
+            else if (o.isMesh && o.geometry?.type === 'PlaneGeometry' && (o.geometry.parameters?.width ?? 0) > layout.plotWidthM * 2) drop.push(o);
+          });
+          drop.forEach((o) => o.parent?.remove(o));
+          const root = new THREE.Group(); root.scale.setScalar(scale);
+          [...scene.children].forEach((ch: any) => root.add(ch));
+          const out = new THREE.Scene(); out.add(root);
+          return new Promise((resolve, reject) => { try { new THREE.GLTFExporter().parse(out, resolve, { binary: true, onlyVisible: true }); } catch (e) { reject(e); } });
+        };
+        const save = async (glb: ArrayBuffer) => {
           const res = await fetch('/api/ar-model', { method: 'POST', headers: { 'Content-Type': 'model/gltf-binary' }, body: glb });
           const data = await res.json().catch(() => ({}));
+          if (!res.ok || typeof data.url !== 'string') throw new Error(`${data.error || 'Could not save the AR model'} (${res.status}, ${(glb.byteLength / 1048576).toFixed(1)} MB)`);
+          return new URL(data.url, window.location.origin).toString();
+        };
+        const table = await exportAt(tableScale);
+        if (cancelled) return;
+        // show it straight away from memory; then save it so the phone's AR app (Scene Viewer / Quick Look) can fetch it
+        const mem = URL.createObjectURL(new Blob([table], { type: 'model/gltf-binary' })); urls.push(mem);
+        setSrcs({ table: mem, life: null });
+        try {
+          const tableUrl = await save(table);
+          const lifeUrl = await save(await exportAt(1));
           if (cancelled) return;
-          if (res.ok && typeof data.url === 'string') { setModelSrc(new URL(data.url, window.location.origin).toString()); setArStatus({ state: 'ready' }); }
-          else setArStatus({ state: 'failed', detail: `${data.error || 'Could not save the AR model'} (${res.status}, ${(glb.byteLength / 1048576).toFixed(1)} MB)` });
+          setSrcs({ table: tableUrl, life: lifeUrl }); setArStatus({ state: 'ready' });
         } catch (e: any) { if (!cancelled) setArStatus({ state: 'failed', detail: e?.message || 'network error' }); } // in-browser AR (WebXR) still works with the in-memory model
       } catch {
         if (!cancelled) setModelError('The 3D model for AR could not be prepared on this device. Interactive 3D still shows your house.');
       }
     })();
-    return () => { cancelled = true; if (url) URL.revokeObjectURL(url); };
+    return () => { cancelled = true; urls.forEach((u) => URL.revokeObjectURL(u)); };
   }, [layout, requirements]);
 
   // Compute building stats for the quote panel
@@ -129,8 +146,21 @@ export const ModelARView: React.FC<Props> = ({ layout, requirements, structuralR
     const el = modelRef.current;
     if (!el) return;
 
-    const handleLoad = () => setIsLoaded(true);
+    const handleLoad = () => {
+      setIsLoaded(true);
+      // no AR button on this phone/browser: say why instead of showing nothing
+      if ((el as any).canActivateAR === false && /Android|iPhone|iPad/i.test(navigator.userAgent))
+        setArMsg(/iPhone|iPad/i.test(navigator.userAgent)
+          ? 'AR needs Safari on iPhone. Open neevv.in in Safari and try again.'
+          : 'This phone cannot open AR. It needs Chrome and "Google Play Services for AR" (free on the Play Store).');
+    };
     el.addEventListener('load', handleLoad);
+    const handleAr = (e: any) => {
+      const status = e?.detail?.status;
+      if (status === 'failed') setArMsg('AR could not start on this phone. Check that "Google Play Services for AR" is installed and up to date, allow camera access, and try again in good light.');
+      else if (status === 'session-started') setArMsg(null);
+    };
+    el.addEventListener('ar-status', handleAr);
 
     // Check AR support
     if ('xr' in navigator) {
@@ -141,6 +171,7 @@ export const ModelARView: React.FC<Props> = ({ layout, requirements, structuralR
 
     return () => {
       el.removeEventListener('load', handleLoad);
+      el.removeEventListener('ar-status', handleAr);
     };
   }, []);
 
@@ -170,7 +201,13 @@ export const ModelARView: React.FC<Props> = ({ layout, requirements, structuralR
         <span className={`self-start text-[11px] font-semibold px-2 py-1 rounded-full ${arStatus.state === 'ready' ? 'bg-green-100 text-green-800' : arStatus.state === 'failed' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-600'}`}>
           {arStatus.state === 'ready' ? 'Phone AR ready' : arStatus.state === 'failed' ? `Phone AR not available: ${arStatus.detail}` : 'Preparing phone AR…'}
         </span>
-        <span className="self-start text-[11px] text-gray-600 bg-white/80 rounded px-2 py-0.5">This is a 3D preview. On your phone, tap <b>View in Your Space</b> and point the camera at open ground to place the house.</span>
+        <span className="self-start text-[11px] text-gray-600 bg-white/80 rounded px-2 py-0.5">This is a 3D preview. On your phone, tap <b>View in Your Space</b>, slowly move the phone over the floor until the house appears, then tap to place it.</span>
+        <div className="self-start flex gap-1 pointer-events-auto">
+          <button onClick={() => setArSize('table')} className={`text-[11px] px-2 py-1 rounded-full border ${arSize === 'table' ? 'bg-[#4f6f52] text-white border-[#4f6f52]' : 'bg-white/90 text-gray-700 border-gray-300'}`}>Table-top model</button>
+          <button onClick={() => setArSize('life')} disabled={!srcs.life} className={`text-[11px] px-2 py-1 rounded-full border disabled:opacity-50 ${arSize === 'life' ? 'bg-[#4f6f52] text-white border-[#4f6f52]' : 'bg-white/90 text-gray-700 border-gray-300'}`}>Life size (on your plot)</button>
+        </div>
+        {arSize === 'life' && <span className="self-start text-[11px] text-amber-800 bg-amber-50 rounded px-2 py-0.5">Life size is {layout.plotWidthM.toFixed(0)} m × {layout.plotDepthM.toFixed(0)} m: use it on the open plot and walk through the house.</span>}
+        {arMsg && <span className="self-start text-[11px] text-red-800 bg-red-50 rounded px-2 py-1 max-w-md">{arMsg}</span>}
       </div>
 
       {/* Loading overlay */}
@@ -191,7 +228,7 @@ export const ModelARView: React.FC<Props> = ({ layout, requirements, structuralR
         alt={`Your ${requirements.plotWidthFt}×${requirements.plotDepthFt} ft design — neevv`}
         ar
         ar-modes="webxr scene-viewer quick-look"
-        ar-scale="auto"
+        ar-scale={arSize === 'life' ? 'fixed' : 'auto'}
         ar-placement="floor"
         camera-controls
         touch-action="pan-y"
@@ -200,8 +237,6 @@ export const ModelARView: React.FC<Props> = ({ layout, requirements, structuralR
         shadow-softness="0.8"
         exposure="1.0"
         camera-orbit="-35deg 65deg auto"
-        min-camera-orbit="auto auto 5m"
-        max-camera-orbit="auto auto 80m"
         field-of-view="30deg"
         loading="eager"
         style={{ width: '100%', height: '100%', minHeight: '500px' }}
@@ -219,7 +254,7 @@ export const ModelARView: React.FC<Props> = ({ layout, requirements, structuralR
         <button
           className="hotspot"
           slot="hotspot-pillar-quote"
-          data-position={`${(layout.plotWidthM / 2).toFixed(2)}m ${(0.45 + Math.max(1, numFloors) * 3 + 0.4).toFixed(2)}m ${(layout.setbacks?.front ?? 1.5).toFixed(2)}m`}
+          data-position={(() => { const k = arSize === 'life' ? 1 : tableScale; return `${(k * layout.plotWidthM / 2).toFixed(3)}m ${(k * (0.45 + Math.max(1, numFloors) * 3 + 0.4)).toFixed(3)}m ${(k * (layout.setbacks?.front ?? 1.5)).toFixed(3)}m`; })()}
           data-normal="0 0 -1"
           data-visibility-attribute="visible"
           onClick={handleHotspotClick}
