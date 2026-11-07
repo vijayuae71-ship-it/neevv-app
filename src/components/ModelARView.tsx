@@ -3,6 +3,7 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { Layout, ProjectRequirements } from '../types';
 import { buildScene } from '../utils/sceneBuilder';
+import { FLOOR_TO_FLOOR_MM, PLINTH_HEIGHT_MM, mainDoorCentreM } from '../utils/buildingModel';
 import { Smartphone, RotateCcw, ZoomIn, ZoomOut, Maximize, Info, ShoppingCart } from 'lucide-react';
 
 /**
@@ -60,12 +61,13 @@ export const ModelARView: React.FC<Props> = ({ layout, requirements, structuralR
   const [arSupported, setArSupported] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
   const [showQuotePanel, setShowQuotePanel] = useState(false);
-  /** saved model addresses: table-top (plot ~1.5 m across) and life size */
-  const [srcs, setSrcs] = useState<{ table: string | null; life: string | null }>({ table: null, life: null });
-  const [arSize, setArSize] = useState<'table' | 'life'>('table');
+  /** saved model addresses: 'table' (plot ~1.5 m across), 'life' (whole plot, real size), 'walk0', 'walk1'… (one floor, real size, for walking through) */
+  const [srcs, setSrcs] = useState<Record<string, string | null>>({});
+  const [arSize, setArSize] = useState<'table' | 'life' | 'walk'>('table');
+  const [walkFloor, setWalkFloor] = useState(0);
   const [arMsg, setArMsg] = useState<string | null>(null);
   const tableScale = TABLE_M / Math.max(layout.plotWidthM, layout.plotDepthM, 1);
-  const modelSrc = srcs[arSize];
+  const modelSrc = srcs[arSize === 'walk' ? `walk${walkFloor}` : arSize] ?? null;
   const [modelError, setModelError] = useState<string | null>(null);
   /** whether the model was saved where the phone's AR app can fetch it */
   const [arStatus, setArStatus] = useState<{ state: 'preparing' | 'ready' | 'failed'; detail?: string }>({ state: 'preparing' });
@@ -82,24 +84,73 @@ export const ModelARView: React.FC<Props> = ({ layout, requirements, structuralR
     });
     (async () => {
       try {
-        setSrcs({ table: null, life: null }); setModelError(null); setIsLoaded(false); setArStatus({ state: 'preparing' });
+        setSrcs({}); setModelError(null); setIsLoaded(false); setArStatus({ state: 'preparing' });
         const THREE = await waitFor(() => (window as any).THREE);
         if (!THREE.GLTFExporter) await loadScript('https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/exporters/GLTFExporter.js');
-        // one GLB per size: the house model at a given scale (AR apps place the model at its own size)
-        const exportAt = async (scale: number): Promise<ArrayBuffer> => {
-          const scene = new THREE.Scene();
-          buildScene(scene, layout, requirements, { showFloor: 'all', cutaway: false });
-          // AR needs the house and plot only: no on-screen labels, scene lights or the oversized lawn
+        const toGlb = (obj: any) => new Promise<ArrayBuffer>((resolve, reject) => { try { new THREE.GLTFExporter().parse(obj, resolve, { binary: true, onlyVisible: true }); } catch (e) { reject(e); } });
+        const clean = (scene: any, extra?: (o: any) => boolean) => {
+          // AR needs the house only: no on-screen labels, scene lights, dimension lines or the oversized lawn
           const drop: any[] = [];
           scene.traverse((o: any) => {
             if (o.isSprite || o.isLight || o.isLine) drop.push(o);
             else if (o.isMesh && o.geometry?.type === 'PlaneGeometry' && (o.geometry.parameters?.width ?? 0) > layout.plotWidthM * 2) drop.push(o);
+            else if (o.isMesh && extra?.(o)) drop.push(o);
           });
           drop.forEach((o) => o.parent?.remove(o));
+        };
+        // the whole plot at a given scale (AR apps place the model at its own size)
+        const exportAt = async (scale: number): Promise<ArrayBuffer> => {
+          const scene = new THREE.Scene();
+          buildScene(scene, layout, requirements, { showFloor: 'all', cutaway: false });
+          clean(scene);
           const root = new THREE.Group(); root.scale.setScalar(scale);
           [...scene.children].forEach((ch: any) => root.add(ch));
           const out = new THREE.Scene(); out.add(root);
-          return new Promise((resolve, reject) => { try { new THREE.GLTFExporter().parse(out, resolve, { binary: true, onlyVisible: true }); } catch (e) { reject(e); } });
+          return toGlb(out);
+        };
+        /**
+         * One floor at real size for walking through: finished floor level at the real ground, doors open,
+         * no roof, garden or compound wall; turned so the front faces you, with the main door at the
+         * point you tap (AR apps place the model's centre there, so the model is padded to centre on the door).
+         */
+        const exportWalk = async (floor: number): Promise<ArrayBuffer> => {
+          const scene = new THREE.Scene();
+          buildScene(scene, layout, requirements, { showFloor: floor, cutaway: false });
+          const bx0 = layout.setbacks.left, bz0 = layout.setbacks.front, bx1 = bx0 + layout.buildableWidthM, bz1 = bz0 + layout.buildableDepthM;
+          const ffl = (PLINTH_HEIGHT_MM + floor * FLOOR_TO_FLOOR_MM) / 1000;
+          const box = new THREE.Box3();
+          clean(scene, (o: any) => {
+            if (o.userData.passable) return true; // doorways open
+            box.setFromObject(o);
+            if (box.max.y < ffl - 0.2) return true; // plinth / anything below this floor
+            if (box.min.y > ffl + FLOOR_TO_FLOOR_MM / 1000 - 0.1) return true; // facade bands of the storeys above
+            const cx = (box.min.x + box.max.x) / 2, cz = (box.min.z + box.max.z) / 2;
+            return cx < bx0 - 0.3 || cx > bx1 + 0.3 || cz < bz0 - 0.3 || cz > bz1 + 0.3; // garden, trees, porch, compound wall
+          });
+          // AR apps stand the model's lowest point on your floor: trim the plinth, slab and column stubs below this floor
+          const below: any[] = [];
+          scene.traverse((o: any) => {
+            if (!o.isMesh) return;
+            box.setFromObject(o);
+            if (box.min.y >= ffl - 0.01) return;
+            const p = o.geometry?.parameters;
+            if (box.max.y <= ffl + 0.02 || o.geometry?.type !== 'BoxGeometry' || !p || o.parent !== scene) { below.push(o); return; }
+            const h = box.max.y - ffl; // keep the part above the floor
+            o.geometry.dispose(); o.geometry = new THREE.BoxGeometry(p.width, h, p.depth); o.position.y = ffl + h / 2;
+          });
+          below.forEach((o) => o.parent?.remove(o));
+          const doorX = bx0 + (floor === 0 ? (mainDoorCentreM(layout) ?? layout.buildableWidthM / 2) : layout.buildableWidthM / 2);
+          const inner = new THREE.Group(); inner.position.set(-doorX, -ffl, -bz0);
+          [...scene.children].forEach((ch: any) => inner.add(ch));
+          const root = new THREE.Group(); root.rotation.y = Math.PI; root.add(inner);
+          const out = new THREE.Scene(); out.add(root);
+          // invisible corner markers so the model's centre is the door (house behind it, front towards you)
+          const half = Math.max(doorX - bx0, bx1 - doorX) + 0.05, depth = bz1 - bz0 + 0.05;
+          const ghost = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false });
+          for (const [x, z] of [[-half, depth], [half, depth], [-half, -depth], [half, -depth]]) {
+            const m = new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.01, 0.01), ghost); m.position.set(x, 0.005, z); out.add(m);
+          }
+          return toGlb(out);
         };
         const save = async (glb: ArrayBuffer) => {
           const res = await fetch('/api/ar-model', { method: 'POST', headers: { 'Content-Type': 'model/gltf-binary' }, body: glb });
@@ -111,12 +162,18 @@ export const ModelARView: React.FC<Props> = ({ layout, requirements, structuralR
         if (cancelled) return;
         // show it straight away from memory; then save it so the phone's AR app (Scene Viewer / Quick Look) can fetch it
         const mem = URL.createObjectURL(new Blob([table], { type: 'model/gltf-binary' })); urls.push(mem);
-        setSrcs({ table: mem, life: null });
+        setSrcs({ table: mem });
         try {
-          const tableUrl = await save(table);
-          const lifeUrl = await save(await exportAt(1));
+          const next: Record<string, string> = { table: await save(table) };
+          setSrcs({ ...next });
+          for (const fl of layout.floors) {
+            next[`walk${fl.floor}`] = await save(await exportWalk(fl.floor));
+            if (cancelled) return;
+            setSrcs({ ...next });
+          }
+          next.life = await save(await exportAt(1));
           if (cancelled) return;
-          setSrcs({ table: tableUrl, life: lifeUrl }); setArStatus({ state: 'ready' });
+          setSrcs({ ...next }); setArStatus({ state: 'ready' });
         } catch (e: any) { if (!cancelled) setArStatus({ state: 'failed', detail: e?.message || 'network error' }); } // in-browser AR (WebXR) still works with the in-memory model
       } catch {
         if (!cancelled) setModelError('The 3D model for AR could not be prepared on this device. Interactive 3D still shows your house.');
@@ -204,9 +261,19 @@ export const ModelARView: React.FC<Props> = ({ layout, requirements, structuralR
         <span className="self-start text-[11px] text-gray-600 bg-white/80 rounded px-2 py-0.5">This is a 3D preview. On your phone, tap <b>View in Your Space</b>, slowly move the phone over the floor until the house appears, then tap to place it.</span>
         <div className="self-start flex gap-1 pointer-events-auto">
           <button onClick={() => setArSize('table')} className={`text-[11px] px-2 py-1 rounded-full border ${arSize === 'table' ? 'bg-[#4f6f52] text-white border-[#4f6f52]' : 'bg-white/90 text-gray-700 border-gray-300'}`}>Table-top model</button>
-          <button onClick={() => setArSize('life')} disabled={!srcs.life} className={`text-[11px] px-2 py-1 rounded-full border disabled:opacity-50 ${arSize === 'life' ? 'bg-[#4f6f52] text-white border-[#4f6f52]' : 'bg-white/90 text-gray-700 border-gray-300'}`}>Life size (on your plot)</button>
+          <button onClick={() => setArSize('walk')} disabled={!srcs.walk0} className={`text-[11px] px-2 py-1 rounded-full border disabled:opacity-50 ${arSize === 'walk' ? 'bg-[#4f6f52] text-white border-[#4f6f52]' : 'bg-white/90 text-gray-700 border-gray-300'}`}>Walk through (life size)</button>
+          <button onClick={() => setArSize('life')} disabled={!srcs.life} className={`text-[11px] px-2 py-1 rounded-full border disabled:opacity-50 ${arSize === 'life' ? 'bg-[#4f6f52] text-white border-[#4f6f52]' : 'bg-white/90 text-gray-700 border-gray-300'}`}>Whole plot (life size)</button>
         </div>
-        {arSize === 'life' && <span className="self-start text-[11px] text-amber-800 bg-amber-50 rounded px-2 py-0.5">Life size is {layout.plotWidthM.toFixed(0)} m × {layout.plotDepthM.toFixed(0)} m: use it on the open plot and walk through the house.</span>}
+        {arSize === 'walk' && layout.floors.length > 1 && (
+          <div className="self-start flex gap-1 pointer-events-auto">
+            {layout.floors.map(fl => (
+              <button key={fl.floor} onClick={() => setWalkFloor(fl.floor)} disabled={!srcs[`walk${fl.floor}`]}
+                className={`text-[11px] px-2 py-1 rounded-full border disabled:opacity-50 ${walkFloor === fl.floor ? 'bg-amber-600 text-white border-amber-600' : 'bg-white/90 text-gray-700 border-gray-300'}`}>{fl.floorLabel}</button>
+            ))}
+          </div>
+        )}
+        {arSize === 'walk' && <span className="self-start text-[11px] text-amber-900 bg-amber-50 rounded px-2 py-1 max-w-md">Walk-through: stand where your front door will be, facing into the plot (an open space of about {layout.buildableWidthM.toFixed(0)} m × {layout.buildableDepthM.toFixed(0)} m). Tap View in Your Space, point at the ground and tap — the front door appears there and the house behind it, at real size. Walk in through the doors.</span>}
+        {arSize === 'life' && <span className="self-start text-[11px] text-amber-800 bg-amber-50 rounded px-2 py-0.5">Whole plot at real size ({layout.plotWidthM.toFixed(0)} m × {layout.plotDepthM.toFixed(0)} m): use it on the open plot.</span>}
         {arMsg && <span className="self-start text-[11px] text-red-800 bg-red-50 rounded px-2 py-1 max-w-md">{arMsg}</span>}
       </div>
 
@@ -228,7 +295,7 @@ export const ModelARView: React.FC<Props> = ({ layout, requirements, structuralR
         alt={`Your ${requirements.plotWidthFt}×${requirements.plotDepthFt} ft design — neevv`}
         ar
         ar-modes="webxr scene-viewer quick-look"
-        ar-scale={arSize === 'life' ? 'fixed' : 'auto'}
+        ar-scale={arSize === 'table' ? 'auto' : 'fixed'}
         ar-placement="floor"
         camera-controls
         touch-action="pan-y"
@@ -250,6 +317,7 @@ export const ModelARView: React.FC<Props> = ({ layout, requirements, structuralR
           View in Your Space (AR)
         </button>
 
+        {arSize !== 'walk' && (<>
         {/* Hotspot — Front Pillar: "Get Quote for Cement and all materials" */}
         <button
           className="hotspot"
@@ -299,6 +367,8 @@ export const ModelARView: React.FC<Props> = ({ layout, requirements, structuralR
         >
           Get Quote for Cement &amp; all materials
         </div>
+
+        </>)}
 
         {/* Poster placeholder during load */}
         <div slot="poster" className="flex items-center justify-center w-full h-full bg-gray-100">
