@@ -6,6 +6,7 @@ import { buildInteriorRoomPrompt, InteriorRenderType } from '../utils/interiorRe
 import { STYLE_TEMPLATES } from '../utils/interiorTemplates';
 import { Camera, RefreshCw, Download, AlertTriangle, Sparkles, Eye, ChevronRight, Pencil, X, ImagePlus } from 'lucide-react';
 import { shrinkImage, fileToDataUri } from '@/utils/imageShrink';
+import { SAMPLE_ITEMS, sampleItem, UNIT_LABEL } from '@/utils/sampleSpecs';
 import { authFetch } from '@/utils/authFetch';
 
 /* ------------------------------------------------------------------ */
@@ -169,6 +170,8 @@ interface Props {
   layout: Layout;
   interiorSelections: Record<string, RoomInterior>;
   moodBoard: InteriorMoodBoard;
+  /** saves a room's samples (photo item + quoted price) so the interior BOQ uses them */
+  onRoomChange?: (next: RoomInterior) => void;
 }
 
 /* ------------------------------------------------------------------ */
@@ -184,26 +187,11 @@ function roomLabel(room: Room): string {
   return room.name || base;
 }
 
-/** What a customer's sample photo can replace in a render, and what the image model should change. */
-const SAMPLE_TARGETS: { key: string; label: string; change: string }[] = [
-  { key: 'floor', label: 'Floor tiles', change: 'the floor tiles / flooring on the whole floor' },
-  { key: 'wall_tiles', label: 'Wall tiles', change: 'the wall tiles (dado / bathroom / kitchen backsplash tiles) wherever walls are tiled' },
-  { key: 'feature_wall', label: 'Feature wall / wallpaper', change: 'the finish of the main feature wall (behind the bed / TV / sofa)' },
-  { key: 'paint', label: 'Wall paint colour', change: 'the paint colour of the painted walls (match the colour shade in the photo)' },
-  { key: 'ceiling', label: 'False ceiling', change: 'the false ceiling design (shape, profile, cove and finish)' },
-  { key: 'lights', label: 'Lights / chandelier', change: 'the decorative light fittings (pendant, chandelier, wall lights) — same positions' },
-  { key: 'cp', label: 'Taps & shower (CP fittings)', change: 'the taps, mixers and shower fittings (match the design and finish: chrome, matte black, gold…)' },
-  { key: 'sanitary', label: 'WC / basin (sanitaryware)', change: 'the WC and wash basin (match the product design and colour)' },
-  { key: 'wood', label: 'Wood / laminate', change: 'the wood or laminate finish of wardrobes, cabinets and panelling' },
-  { key: 'counter', label: 'Countertop / stone', change: 'the countertop / vanity top stone' },
-  { key: 'fabric', label: 'Curtains / fabric', change: 'the curtains and soft-furnishing fabric' },
-];
-
 /* ------------------------------------------------------------------ */
 /*  Component                                                          */
 /* ------------------------------------------------------------------ */
 
-const InteriorAIDrawings: React.FC<Props> = ({ layout, interiorSelections, moodBoard }) => {
+const InteriorAIDrawings: React.FC<Props> = ({ layout, interiorSelections, moodBoard, onRoomChange }) => {
   /* ---------- derived data ---------- */
   const rooms = layout.floors.flatMap(f => f.rooms).filter(r => ALLOWED_TYPES.includes(r.type));
 
@@ -224,6 +212,25 @@ const InteriorAIDrawings: React.FC<Props> = ({ layout, interiorSelections, moodB
   const [sampleTarget, setSampleTarget] = useState('floor');
   const [sampleImg, setSampleImg] = useState<string | null>(null);
   const [sampleNote, setSampleNote] = useState('');
+  const [samplePrice, setSamplePrice] = useState('');
+  const [sampleQty, setSampleQty] = useState('');
+  const [savedMsg, setSavedMsg] = useState<string | null>(null);
+  /** Save the sample's price to the room so the interior BOQ uses it. */
+  const saveSamplePrice = useCallback((): boolean => {
+    const interior = interiorSelections[selectedRoomId], item = sampleItem(sampleTarget), rate = Number(samplePrice);
+    if (!onRoomChange || !interior || !item || !(rate > 0)) return false;
+    const qty = item.unit === 'nos' || item.unit === 'set' || item.unit === 'rft' ? Math.max(1, Number(sampleQty) || item.defaultQty || 1) : undefined;
+    const label = sampleNote.trim() ? `${item.label} — ${sampleNote.trim().slice(0, 80)}` : item.label;
+    onRoomChange({ ...interior, samples: { ...(interior.samples ?? {}), [item.key]: { label, rate, ...(qty ? { qty } : {}) } } });
+    setSavedMsg(`Saved: ${item.label} at ₹${rate.toLocaleString('en-IN')} per ${UNIT_LABEL[item.unit].replace(/s$/, '')} — see the Cost tab.`);
+    return true;
+  }, [interiorSelections, selectedRoomId, sampleTarget, samplePrice, sampleQty, sampleNote, onRoomChange]);
+  const removeSample = useCallback((key: string) => {
+    const interior = interiorSelections[selectedRoomId];
+    if (!onRoomChange || !interior?.samples) return;
+    const next = { ...interior.samples }; delete next[key];
+    onRoomChange({ ...interior, samples: next });
+  }, [interiorSelections, selectedRoomId, onRoomChange]);
 
   /* ---------- generate single image via API route ---------- */
   const generateImage = useCallback(
@@ -348,8 +355,9 @@ const InteriorAIDrawings: React.FC<Props> = ({ layout, interiorSelections, moodB
 
   /** Re-render the current image with only the chosen element changed to the customer's sample. */
   const handleSampleRerender = useCallback(async (base: string) => {
-    const t = SAMPLE_TARGETS.find(x => x.key === sampleTarget);
+    const t = sampleItem(sampleTarget);
     if (!t || !sampleImg) return;
+    if (Number(samplePrice) > 0) saveSamplePrice();
     setLoading(true); setError(null); setProgress(`Re-rendering with your ${t.label.toLowerCase()}…`);
     const prompt = `You are editing an interior design render for a customer.
 Image 1 is the current render of the room. Image 2 is a photo of the customer's chosen sample (${t.label}).
@@ -383,7 +391,7 @@ Keep everything else exactly as in image 1: the same camera angle and framing, r
     } catch (err: unknown) {
       setError(err instanceof Error && err.name === 'AbortError' ? 'This took too long. Please try again.' : err instanceof Error ? err.message : 'Re-render failed');
     } finally { clearTimeout(timeoutId); setLoading(false); setProgress(''); }
-  }, [sampleTarget, sampleImg, sampleNote, selectedRoomId, selectedType]);
+  }, [sampleTarget, sampleImg, sampleNote, selectedRoomId, selectedType, samplePrice, saveSamplePrice]);
 
   const handleResetEdit = useCallback(() => {
     setEditOptions({});
@@ -640,8 +648,8 @@ Keep everything else exactly as in image 1: the same camera angle and framing, r
             <div className="bg-white border border-amber-200 rounded-lg p-3 space-y-2">
               <label className="text-xs font-semibold text-gray-700 flex items-center gap-1"><ImagePlus size={13} className="text-amber-600" /> Use my own sample — photo of a tile, light, tap, laminate…</label>
               <div className="flex flex-wrap gap-1.5">
-                {SAMPLE_TARGETS.map(t => (
-                  <button key={t.key} onClick={() => setSampleTarget(t.key)}
+                {SAMPLE_ITEMS.map(t => (
+                  <button key={t.key} onClick={() => { setSampleTarget(t.key); setSamplePrice(''); setSampleQty(''); setSavedMsg(null); }}
                     className={`px-2.5 py-1 rounded-full text-xs border ${sampleTarget === t.key ? 'text-white border-transparent' : 'bg-white text-gray-600 border-gray-300 hover:border-gray-500'}`}
                     style={sampleTarget === t.key ? { backgroundColor: BRAND_GREEN } : undefined}>{t.label}</button>
                 ))}
@@ -656,16 +664,52 @@ Keep everything else exactly as in image 1: the same camera angle and framing, r
               </div>
               <input className="w-full text-xs border border-gray-300 rounded-lg px-2 py-1.5" placeholder="Optional: size / finish, e.g. 600×1200 matte, brand & code"
                 value={sampleNote} onChange={e => setSampleNote(e.target.value)} maxLength={300} />
+              {(() => {
+                const it = sampleItem(sampleTarget);
+                if (!it || !onRoomChange) return null;
+                const perPiece = it.unit !== 'sqft';
+                return (
+                  <div className="flex flex-wrap items-end gap-2">
+                    <label className="text-[11px] text-gray-600">{it.priceLabel}
+                      <input type="number" min={0} inputMode="decimal" className="block w-32 text-sm border border-gray-300 rounded-lg px-2 py-1 mt-0.5" placeholder="e.g. 120"
+                        value={samplePrice} onChange={e => { setSamplePrice(e.target.value); setSavedMsg(null); }} />
+                    </label>
+                    {perPiece && <label className="text-[11px] text-gray-600">Quantity ({UNIT_LABEL[it.unit]})
+                      <input type="number" min={1} className="block w-20 text-sm border border-gray-300 rounded-lg px-2 py-1 mt-0.5" placeholder={String(it.defaultQty ?? 1)}
+                        value={sampleQty} onChange={e => { setSampleQty(e.target.value); setSavedMsg(null); }} />
+                    </label>}
+                    <button className="text-xs border border-gray-400 rounded-lg px-3 py-1.5 bg-white hover:bg-gray-50 disabled:opacity-50"
+                      disabled={!(Number(samplePrice) > 0)} onClick={() => saveSamplePrice()}>Update BOQ with this price</button>
+                    <p className="w-full text-[11px] text-gray-500">{it.boqNote} Price is saved for this room even without a photo.</p>
+                  </div>
+                );
+              })()}
+              {savedMsg && <p className="text-[11px] text-emerald-700">{savedMsg}</p>}
               <button
                 className="text-sm text-white px-4 py-1.5 rounded-lg hover:opacity-90 disabled:opacity-50 flex items-center gap-1.5 font-medium"
                 style={{ backgroundColor: BRAND_GREEN }}
                 disabled={loading || !sampleImg || !latestRender}
                 onClick={() => latestRender && handleSampleRerender(latestRender.imageData)}
               >
-                <Sparkles size={13} /> Re-render with my sample
+                <Sparkles size={13} /> Re-render with my sample{Number(samplePrice) > 0 ? ' & update BOQ' : ''}
               </button>
+              {(() => {
+                const saved = Object.entries(interiorSelections[selectedRoomId]?.samples ?? {});
+                if (!saved.length) return null;
+                return (
+                  <div className="text-[11px] text-gray-700 border-t border-amber-100 pt-2 space-y-1">
+                    <div className="font-semibold">Your samples in the BOQ for this room</div>
+                    {saved.map(([k, v]) => { const it = sampleItem(k); return (
+                      <div key={k} className="flex items-center gap-2">
+                        <span className="flex-1">{v.label}: ₹{v.rate.toLocaleString('en-IN')} / {it ? UNIT_LABEL[it.unit].replace(/s$/, '') : 'unit'}{v.qty ? ` × ${v.qty}` : ''}</span>
+                        <button className="text-red-500 underline" onClick={() => removeSample(k)}>Remove</button>
+                      </div>
+                    ); })}
+                  </div>
+                );
+              })()}
               {!latestRender && <p className="text-[11px] text-gray-500">Generate a render of this view first; your sample is applied to it.</p>}
-              <p className="text-[11px] text-gray-400">Only the chosen item changes; layout, furniture and camera stay the same. The look is AI-generated — confirm the actual product, size and price with your supplier.</p>
+              <p className="text-[11px] text-gray-400">Only the chosen item changes in the picture; layout, furniture and camera stay the same. The look is AI-generated — confirm the actual product, size and price with your supplier.</p>
             </div>
 
             {/* Free text */}

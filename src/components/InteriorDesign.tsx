@@ -113,6 +113,7 @@ export const InteriorDesign: React.FC<Props> = ({ layout, requirements }) => {
               layout={layout}
               interiorSelections={selectionsMap}
               moodBoard={moodBoard}
+              onRoomChange={(next) => setRooms(prev => (prev ?? []).map(r => (r.roomId === next.roomId ? next : r)))}
             />
           );
         })()}
