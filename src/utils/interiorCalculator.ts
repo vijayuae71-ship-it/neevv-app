@@ -1,3 +1,4 @@
+import { sampleItem } from './sampleSpecs';
 import type {
   RoomInterior,
   Layout,
@@ -397,6 +398,9 @@ function interiorBOQ(
     const perimeterFt = getRoomPerimeterFt(room.roomId, layout);
     const wallArea = getWallAreaSqFt(room.roomId, layout, room.ceilingHeight);
     const roomLabel = room.roomName;
+    // customer's own samples (photo + quoted price) override the default rates
+    const smp = (k: string) => { const x = room.samples?.[k]; return x && x.rate > 0 ? x : undefined; };
+    const smpName = (k: string, fallback: string) => `${fallback} — your sample: ${smp(k)!.label || sampleItem(k)?.label}`;
 
     /* ---------- 1. CIVIL ---------- */
     if (room.specialFeatures.length > 0) {
@@ -411,7 +415,10 @@ function interiorBOQ(
     }
 
     /* ---------- 2. FALSE CEILING ---------- */
-    if (room.ceilingType !== 'plain') {
+    if (smp('ceiling')) {
+      const full = room.ceilingType === 'false_ceiling_full' || room.ceilingType === 'plain' || room.ceilingType === 'wooden_ceiling';
+      addItem('false_ceiling', smpName('ceiling', 'False ceiling'), roomLabel, full ? areaSqFt : areaSqFt * 0.6, 'sqft', smp('ceiling')!.rate, 'Customer sample price');
+    } else if (room.ceilingType !== 'plain') {
       let ceilingArea: number;
       let ceilingRate: number;
       let ceilingDesc: string;
@@ -435,7 +442,8 @@ function interiorBOQ(
     }
 
     /* ---------- 3. FLOORING ---------- */
-    addItem(
+    if (smp('floor')) addItem('flooring', smpName('floor', 'Flooring'), roomLabel, areaSqFt, 'sqft', smp('floor')!.rate, 'Customer sample price');
+    else addItem(
       'flooring',
       `${room.flooring.name} — ${room.flooring.finish}`,
       roomLabel,
@@ -454,6 +462,12 @@ function interiorBOQ(
       if (furn.defaultSelected !== true) continue;
       addItem('woodwork', furn.name, roomLabel, 1, 'nos', furn.estimatedCost, furn.material);
     }
+    if (smp('wood')) {
+      const faces = room.furniture.filter(f => f.defaultSelected === true && f.category !== 'bathroom_fixture')
+        .reduce((sum, f) => sum + (f.widthMM * f.heightMM) / 92903, 0);
+      if (faces > 0) addItem('woodwork', smpName('wood', 'Wood / laminate finish'), roomLabel, faces, 'sqft', smp('wood')!.rate, 'Front faces of the selected furniture');
+    }
+    if (smp('counter')) addItem('woodwork', smpName('counter', 'Countertop'), roomLabel, smp('counter')!.qty ?? 10, 'rft', smp('counter')!.rate, 'Customer sample price');
 
     /* ---------- 5. PAINTING ---------- */
     // Wall tiles to the chosen height (bath default 2100, kitchen dado counter→1500), paint on the rest of the wall
@@ -462,12 +476,17 @@ function interiorBOQ(
     if (band && tileArea > 0) {
       const tileIsFinish = wallFinishIsTile(room);
       addItem('flooring', `Wall tiles ${band.full ? 'full height' : `to ${band.toMm} mm`}${band.fromMm ? ` (from counter ${band.fromMm} mm)` : ''} — ${tileIsFinish ? cleanFinishName(room.wallFinish.name) : 'ceramic 300×600'}`,
-        roomLabel, tileArea, 'sqft', tileIsFinish ? room.wallFinish.ratePerUnit : 110, 'Tile, adhesive, grout and laying');
+        roomLabel, tileArea, 'sqft', smp('wall_tiles')?.rate ?? (tileIsFinish ? room.wallFinish.ratePerUnit : 110), smp('wall_tiles') ? `Your sample: ${smp('wall_tiles')!.label}` : 'Tile, adhesive, grout and laying');
     }
     const paintArea = Math.max(0, wallArea - tileArea);
     if (paintArea > 1) {
       const tileIsFinish = wallFinishIsTile(room);
-      addItem('painting', tileIsFinish ? 'Wall paint above tiles (emulsion)' : `Wall finish — ${room.wallFinish.name}`, roomLabel, paintArea, 'sqft', tileIsFinish ? 22 : room.wallFinish.ratePerUnit);
+      addItem('painting', smp('paint') ? smpName('paint', 'Wall paint') : tileIsFinish ? 'Wall paint above tiles (emulsion)' : `Wall finish — ${room.wallFinish.name}`, roomLabel, paintArea, 'sqft', smp('paint')?.rate ?? (tileIsFinish ? 22 : room.wallFinish.ratePerUnit));
+    }
+    if (smp('feature_wall')) {
+      const r0 = layout.floors.flatMap(f => f.rooms).find(r => r.id === room.roomId);
+      const longFt = r0 ? Math.max(r0.width, r0.depth) * 3.281 : Math.sqrt(areaSqFt);
+      addItem('painting', smpName('feature_wall', 'Feature wall'), roomLabel, longFt * (room.ceilingHeight > 1500 ? room.ceilingHeight / 304.8 : 9), 'sqft', smp('feature_wall')!.rate, 'One long wall × ceiling height');
     }
     // Ceiling paint (if plain ceiling or extra coat on false ceiling)
     const ceilingPaintRate = 18;
@@ -488,13 +507,15 @@ function interiorBOQ(
         addItem('electrical', ei.desc, roomLabel, ei.qty, 'nos', ei.rate);
       }
     }
+    if (smp('lights')) addItem('electrical', smpName('lights', 'Decorative light fittings'), roomLabel, smp('lights')!.qty ?? 1, 'nos', smp('lights')!.rate, 'Customer sample price');
 
     /* ---------- 7. PLUMBING ---------- */
     if (room.roomType === 'bathroom') {
-      addItem('plumbing', 'CP fittings & fixtures (bathroom)', roomLabel, 1, 'set', 25000, 'Includes taps, shower, diverter, health faucet');
+      addItem('plumbing', smp('cp') ? smpName('cp', 'CP fittings') : 'CP fittings & fixtures (bathroom)', roomLabel, 1, 'set', smp('cp')?.rate ?? 25000, 'Includes taps, shower, diverter, health faucet');
     } else if (room.roomType === 'kitchen') {
-      addItem('plumbing', 'Kitchen sink + fittings', roomLabel, 1, 'set', 12000, 'SS sink with tap and accessories');
-    }
+      addItem('plumbing', smp('cp') ? smpName('cp', 'Kitchen sink fittings') : 'Kitchen sink + fittings', roomLabel, 1, 'set', smp('cp')?.rate ?? 12000, 'SS sink with tap and accessories');
+    } else if (smp('cp')) addItem('plumbing', smpName('cp', 'CP fittings'), roomLabel, 1, 'set', smp('cp')!.rate);
+    if (smp('sanitary')) addItem('plumbing', smpName('sanitary', 'WC + basin'), roomLabel, smp('sanitary')!.qty ?? 1, 'set', smp('sanitary')!.rate, 'Customer sample price');
 
     /* ---------- 8. HARDWARE ---------- */
     const hardwareCost =
@@ -506,8 +527,8 @@ function interiorBOQ(
     if (room.roomType === 'living' || room.roomType === 'bedroom' || room.roomType === 'master_bedroom') {
       // Curtains for bedrooms & living
       const curtainArea = perimeterFt * 0.25 * 8; // ~25% of perimeter has windows, 8 ft drop
-      const curtainRate = 750;
-      addItem('furnishing', 'Curtains & blinds', roomLabel, curtainArea, 'sqft', curtainRate);
+      const curtainRate = smp('fabric')?.rate ?? 750;
+      addItem('furnishing', smp('fabric') ? smpName('fabric', 'Curtains') : 'Curtains & blinds', roomLabel, curtainArea, 'sqft', curtainRate);
     }
   }
 

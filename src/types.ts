@@ -350,6 +350,18 @@ export interface RoomInterior {
   floorTileSize?: string;
   /** Skirting height in mm (0 = none). Ignored where the walls are tiled to the floor. */
   skirtingHeightMm?: number;
+  /** Customer's own samples (photo + price) by item, e.g. floor tiles; the interior BOQ uses these prices. */
+  samples?: Record<string, RoomSample>;
+}
+
+/** A product the customer chose from a showroom photo, with the price they were quoted. */
+export interface RoomSample {
+  /** what it is, e.g. "Floor tiles — 600×1200 matte, Kajaria 1234" */
+  label: string;
+  /** price per unit in ₹ (unit fixed by the item: sq ft, rft, piece or set) */
+  rate: number;
+  /** quantity for per-piece items (lights, basins…); area / length items are measured from the room */
+  qty?: number;
 }
 
 export interface InteriorMoodBoard {
