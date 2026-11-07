@@ -476,14 +476,14 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq, on
       </div>
 
       {/* Controls bar */}
-      <div className="flex items-center gap-2 px-3 py-1 bg-gray-100 border-b border-gray-200">
+      <div className="flex flex-wrap items-center gap-2 px-3 py-1 bg-gray-100 border-b border-gray-200">
         {/* Progress */}
         <span className="text-[10px] font-mono text-gray-500">
           <Sparkles size={10} className="inline mr-1" />
           {generatedCount}/{totalDrawings} generated
         </span>
         {statusBadge}
-        <div className="w-20 bg-gray-200 rounded-full h-1.5">
+        <div className="w-20 shrink-0 bg-gray-200 rounded-full h-1.5">
           <div className="bg-green-500 h-1.5 rounded-full transition-all" style={{ width: `${(generatedCount / totalDrawings) * 100}%` }} />
         </div>
 
@@ -492,18 +492,18 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq, on
           <span className="text-[10px] text-gray-500 ml-2 px-2 py-0.5 border border-gray-200 rounded" title="This sheet is common to all floors">All floors</span>
         )}
         {isMultiFloor && FLOOR_SPECIFIC.includes(activeDrawing) && (
-          <div className="flex items-center gap-0.5 ml-2 border border-gray-300 rounded overflow-hidden">
+          <div className="flex shrink-0 items-center gap-0.5 ml-2 border border-gray-300 rounded overflow-hidden" role="group" aria-label="Floor">
             <button
               className={`btn btn-xs rounded-none ${selectedFloor === 'GF' ? 'btn-primary' : 'btn-ghost'}`}
               onClick={() => setSelectedFloor('GF')}
             >
-              GF
+              Ground Floor
             </button>
             <button
               className={`btn btn-xs rounded-none ${selectedFloor === 'FF' ? 'btn-primary' : 'btn-ghost'}`}
               onClick={() => setSelectedFloor('FF')}
             >
-              FF
+              First Floor
             </button>
           </div>
         )}
