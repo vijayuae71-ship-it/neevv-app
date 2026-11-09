@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Layout, ProjectRequirements, BOQ } from '../types';
 import {
   Layers, Grid3x3, ArrowUpDown, Building, Shovel, Columns3,
@@ -13,7 +13,9 @@ import { toOverlayData, type StructuralOverlayData } from '../utils/textOverlay'
 import { authFetch } from '@/utils/authFetch';
 import { getCachedDrawing, setCachedDrawing, getAllCachedDrawings, clearCachedDrawings, migrateFromLocalStorage } from '../utils/drawingCache';
 import { buildDrawingPrompt, DrawingType as ApiDrawingType, StructuralPromptData } from '../utils/drawingPrompts';
-import { generateProgrammaticDrawing, PROGRAMMATIC_TYPES } from '../utils/drawingEngine';
+import { generateProgrammaticDrawing, PROGRAMMATIC_TYPES, sheetNumber } from '../utils/drawingEngine';
+import { tagToProject } from '@/utils/projectAssetsClient';
+import { useActiveProjectId } from '@/utils/activeProject';
 import { buildingSheets, downloadVectorPDF, downloadCADSet } from '../utils/drawingSetExport';
 import { isOfficeLayout } from '../utils/officeServices';
 
@@ -402,6 +404,23 @@ export const WorkingDrawings: React.FC<Props> = ({ layout, requirements, boq, on
       { id: 'fireSafety' as DrawingType, label: 'Fire Safety & Escape', icon: <ShieldCheck size={12} />, group: 'Office' },
     ] : []),
   ];
+
+  /* every sheet produced is filed in the project's drawing register (number, title, floor) */
+  const projectId = useActiveProjectId();
+  const taggedRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!projectId) return;
+    const fresh = Object.keys(aiImages).filter(k => !taggedRef.current.has(`${projectId}|${k}`));
+    if (!fresh.length) return;
+    tagToProject(...fresh.map(k => {
+      taggedRef.current.add(`${projectId}|${k}`);
+      const [dt, fl] = k.split('-') as [DrawingType, string | undefined];
+      const engineType = aiDrawingMap[dt] ?? dt, level = fl === 'FF' ? 1 : 0;
+      let no = ''; try { no = sheetNumber(engineType, level); } catch { /* unknown type */ }
+      const title = tabs.find(t => t.id === dt)?.label ?? dt;
+      return { kind: 'drawing' as const, key: no ? `${no}${fl ? `-${fl}` : ''}` : k, sheetNo: no || undefined, title, floor: fl === 'FF' ? 'First Floor' : fl === 'GF' ? 'Ground Floor' : 'All floors' };
+    }));
+  }, [aiImages, projectId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const groups = ['Architecture', 'Site', 'Structure', 'Finishes', 'MEP', ...(office ? ['Office'] : [])];
 

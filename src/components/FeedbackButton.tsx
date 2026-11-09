@@ -17,10 +17,11 @@ export default function FeedbackButton() {
     <button
       type="button"
       onClick={() => router.push('/feedback')}
-      className="fixed bottom-20 right-4 z-50 rounded-full bg-[#4f6f52] px-4 py-2.5 text-sm font-medium text-white shadow-lg transition hover:scale-105 hover:bg-[#405b43] focus:outline-none focus:ring-2 focus:ring-[#e8853d] focus:ring-offset-2"
+      className="fixed bottom-24 right-3 md:bottom-6 md:right-6 z-40 flex h-11 w-11 md:h-auto md:w-auto items-center justify-center rounded-full bg-[#4f6f52]/90 md:px-4 md:py-2.5 text-sm font-medium text-white shadow-lg transition hover:scale-105 hover:bg-[#405b43] focus:outline-none focus:ring-2 focus:ring-[#e8853d] focus:ring-offset-2"
       aria-label="Send feedback"
+      title="Send feedback"
     >
-      💬 Feedback
+      💬<span className="hidden md:inline ml-1.5">Feedback</span>
     </button>
   );
 }

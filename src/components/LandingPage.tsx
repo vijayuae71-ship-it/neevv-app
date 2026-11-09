@@ -141,23 +141,24 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         <div className="max-w-7xl mx-auto px-5 md:px-10 h-14 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <img src={BRAND_LOGO_URL} alt="neevv" className="h-8" />
-            <div className="h-6 w-px bg-gray-200 hidden sm:block" />
-            <span className="text-xs tracking-wide uppercase hidden sm:inline" style={{ color: BRAND }}>
+            <div className="h-6 w-px bg-gray-200 hidden 2xl:block" />
+            <span className="text-xs tracking-wide uppercase hidden 2xl:inline whitespace-nowrap" style={{ color: BRAND }}>
               Architecture • Structure • MEP • Interiors
             </span>
           </div>
           <div className="flex items-center gap-4">
-            <nav className="hidden md:flex items-center gap-7 text-sm font-medium text-gray-500">
+            <nav className="hidden md:flex items-center gap-5 lg:gap-7 text-sm font-medium text-gray-500 whitespace-nowrap">
               <a href="#showcase" className="hover:text-gray-900 transition-colors">Showcase</a>
               <a href="#how-it-works" className="hover:text-gray-900 transition-colors">How it works</a>
               <a href="#deliverables" className="hover:text-gray-900 transition-colors">What you get</a>
               <a href="#deliverables" className="hover:text-gray-900 transition-colors">Pricing</a>
               <a href="/blog" className="hover:text-gray-900 transition-colors">Blog</a>
             </nav>
-            <button onClick={onDashboardClick} className="text-sm font-semibold px-4 py-2 rounded-lg border transition-all hover:-translate-y-0.5" style={{ borderColor: BRAND, color: BRAND, background: 'transparent' }}>
+            <button onClick={onDashboardClick} className="whitespace-nowrap text-sm font-semibold px-3 sm:px-4 py-2 rounded-lg border transition-all hover:-translate-y-0.5" style={{ borderColor: BRAND, color: BRAND, background: 'transparent' }}>
               My Projects
             </button>
-            <button onClick={onGetStarted} className="text-sm font-semibold px-5 py-2 rounded-lg text-white shadow-sm hover:shadow-md transition-all hover:-translate-y-0.5" style={{ backgroundColor: ACCENT }}>
+            {/* on phones the bottom bar carries the main action; keep the header to one line */}
+            <button onClick={onGetStarted} className="hidden sm:inline-flex whitespace-nowrap text-sm font-semibold px-5 py-2 rounded-lg text-white shadow-sm hover:shadow-md transition-all hover:-translate-y-0.5" style={{ backgroundColor: ACCENT }}>
               Design my home — free
             </button>
           </div>
@@ -203,7 +204,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                 <p className="mt-4 text-xs md:text-sm text-gray-500">About 15 minutes. No card. Works from anywhere for any plot in India.</p>
               </Reveal>
             </div>
-            <Reveal delay={260} className="absolute right-5 bottom-10 md:right-12 md:bottom-14">
+            <Reveal delay={260} className="hidden md:block absolute right-5 bottom-10 md:right-12 md:bottom-14">
               <div className="rotate-[-3deg] rounded-xl bg-white px-5 py-4 shadow-2xl border border-gray-100 max-w-[220px]">
                 <div className="text-3xl font-black text-gray-950">Today</div>
                 <p className="mt-1 text-xs leading-relaxed text-gray-500">Not four months, and not ₹2-5L of fees</p>

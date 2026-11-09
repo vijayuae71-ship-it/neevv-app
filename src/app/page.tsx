@@ -7,6 +7,7 @@ import { RequirementForm } from '@/components/RequirementForm';
 import { LayoutSelector } from '@/components/LayoutSelector';
 
 import { IsometricView } from '@/components/IsometricView';
+import { setActiveProjectId } from '@/utils/activeProject';
 import { WorkingDrawings } from '@/components/WorkingDrawings';
 import { BOQReport } from '@/components/BOQReport';
 import { InteriorDesign } from '@/components/InteriorDesign';
@@ -125,6 +126,8 @@ export default function HomePage() {
     generatedDrawingTypes,
   });
 
+  // every drawing, render and AR model is filed under this saved project (and drawings print its reference)
+  useEffect(() => { setActiveProjectId(autoSaveProjectId); }, [autoSaveProjectId]);
   const handleDrawingGenerated = useCallback((drawingType: string) => {
     setValidationPassed(false);
     setGeneratedDrawingTypes(prev => {
@@ -528,7 +531,7 @@ export default function HomePage() {
               }}
               className="text-xs sm:text-sm text-gray-500 hover:text-gray-700 px-2 py-1 rounded hover:bg-gray-100"
             >
-              🔄 New Project
+              <span className="sm:hidden">+ New</span><span className="hidden sm:inline">🔄 New Project</span>
             </button>
           )}
           {selectedLayout && (
@@ -539,7 +542,7 @@ export default function HomePage() {
               }}
               className="text-xs sm:text-sm bg-green-100 text-green-700 px-3 py-1.5 rounded-lg hover:bg-green-200 transition-colors"
             >
-              📄 <span className="hidden sm:inline">Export Summary</span>
+              📄 <span className="sm:hidden">PDF</span><span className="hidden sm:inline">Export Summary</span>
             </button>
           )}
           {user && (
@@ -548,7 +551,7 @@ export default function HomePage() {
               disabled={autoSaving}
               className="text-xs sm:text-sm bg-blue-100 text-blue-600 px-3 py-1.5 rounded-lg hover:bg-blue-200 transition-colors disabled:opacity-80"
             >
-              {autoSaving ? 'Saving...' : (<>💾 <span className="hidden sm:inline">Save</span></>)}
+              {autoSaving ? 'Saving...' : (<>💾 Save</>)}
             </button>
           )}
           {authLoading ? null : user ? (
