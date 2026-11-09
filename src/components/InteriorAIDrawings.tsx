@@ -1,12 +1,13 @@
 'use client';
 
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import type { Room, RoomInterior, InteriorMoodBoard, Layout } from '../types';
 import { buildInteriorRoomPrompt, InteriorRenderType } from '../utils/interiorRenderPrompt';
 import { STYLE_TEMPLATES } from '../utils/interiorTemplates';
 import { Camera, RefreshCw, Download, AlertTriangle, Sparkles, Eye, ChevronRight, Pencil, X, ImagePlus } from 'lucide-react';
 import { shrinkImage, fileToDataUri } from '@/utils/imageShrink';
 import { SAMPLE_ITEMS, sampleItem, UNIT_LABEL } from '@/utils/sampleSpecs';
+import { designId, loadRenders, saveRenders } from '@/utils/renderHistory';
 import { authFetch } from '@/utils/authFetch';
 
 /* ------------------------------------------------------------------ */
@@ -202,6 +203,20 @@ const InteriorAIDrawings: React.FC<Props> = ({ layout, interiorSelections, moodB
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState('');
   const [renderCache, setRenderCache] = useState<RenderCache>({});
+  /** renders are filed under the rooms and their selections (not prices), and come back after a reload */
+  const design = useMemo(() => designId('interior', rooms.map(r => [r.id, r.name, r.type, r.width, r.depth]),
+    Object.values(interiorSelections).map(({ samples: _samples, ...sel }) => sel)), [rooms, interiorSelections]);
+  useEffect(() => {
+    const restored: RenderCache = {};
+    for (const r of rooms) for (const t of ['plan', 'elevation', 'render3d'] as RenderTypeKey[]) {
+      const list = loadRenders(design, `${r.id}:${t}`);
+      if (list.length) restored[cacheKey(r.id, t)] = list.map(x => ({ roomId: r.id, type: t, imageData: x.imageData, timestamp: x.timestamp, isEdited: !!x.isEdited }));
+    }
+    setRenderCache(restored);
+  }, [design]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    for (const list of Object.values(renderCache)) if (list.length) saveRenders(design, `${list[0].roomId}:${list[0].type}`, list.map(x => ({ imageData: x.imageData, timestamp: x.timestamp, isEdited: x.isEdited })));
+  }, [renderCache, design]);
   const abortRef = useRef(false);
 
   /* ---------- edit design state ---------- */
@@ -234,7 +249,7 @@ const InteriorAIDrawings: React.FC<Props> = ({ layout, interiorSelections, moodB
 
   /* ---------- generate single image via API route ---------- */
   const generateImage = useCallback(
-    async (roomId: string, type: RenderTypeKey, modificationPrompt?: string): Promise<RenderEntry | null> => {
+    async (roomId: string, type: RenderTypeKey, modificationPrompt?: string, fresh = false): Promise<RenderEntry | null> => {
       const room = rooms.find(r => r.id === roomId);
       if (!room) throw new Error('Room not found');
       const interior = interiorSelections[roomId];
@@ -260,6 +275,7 @@ const InteriorAIDrawings: React.FC<Props> = ({ layout, interiorSelections, moodB
             prompt: promptText,
             projectId: 'interior-project',
             renderType: `interior_${type}`,
+            fresh,
           }),
           signal: controller.signal,
         });
@@ -318,7 +334,9 @@ const InteriorAIDrawings: React.FC<Props> = ({ layout, interiorSelections, moodB
         setProgress(`Generating ${typeLabel} for ${room ? roomLabel(room) : 'room'}…`);
 
         try {
-          const entry = await generateImage(roomId, t, modificationPrompt);
+          // asking again for a view this room already has means a new version; otherwise the saved one is reused
+          const fresh = !modificationPrompt && (updatedCache[cacheKey(roomId, t)]?.length ?? 0) > 0;
+          const entry = await generateImage(roomId, t, modificationPrompt, fresh);
           if (entry) {
             const key = cacheKey(roomId, t);
             updatedCache = {

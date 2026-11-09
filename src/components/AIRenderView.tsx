@@ -1,10 +1,11 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Layout, ProjectRequirements } from '../types';
 import { buildArchitecturalPrompt } from '../utils/aiRenderPrompt';
 import { Camera, RefreshCw, Download, AlertTriangle, Sparkles, Eye } from 'lucide-react';
 import { authFetch } from '@/utils/authFetch';
+import { designId, loadRenders, saveRenders } from '@/utils/renderHistory';
 
 const MODELS = [
   { id: 'neevv-gen', label: 'neevv Gen' },
@@ -37,6 +38,15 @@ export const AIRenderView: React.FC<Props> = ({ layout, requirements }) => {
   const [selectedModel, setSelectedModel] = useState(MODELS[0].id);
   const [activeRender, setActiveRender] = useState<RenderResult | null>(null);
   const [progress, setProgress] = useState('');
+  /** this design's renders are filed under its rooms, sizes and style, and reloaded after a refresh */
+  const design = useMemo(() => designId('house', layout.floors.map(f => f.rooms.map(r => [r.name, r.type, r.x, r.y, r.width, r.depth])),
+    requirements.facing, requirements.budget, requirements.architecturalStyle, requirements.designStyle ?? '', requirements.buildingType ?? ''), [layout, requirements]);
+  useEffect(() => {
+    const saved: RenderResult[] = VIEW_ANGLES.flatMap(v => loadRenders(design, v.id).map(r => ({ viewAngle: v.id, imageData: r.imageData, timestamp: r.timestamp })))
+      .sort((a, b) => b.timestamp - a.timestamp);
+    setRenders(saved);
+    setActiveRender(saved[0] ?? null);
+  }, [design]);
 
   async function generateRender() {
     setLoading(true);
@@ -45,6 +55,8 @@ export const AIRenderView: React.FC<Props> = ({ layout, requirements }) => {
 
     try {
       const prompt = buildArchitecturalPrompt(layout, requirements, selectedView);
+      // a view already rendered for this design: the customer is asking for a new version
+      const fresh = renders.some(r => r.viewAngle === selectedView);
       
       setProgress('neevv Generation Pro rendering...');
 
@@ -56,6 +68,7 @@ export const AIRenderView: React.FC<Props> = ({ layout, requirements }) => {
           model: selectedModel,
           projectId: 'user-project',
           renderType: selectedView,
+          fresh,
         }),
       });
 
@@ -94,8 +107,9 @@ export const AIRenderView: React.FC<Props> = ({ layout, requirements }) => {
         timestamp: Date.now(),
       };
 
-      const updatedRenders = [newRender, ...renders.slice(0, 7)];
+      const updatedRenders = [newRender, ...renders.filter(r => r.imageData !== imageUrl).slice(0, 15)];
       setRenders(updatedRenders);
+      saveRenders(design, selectedView, updatedRenders.filter(r => r.viewAngle === selectedView).reverse().map(r => ({ imageData: r.imageData, timestamp: r.timestamp })));
       setActiveRender(newRender);
       setProgress('');
     } catch (err: any) {
@@ -173,7 +187,7 @@ export const AIRenderView: React.FC<Props> = ({ layout, requirements }) => {
           ) : (
             <>
               <Camera size={14} />
-              Generate {viewLabel}
+              {renders.some(r => r.viewAngle === selectedView) ? "New version:" : "Generate"} {viewLabel}
             </>
           )}
         </button>

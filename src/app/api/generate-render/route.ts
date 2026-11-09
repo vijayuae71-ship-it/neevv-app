@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenAI } from '@google/genai';
-import { Storage } from '@google-cloud/storage';
+import { cachedRender, parseRenderRef, readRender, renderUrl, requestKey, storeRender } from '@/utils/renderStore';
 import { verifyAuthOptional } from '@/lib/auth-middleware';
 import { rateLimit, getRateLimitKey } from '@/utils/rateLimit';
 import { checkAndIncrementUsage } from '@/utils/usageTracker';
@@ -8,6 +8,7 @@ import { checkAndIncrementUsage } from '@/utils/usageTracker';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 120;
 
+const MODEL = 'gemini-3-pro-image';
 const ASPECTS = ['1:1', '2:3', '3:2', '3:4', '4:3', '4:5', '5:4', '9:16', '16:9', '21:9'];
 const IMG_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 const MAX_IMG_BYTES = 6 * 1024 * 1024;
@@ -27,6 +28,13 @@ async function referenceImages(images: unknown): Promise<{ inlineData: { mimeTyp
     if (m) {
       if (m[2].length * 0.75 > MAX_IMG_BYTES) throw new Error('Image too large (max 6 MB).');
       out.push({ inlineData: { mimeType: m[1], data: m[2] } });
+      continue;
+    }
+    const stored = parseRenderRef(img);
+    if (stored) {
+      const buf = await readRender(stored).catch(() => null);
+      if (!buf || buf.length > MAX_IMG_BYTES) throw new Error('The earlier render could not be loaded. Please generate it again.');
+      out.push({ inlineData: { mimeType: stored.ext === 'jpg' ? 'image/jpeg' : `image/${stored.ext}`, data: buf.toString('base64') } });
       continue;
     }
     if (bucket && img.startsWith(`https://storage.googleapis.com/${bucket}/renders/`)) {
@@ -54,16 +62,8 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const usage = await checkAndIncrementUsage(auth.userId, 'renders');
-  if (!usage.allowed) {
-    return NextResponse.json(
-      { success: false, error: `Daily render limit reached (${usage.limit}/day). Try again tomorrow.`, remaining: 0 },
-      { status: 429 }
-    );
-  }
-
   try {
-    const { prompt, renderType, projectId, images, aspectRatio } = await request.json();
+    const { prompt, renderType, projectId, images, aspectRatio, fresh } = await request.json();
     // edits keep the shape of the image being edited (otherwise the model returns a square)
     const ratio = typeof aspectRatio === 'string' && ASPECTS.includes(aspectRatio) ? aspectRatio : undefined;
 
@@ -82,10 +82,25 @@ export async function POST(request: NextRequest) {
     try { imageParts = await referenceImages(images); }
     catch (e: any) { return NextResponse.json({ success: false, error: e?.message || 'Image not accepted' }, { status: 400 }); }
 
+    // the same request (prompt, reference images, shape) is answered from the store: no AI call, no credit
+    const key = requestKey({ model: MODEL, prompt: String(prompt), images: imageParts.map(p => p.inlineData.data), ratio });
+    if (!fresh) {
+      const hit = await cachedRender(key);
+      if (hit) return NextResponse.json({ success: true, imageUrl: renderUrl(hit), imageDataUri: renderUrl(hit), cached: true, renderType });
+    }
+
+    const usage = await checkAndIncrementUsage(auth.userId, 'renders');
+    if (!usage.allowed) {
+      return NextResponse.json(
+        { success: false, error: `Daily render limit reached (${usage.limit}/day). Try again tomorrow.`, remaining: 0 },
+        { status: 429 }
+      );
+    }
+
     const ai = new GoogleGenAI({ apiKey });
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3-pro-image',
+      model: MODEL,
       contents: [{ role: 'user', parts: [...imageParts, { text: prompt }] }],
       config: {
         responseModalities: ['TEXT', 'IMAGE'],
@@ -115,53 +130,32 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'No image generated' }, { status: 500 });
     }
 
-    let gcsUrl: string | undefined;
-    const bucketName = process.env.GCS_BUCKET_NAME;
-    if (bucketName && imageDataUri) {
-      try {
-        const storage = new Storage();
-        const bucket = storage.bucket(bucketName);
-        const safeProjectId = (projectId || 'anonymous').replace(/[^a-zA-Z0-9_-]/g, '_');
-        const safeRenderType = (renderType || 'render').replace(/[^a-zA-Z0-9_-]/g, '_');
-        const fileName = `renders/${auth.userId}/${safeProjectId}/${safeRenderType}_${Date.now()}.png`;
-        const file = bucket.file(fileName);
-
-        const base64Data = imageDataUri.split(',')[1];
-        const buffer = Buffer.from(base64Data, 'base64');
-
-        await file.save(buffer, {
-          metadata: {
-            contentType: 'image/png',
-            metadata: {
-              userId: auth.userId,
-              projectId: safeProjectId,
-              renderType: safeRenderType,
-            },
-          },
-        });
-
-        const [signedUrl] = await file.getSignedUrl({
-          action: 'read',
-          expires: Date.now() + 60 * 60 * 1000,
-        });
-        gcsUrl = signedUrl;
-      } catch (gcsError) {
-        console.error('GCS upload failed (non-fatal):', gcsError);
-      }
+    // keep it: the same request later (or after a reload) is served from the store
+    let imageUrl: string | undefined;
+    try {
+      const [, mime, b64] = /^data:([^;]+);base64,(.*)$/.exec(imageDataUri) ?? [];
+      const safe = (v: unknown, d: string) => String(v || d).replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 60);
+      const img = await storeRender(Buffer.from(b64, 'base64'), mime, key, { userId: String(auth.userId), projectId: safe(projectId, 'anonymous'), renderType: safe(renderType, 'render') });
+      imageUrl = renderUrl(img);
+    } catch (storeError) {
+      console.error('Render store failed (non-fatal):', storeError);
     }
 
     return NextResponse.json({
       success: true,
-      imageDataUri: gcsUrl || imageDataUri,
+      imageUrl,
+      imageDataUri: imageUrl || imageDataUri,
       textResponse,
       renderType,
       remaining: usage.remaining,
     });
   } catch (error: any) {
     console.error('Render generation error:', error);
+    // never pass the provider's message (billing, keys) to the customer
+    const busy = /RESOURCE_EXHAUSTED|429|quota|credits/i.test(String(error?.message));
     return NextResponse.json(
-      { success: false, error: 'Failed to generate render', details: error.message },
-      { status: 500 }
+      { success: false, error: busy ? 'AI renders are busy right now. Please try again in a few minutes.' : 'Failed to generate render' },
+      { status: busy ? 503 : 500 }
     );
   }
 }
