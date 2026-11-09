@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+<circle cx="256" cy="256" r="256" fill="#1B2B48"/>
+<rect x="206" y="112" width="100" height="48" rx="7" fill="#D9A441"/>
+<rect x="174" y="174" width="164" height="48" rx="7" fill="#D9A441"/>
+<rect x="142" y="236" width="228" height="48" rx="7" fill="#D9A441"/>
+<rect x="118" y="298" width="276" height="10" rx="5" fill="#D9A441" opacity="0.55"/>
+<text x="256" y="388" text-anchor="middle" font-family="Inter Display, Inter, Arial, sans-serif" font-weight="700" font-size="62" fill="#FFFFFF" letter-spacing="-1">Al Bina</text>
+</svg>
