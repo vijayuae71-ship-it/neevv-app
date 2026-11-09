@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Layout, ProjectRequirements, RoomInterior, InteriorDesignData } from '../types';
 import { generateInteriorDesign } from '../utils/interiorCalculator';
 import { roomClearM } from '../utils/drawingEngine';
@@ -10,6 +10,8 @@ import InteriorDrawings from './InteriorDrawings';
 import InteriorAIDrawings from './InteriorAIDrawings';
 import InteriorTimeline from './InteriorTimeline';
 import InteriorCostReport from './InteriorCostReport';
+import { useActiveProjectId } from '@/utils/activeProject';
+import { fetchProjectSamples, saveProjectSamples } from '@/utils/projectSamplesClient';
 
 interface Props {
   layout: Layout;
@@ -28,6 +30,38 @@ export const InteriorDesign: React.FC<Props> = ({ layout, requirements }) => {
     // quantities on the finished (clear) room size — the same figures the interior sheets show
     return generateInteriorDesign(rooms, layout, clearDims);
   }, [rooms, layout, clearDims]);
+
+  /* sample prices follow the saved project: loaded when it opens, saved after each change.
+     Saving waits until the load has finished, so stored prices are never overwritten by an empty set. */
+  const projectId = useActiveProjectId();
+  const [samplesReady, setSamplesReady] = useState<string | null>(null);
+  const loadedFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (!projectId || !rooms || loadedFor.current === projectId) return;
+    loadedFor.current = projectId;
+    let cancelled = false;
+    fetchProjectSamples(projectId).then((saved) => {
+      if (cancelled || saved === null) return;
+      setRooms((prev) => (prev ?? []).map((r) => {
+        const s = saved[r.roomId];
+        // only fill rooms that have no prices yet, and only when the room is the same one
+        return s && !r.samples && s.roomName === r.roomName ? { ...r, samples: s.samples } : r;
+      }));
+      setSamplesReady(projectId);
+    });
+    return () => { cancelled = true; };
+  }, [projectId, rooms]);
+  const savedRef = useRef<string>('');
+  useEffect(() => {
+    if (!projectId || !rooms || samplesReady !== projectId) return;
+    const snapshot = JSON.stringify(rooms.map((r) => [r.roomId, r.roomName, r.samples ?? null]));
+    if (snapshot === savedRef.current) return;
+    const t = setTimeout(() => {
+      savedRef.current = snapshot;
+      saveProjectSamples(projectId, rooms);
+    }, 1500);
+    return () => clearTimeout(t);
+  }, [projectId, rooms, samplesReady]);
 
   const handleMoodBoardComplete = (configuredRooms: RoomInterior[]) => {
     setRooms(configuredRooms);
