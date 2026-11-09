@@ -36,7 +36,7 @@ export function cleanAsset(a: any): ProjectAsset | null {
 }
 
 /** The owner's project, or null (missing project or someone else's). */
-async function ownedProject(userId: string, projectId: string) {
+export async function ownedProject(userId: string, projectId: string) {
   if (!validProjectId(projectId)) return null;
   const ref = getAdminDb().collection('projects').doc(projectId);
   const snap = await ref.get();
