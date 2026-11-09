@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1128 191" width="1128" height="191">
+<rect width="1128" height="191" fill="#1B2B48"/>
+<rect x="0" y="183" width="1128" height="8" fill="#D9A441"/>
+<g transform="translate(300,34) scale(0.215)"><rect x="0" y="0" width="512" height="512" rx="104" fill="#1B2B48"/>
+<rect x="188" y="132" width="136" height="64" rx="8" fill="#D9A441"/>
+<rect x="146" y="214" width="220" height="64" rx="8" fill="#D9A441"/>
+<rect x="104" y="296" width="304" height="64" rx="8" fill="#D9A441"/>
+<rect x="72" y="380" width="368" height="12" rx="6" fill="#D9A441" opacity="0.55"/></g>
+<text x="428" y="98" font-family="Inter Display, Inter, Arial, sans-serif" font-weight="700" font-size="58" fill="#FFFFFF" letter-spacing="-1">Al Bina</text>
+<text x="431" y="134" font-family="Inter, Arial, sans-serif" font-weight="600" font-size="16" fill="#D9A441" letter-spacing="2.5">CONSTRUCTION MATERIALS INTELLIGENCE · UAE · INDIA</text>
+</svg>

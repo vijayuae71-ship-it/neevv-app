@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1500 400" width="1500" height="400">
+<rect width="1500" height="400" fill="#FFFFFF"/>
+<g transform="translate(60,64) scale(0.531)"><rect x="0" y="0" width="512" height="512" rx="104" fill="#1B2B48"/>
+<rect x="188" y="132" width="136" height="64" rx="8" fill="#D9A441"/>
+<rect x="146" y="214" width="220" height="64" rx="8" fill="#D9A441"/>
+<rect x="104" y="296" width="304" height="64" rx="8" fill="#D9A441"/>
+<rect x="72" y="380" width="368" height="12" rx="6" fill="#D9A441" opacity="0.55"/></g>
+<text x="380" y="212" font-family="Inter Display, Inter, Arial, sans-serif" font-weight="700" font-size="150" fill="#1B2B48" letter-spacing="-3">Al Bina</text>
+<text x="905" y="212" font-family="DejaVu Sans, Arial, sans-serif" font-weight="700" font-size="60" fill="#D9A441">البناء</text>
+<text x="386" y="292" font-family="Inter, Arial, sans-serif" font-weight="600" font-size="34" fill="#5B6B85" letter-spacing="5">CONSTRUCTION MATERIALS INTELLIGENCE</text>
+</svg>
