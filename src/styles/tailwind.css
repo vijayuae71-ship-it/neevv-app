@@ -1,0 +1,5 @@
+/* Tailwind + daisyUI, compiled at build time: only the classes the app uses are shipped. */
+@import "tailwindcss" source("../");
+@plugin "daisyui" {
+  themes: false;
+}

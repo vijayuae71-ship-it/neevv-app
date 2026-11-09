@@ -87,7 +87,7 @@ export const ModelARView: React.FC<Props> = ({ layout, requirements, structuralR
       try {
         setSrcs({}); setModelError(null); setIsLoaded(false); setArStatus({ state: 'preparing' });
         const THREE = await waitFor(() => (window as any).THREE);
-        if (!THREE.GLTFExporter) await loadScript('https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/exporters/GLTFExporter.js');
+        if (!THREE.GLTFExporter) await loadScript('/vendor/three-0.128.0/GLTFExporter.js');
         const toGlb = (obj: any) => new Promise<ArrayBuffer>((resolve, reject) => { try { new THREE.GLTFExporter().parse(obj, resolve, { binary: true, onlyVisible: true }); } catch (e) { reject(e); } });
         const clean = (scene: any, extra?: (o: any) => boolean) => {
           // AR needs the house only: no on-screen labels, scene lights, dimension lines or the oversized lawn

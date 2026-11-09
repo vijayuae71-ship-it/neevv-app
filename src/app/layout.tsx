@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Script from "next/script";
-import "../styles/daisyui.css";
+import "../styles/tailwind.css";
 import "../styles/globals.css";
 import ClientProviders from '../components/ClientProviders';
 import FeedbackButton from '../components/FeedbackButton';
@@ -56,11 +56,6 @@ export default function RootLayout({
   return (
     <html data-theme="alfred-light">
       <body className="bg-white text-gray-900">
-        {/* Tailwind v4 browser - processes utility classes client-side (same as Tasklet CDN) */}
-        <Script
-          src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"
-          strategy="beforeInteractive"
-        />
         {/* Google model-viewer for AR/3D */}
         <Script
           id="model-viewer"
@@ -71,12 +66,12 @@ export default function RootLayout({
         {/* Three.js - loaded after page interactive, OrbitControls depends on THREE */}
         <Script
           id="three-core"
-          src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"
+          src="/vendor/three-0.128.0/three.min.js"
           strategy="afterInteractive"
         />
         <Script
           id="three-orbit"
-          src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"
+          src="/vendor/three-0.128.0/OrbitControls.js"
           strategy="afterInteractive"
         />
         {/* Google Analytics */}
