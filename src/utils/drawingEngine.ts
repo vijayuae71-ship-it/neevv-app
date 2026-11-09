@@ -8,6 +8,7 @@ import { officeServices, isOfficeLayout, type ServicePoint } from './officeServi
 import { getDefaultFurniture, mapRoomTypeToFinish } from './interiorTemplates';
 import { wallTileBand, floorModule, skirtingMm } from './interiorSpecs';
 import { styleFor, roofGeom, roofProfile } from './designStyles';
+import { projectRef } from './activeProject';
 import { computeTakeoff, bathWallTileSqM, kitchenCounterRmt, KITCHEN_DADO_HEIGHT_M, type Takeoff } from './quantityTakeoff';
 
 /**
@@ -3275,7 +3276,7 @@ function titleBlock(k: Context): void {
   label(c, t.length > 44 ? t.slice(0, 43) + '…' : t, x + 16, y + 78, 17, 'left', COLORS.text, true);
   label(c, `PLOT ${round(k.g.plotW)} × ${round(k.g.plotD)} mm  •  ${k.req.city}, ${k.req.state}`, x + 16, y + 106, 13);
   label(c, `ROAD FACING ${k.req.facing}  •  LOCKED PLAN REV ${k.rev}`, x + 16, y + 128, 13);
-  label(c, `DATE ${new Date().toLocaleDateString('en-GB')}`, x + 16, y + 148, 12, 'left', COLORS.dim);
+  label(c, `DATE ${new Date().toLocaleDateString('en-GB')}${projectRef() ? `  •  PROJECT ${projectRef()}` : ''}`, x + 16, y + 148, 12, 'left', COLORS.dim);
   const cell = (cx: number, cy: number, h: string, v: string, big = false) => { label(c, h, x + cx + 8, y + cy + 9, 9, 'left', COLORS.dim, true); label(c, v, x + cx + 8, y + cy + 24, big ? 16 : 13, 'left', COLORS.text, true); };
   const idx = sheetIndex(k.g.floors, isOfficeLayout(k.layout)), pos = idx.findIndex(e => e.no === k.sheetNo);
   cell(560, 58, 'DRG NO', k.sheetNo, true); cell(730, 58, 'REV', `P${k.rev}`, true);

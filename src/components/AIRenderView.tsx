@@ -6,6 +6,8 @@ import { buildArchitecturalPrompt } from '../utils/aiRenderPrompt';
 import { Camera, RefreshCw, Download, AlertTriangle, Sparkles, Eye } from 'lucide-react';
 import { authFetch } from '@/utils/authFetch';
 import { designId, loadRenders, saveRenders } from '@/utils/renderHistory';
+import { useActiveProjectId } from '@/utils/activeProject';
+import { fetchProjectAssets } from '@/utils/projectAssetsClient';
 
 const MODELS = [
   { id: 'neevv-gen', label: 'neevv Gen' },
@@ -41,12 +43,22 @@ export const AIRenderView: React.FC<Props> = ({ layout, requirements }) => {
   /** this design's renders are filed under its rooms, sizes and style, and reloaded after a refresh */
   const design = useMemo(() => designId('house', layout.floors.map(f => f.rooms.map(r => [r.name, r.type, r.x, r.y, r.width, r.depth])),
     requirements.facing, requirements.budget, requirements.architecturalStyle, requirements.designStyle ?? '', requirements.buildingType ?? ''), [layout, requirements]);
+  const projectId = useActiveProjectId();
   useEffect(() => {
-    const saved: RenderResult[] = VIEW_ANGLES.flatMap(v => loadRenders(design, v.id).map(r => ({ viewAngle: v.id, imageData: r.imageData, timestamp: r.timestamp })))
-      .sort((a, b) => b.timestamp - a.timestamp);
-    setRenders(saved);
-    setActiveRender(saved[0] ?? null);
-  }, [design]);
+    let cancelled = false;
+    const local: RenderResult[] = VIEW_ANGLES.flatMap(v => loadRenders(design, v.id).map(r => ({ viewAngle: v.id, imageData: r.imageData, timestamp: r.timestamp })));
+    const show = (list: RenderResult[]) => { const sorted = [...list].sort((a, b) => b.timestamp - a.timestamp); setRenders(sorted); setActiveRender(sorted[0] ?? null); };
+    show(local);
+    // renders filed under the saved project come back on any device
+    if (projectId) fetchProjectAssets(projectId).then(assets => {
+      if (cancelled) return;
+      const fromProject: RenderResult[] = assets.filter(a => a.kind === 'render' && a.url && a.key.startsWith(`${design}:`))
+        .map(a => ({ viewAngle: a.view ?? a.key.split(':').pop() ?? '', imageData: a.url!, timestamp: a.updatedAt ? Date.parse(a.updatedAt) : 0 }));
+      const known = new Set(local.map(r => r.imageData));
+      if (fromProject.some(r => !known.has(r.imageData))) show([...local, ...fromProject.filter(r => !known.has(r.imageData))]);
+    });
+    return () => { cancelled = true; };
+  }, [design, projectId]);
 
   async function generateRender() {
     setLoading(true);
@@ -66,9 +78,10 @@ export const AIRenderView: React.FC<Props> = ({ layout, requirements }) => {
         body: JSON.stringify({
           prompt,
           model: selectedModel,
-          projectId: 'user-project',
+          projectId: projectId ?? 'user-project',
           renderType: selectedView,
           fresh,
+          asset: { kind: 'render', key: `${design}:${selectedView}`, view: selectedView },
         }),
       });
 

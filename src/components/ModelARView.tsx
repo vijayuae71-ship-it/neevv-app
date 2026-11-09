@@ -3,6 +3,7 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { Layout, ProjectRequirements } from '../types';
 import { buildScene } from '../utils/sceneBuilder';
+import { tagToProject } from '@/utils/projectAssetsClient';
 import { FLOOR_TO_FLOOR_MM, PLINTH_HEIGHT_MM, mainDoorCentreM } from '../utils/buildingModel';
 import { Smartphone, RotateCcw, ZoomIn, ZoomOut, Maximize, Info, ShoppingCart } from 'lucide-react';
 
@@ -174,6 +175,10 @@ export const ModelARView: React.FC<Props> = ({ layout, requirements, structuralR
           next.life = await save(await exportAt(1));
           if (cancelled) return;
           setSrcs({ ...next }); setArStatus({ state: 'ready' });
+          // file the AR models under the project
+          const titles: Record<string, string> = { table: 'AR table-top model', life: 'AR whole plot (life size)' };
+          tagToProject(...Object.entries(next).map(([slot, url]) => ({ kind: 'ar_model' as const, key: slot, url: new URL(url).pathname,
+            title: titles[slot] ?? `AR walk-through (life size) — ${layout.floors.find(f => `walk${f.floor}` === slot)?.floorLabel ?? slot}` })));
         } catch (e: any) { if (!cancelled) setArStatus({ state: 'failed', detail: e?.message || 'network error' }); } // in-browser AR (WebXR) still works with the in-memory model
       } catch {
         if (!cancelled) setModelError('The 3D model for AR could not be prepared on this device. Interactive 3D still shows your house.');

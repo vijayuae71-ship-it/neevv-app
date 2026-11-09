@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenAI } from '@google/genai';
+import { cleanAsset, tagAssets, validProjectId } from '@/utils/projectAssets';
 import { cachedRender, parseRenderRef, readRender, renderUrl, requestKey, storeRender } from '@/utils/renderStore';
 import { verifyAuthOptional } from '@/lib/auth-middleware';
 import { rateLimit, getRateLimitKey } from '@/utils/rateLimit';
@@ -63,7 +64,13 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const { prompt, renderType, projectId, images, aspectRatio, fresh } = await request.json();
+    const { prompt, renderType, projectId, images, aspectRatio, fresh, asset } = await request.json();
+    /** file the result under the customer's project (owner checked); never blocks the render */
+    const tag = async (url: string) => {
+      if (!validProjectId(projectId)) return;
+      const a = cleanAsset({ ...(asset ?? {}), url });
+      if (a && (a.kind === 'render' || a.kind === 'interior_render')) await tagAssets(auth.userId, projectId, [a]).catch((e) => console.error('Tag render failed:', e));
+    };
     // edits keep the shape of the image being edited (otherwise the model returns a square)
     const ratio = typeof aspectRatio === 'string' && ASPECTS.includes(aspectRatio) ? aspectRatio : undefined;
 
@@ -86,7 +93,7 @@ export async function POST(request: NextRequest) {
     const key = requestKey({ model: MODEL, prompt: String(prompt), images: imageParts.map(p => p.inlineData.data), ratio });
     if (!fresh) {
       const hit = await cachedRender(key);
-      if (hit) return NextResponse.json({ success: true, imageUrl: renderUrl(hit), imageDataUri: renderUrl(hit), cached: true, renderType });
+      if (hit) { await tag(renderUrl(hit)); return NextResponse.json({ success: true, imageUrl: renderUrl(hit), imageDataUri: renderUrl(hit), cached: true, renderType }); }
     }
 
     const usage = await checkAndIncrementUsage(auth.userId, 'renders');
@@ -137,6 +144,7 @@ export async function POST(request: NextRequest) {
       const safe = (v: unknown, d: string) => String(v || d).replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 60);
       const img = await storeRender(Buffer.from(b64, 'base64'), mime, key, { userId: String(auth.userId), projectId: safe(projectId, 'anonymous'), renderType: safe(renderType, 'render') });
       imageUrl = renderUrl(img);
+      await tag(imageUrl);
     } catch (storeError) {
       console.error('Render store failed (non-fatal):', storeError);
     }

@@ -7,6 +7,7 @@ import { RequirementForm } from '@/components/RequirementForm';
 import { LayoutSelector } from '@/components/LayoutSelector';
 
 import { IsometricView } from '@/components/IsometricView';
+import { setActiveProjectId } from '@/utils/activeProject';
 import { WorkingDrawings } from '@/components/WorkingDrawings';
 import { BOQReport } from '@/components/BOQReport';
 import { InteriorDesign } from '@/components/InteriorDesign';
@@ -125,6 +126,8 @@ export default function HomePage() {
     generatedDrawingTypes,
   });
 
+  // every drawing, render and AR model is filed under this saved project (and drawings print its reference)
+  useEffect(() => { setActiveProjectId(autoSaveProjectId); }, [autoSaveProjectId]);
   const handleDrawingGenerated = useCallback((drawingType: string) => {
     setValidationPassed(false);
     setGeneratedDrawingTypes(prev => {
