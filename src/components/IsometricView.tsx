@@ -7,6 +7,7 @@ import { AIRenderView } from './AIRenderView';
 import { ModelARView } from './ModelARView';
 import { PlanSketch } from './PlanSketch';
 import { WalkThrough } from './WalkThrough';
+import { ProfessionalExport } from './ProfessionalExport';
 import { Box, Sparkles, Ruler, Smartphone, LayoutGrid, Footprints } from 'lucide-react';
 
 /** Floating dimension info panel */
@@ -249,6 +250,7 @@ export const IsometricView: React.FC<Props> = ({ layout, requirements, structura
           <div className="bg-white border border-gray-200 rounded-lg p-2">
             <PlanSketch layout={layout} facing={requirements.facing} />
           </div>
+          <ProfessionalExport layout={layout} />
           <div className="text-[11px] text-gray-500 px-1">
             Locked plan — room sizes are centre-line dimensions in mm. Every drawing, the structure, BBS and BOQ are derived from this plan.
             {layout.parkingNote ? ` ${layout.parkingNote}.` : ''}
