@@ -1,4 +1,4 @@
-import type { CallState, LeadResult, Playbook } from './types';
+import type { CallState, LeadResult, Playbook, VoiceLanguage } from './types';
 import neevvHomeowner from './playbooks/neevv-homeowner.json';
 import uaeRealEstate from './playbooks/uae-real-estate.json';
 
@@ -110,4 +110,40 @@ export function withinCallingHours(pb: Playbook, now = new Date()): boolean {
   if (h.days && !h.days.includes(day)) return false;
   const hhmm = `${get('hour').replace('24', '00')}:${get('minute')}`;
   return hhmm >= h.start && hhmm <= h.end;
+}
+
+/** ElevenLabs voice used when a language doesn't name one. Multilingual model, so one voice covers many languages. */
+const DEFAULT_ELEVENLABS_VOICE = process.env.CALLBOT_ELEVENLABS_VOICE || 'UgBBYS2sOqTuMpoF3BR0-flash_v2_5-1.0_0.5_0.8';
+
+/** Find a configured language by exact code, then by base language ("hi" matches "hi-IN"). */
+export function findLanguage(pb: Playbook, code?: string | null): VoiceLanguage | undefined {
+  if (!code) return undefined;
+  const c = code.toLowerCase();
+  return (
+    pb.languages.find((l) => l.code.toLowerCase() === c) ||
+    pb.languages.find((l) => l.code.toLowerCase().split('-')[0] === c.split('-')[0])
+  );
+}
+
+/** Language with provider defaults filled in. */
+export function resolveLanguage(pb: Playbook, code?: string | null): VoiceLanguage {
+  const lang = findLanguage(pb, code) || findLanguage(pb, pb.defaultLanguage) || pb.languages[0];
+  if (!lang) throw new Error(`Playbook ${pb.id} has no languages`);
+  const ttsProvider = lang.ttsProvider || 'ElevenLabs';
+  return {
+    ...lang,
+    ttsProvider,
+    voice: lang.voice || (ttsProvider === 'ElevenLabs' ? DEFAULT_ELEVENLABS_VOICE : undefined),
+    transcriptionProvider: lang.transcriptionProvider || 'Deepgram',
+  };
+}
+
+/** Opening line in the given language, if one is written; undefined means "let the model open". */
+export function openingFor(pb: Playbook, code: string, leadName?: string): string | undefined {
+  const base = (c: string) => c.toLowerCase().split('-')[0];
+  if (base(code) === base(pb.defaultLanguage)) {
+    return `${fillTemplate(pb.opening, pb, leadName)} ${pb.disclosure}`.trim();
+  }
+  const custom = Object.entries(pb.openingByLanguage || {}).find(([c]) => base(c) === base(code))?.[1];
+  return custom ? fillTemplate(custom, pb, leadName) : undefined;
 }

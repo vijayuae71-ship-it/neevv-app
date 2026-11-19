@@ -3,6 +3,7 @@
   "name": "neevv: homeowners planning to build",
   "company": "neevv",
   "agentName": "Asha",
+  "persona": "Asha: late twenties, warm and genuinely curious, grew up in Pune, has helped hundreds of families plan their first house. Talks like a helpful friend who knows construction, not like a call-centre script.",
   "product": "neevv is an AI architecture tool for Indian homeowners. From a plot size and a few requirements it produces NBC 2016 and Vastu compliant floor plans, technical drawings, a 3D view and an itemised bill of quantities with live material prices, in minutes instead of weeks.",
   "valueProps": [
     "Floor plans that follow NBC 2016 building rules and Vastu Shastra",
@@ -45,10 +46,26 @@
       "required": true,
       "weight": 3,
       "options": [
-        { "value": "0-3_months", "label": "within three months", "points": 1 },
-        { "value": "3-6_months", "label": "three to six months", "points": 0.75 },
-        { "value": "6-12_months", "label": "six to twelve months", "points": 0.4 },
-        { "value": "12+_months", "label": "more than a year / just exploring", "points": 0.1 }
+        {
+          "value": "0-3_months",
+          "label": "within three months",
+          "points": 1
+        },
+        {
+          "value": "3-6_months",
+          "label": "three to six months",
+          "points": 0.75
+        },
+        {
+          "value": "6-12_months",
+          "label": "six to twelve months",
+          "points": 0.4
+        },
+        {
+          "value": "12+_months",
+          "label": "more than a year / just exploring",
+          "points": 0.1
+        }
       ]
     },
     {
@@ -75,14 +92,32 @@
       "required": false,
       "weight": 1,
       "options": [
-        { "value": "self", "label": "decides alone", "points": 1 },
-        { "value": "joint", "label": "decides with family or partner", "points": 0.7 },
-        { "value": "other", "label": "someone else decides", "points": 0.3 }
+        {
+          "value": "self",
+          "label": "decides alone",
+          "points": 1
+        },
+        {
+          "value": "joint",
+          "label": "decides with family or partner",
+          "points": 0.7
+        },
+        {
+          "value": "other",
+          "label": "someone else decides",
+          "points": 0.3
+        }
       ]
     }
   ],
   "disqualifiers": [
-    { "field": "timeline", "values": ["12+_months"], "reason": "No build planned within a year" }
+    {
+      "field": "timeline",
+      "values": [
+        "12+_months"
+      ],
+      "reason": "No build planned within a year"
+    }
   ],
   "objections": {
     "I already have an architect": "That's great. Many people use neevv alongside their architect to check Vastu and NBC compliance and to get an independent cost estimate.",
@@ -90,12 +125,155 @@
     "Send me details": "Happy to. Can I send a link on WhatsApp to this number?",
     "AI can't design a house": "Fair point. neevv does the first draft and the compliance checks, and you can refine it or hand the drawings to your own architect."
   },
-  "tiers": { "hot": 70, "warm": 45 },
-  "voice": { "name": "Polly.Kajal-Neural", "language": "en-IN" },
-  "callingHours": { "timezone": "Asia/Kolkata", "start": "10:00", "end": "19:30", "days": [1, 2, 3, 4, 5, 6] },
+  "tiers": {
+    "hot": 70,
+    "warm": 45
+  },
+  "callingHours": {
+    "timezone": "Asia/Kolkata",
+    "start": "10:00",
+    "end": "19:30",
+    "days": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+    ]
+  },
   "maxTurns": 14,
   "rules": [
-    "If the prospect prefers Hindi, you may switch to simple Hindi.",
     "Never quote a price; say a specialist will share plan options."
+  ],
+  "defaultLanguage": "en-IN",
+  "languages": [
+    {
+      "code": "en-IN",
+      "name": "English (Indian)",
+      "ttsProvider": "ElevenLabs",
+      "transcriptionProvider": "Deepgram",
+      "speechModel": "nova-3-general",
+      "transcriptionLanguage": "multi",
+      "sayVoice": "Google.en-IN-Chirp3-HD-Aoede",
+      "fillers": [
+        "Hmm, okay.",
+        "Right, right.",
+        "Got it."
+      ],
+      "style": "Natural Indian English. It's fine to drop in common Hindi words like 'achha' or 'ji' if the caller does."
+    },
+    {
+      "code": "hi-IN",
+      "name": "Hindi",
+      "ttsProvider": "ElevenLabs",
+      "transcriptionProvider": "Deepgram",
+      "speechModel": "nova-3-general",
+      "transcriptionLanguage": "multi",
+      "sayVoice": "Google.hi-IN-Chirp3-HD-Aoede",
+      "fillers": [
+        "Hmm, achha.",
+        "Ji, samajh gayi.",
+        "Theek hai."
+      ],
+      "style": "Everyday spoken Hindi (Hinglish is fine): use English for technical words like plot, budget, floor plan, BOQ. Use 'aap'. Write in Devanagari."
+    },
+    {
+      "code": "ta-IN",
+      "name": "Tamil",
+      "ttsProvider": "ElevenLabs",
+      "transcriptionProvider": "Google",
+      "speechModel": "telephony",
+      "sayVoice": "Google.ta-IN-Chirp3-HD-Aoede",
+      "fillers": [
+        "Hmm, sari.",
+        "Okay, purinjidhu."
+      ],
+      "style": "Conversational Tamil, English for technical words. Write in Tamil script."
+    },
+    {
+      "code": "te-IN",
+      "name": "Telugu",
+      "ttsProvider": "Google",
+      "voice": "te-IN-Chirp3-HD-Aoede",
+      "transcriptionProvider": "Google",
+      "speechModel": "telephony",
+      "sayVoice": "Google.te-IN-Chirp3-HD-Aoede",
+      "fillers": [
+        "Hmm, sare.",
+        "Okay, ardham ayyindi."
+      ],
+      "style": "Conversational Telugu, English for technical words. Write in Telugu script."
+    },
+    {
+      "code": "kn-IN",
+      "name": "Kannada",
+      "ttsProvider": "Google",
+      "voice": "kn-IN-Chirp3-HD-Aoede",
+      "transcriptionProvider": "Google",
+      "speechModel": "telephony",
+      "sayVoice": "Google.kn-IN-Chirp3-HD-Aoede",
+      "fillers": [
+        "Hmm, sari.",
+        "Okay."
+      ],
+      "style": "Conversational Kannada, English for technical words. Write in Kannada script."
+    },
+    {
+      "code": "ml-IN",
+      "name": "Malayalam",
+      "ttsProvider": "Google",
+      "voice": "ml-IN-Chirp3-HD-Aoede",
+      "transcriptionProvider": "Google",
+      "speechModel": "telephony",
+      "sayVoice": "Google.ml-IN-Chirp3-HD-Aoede",
+      "fillers": [
+        "Hmm, sheri.",
+        "Okay."
+      ],
+      "style": "Conversational Malayalam, English for technical words. Write in Malayalam script."
+    },
+    {
+      "code": "mr-IN",
+      "name": "Marathi",
+      "ttsProvider": "Google",
+      "voice": "mr-IN-Chirp3-HD-Aoede",
+      "transcriptionProvider": "Google",
+      "speechModel": "telephony",
+      "sayVoice": "Google.mr-IN-Chirp3-HD-Aoede",
+      "fillers": [
+        "Hmm, barobar.",
+        "Okay."
+      ],
+      "style": "Conversational Marathi, English for technical words. Write in Devanagari."
+    },
+    {
+      "code": "bn-IN",
+      "name": "Bengali",
+      "ttsProvider": "Google",
+      "voice": "bn-IN-Chirp3-HD-Aoede",
+      "transcriptionProvider": "Google",
+      "speechModel": "telephony",
+      "sayVoice": "Google.bn-IN-Chirp3-HD-Aoede",
+      "fillers": [
+        "Hmm, accha.",
+        "Okay."
+      ],
+      "style": "Conversational Bengali, English for technical words. Write in Bengali script."
+    },
+    {
+      "code": "gu-IN",
+      "name": "Gujarati",
+      "ttsProvider": "Google",
+      "voice": "gu-IN-Chirp3-HD-Aoede",
+      "transcriptionProvider": "Google",
+      "speechModel": "telephony",
+      "sayVoice": "Google.gu-IN-Chirp3-HD-Aoede",
+      "fillers": [
+        "Hmm, saru.",
+        "Okay."
+      ],
+      "style": "Conversational Gujarati, English for technical words. Write in Gujarati script."
+    }
   ]
 }

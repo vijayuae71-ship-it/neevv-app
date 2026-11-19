@@ -11,6 +11,8 @@ interface PlaybookLite {
   id: string;
   name: string;
   agentName: string;
+  defaultLanguage: string;
+  languages: { code: string; name: string }[];
   fields: { key: string; question: string }[];
 }
 interface Turn { role: 'bot' | 'prospect'; text: string }
@@ -114,6 +116,7 @@ function Rehearse({ pb, api }: { pb: PlaybookLite; api: Api }) {
   const [result, setResult] = useState<LeadResult | null>(null);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [name, setName] = useState('Rahul');
+  const [startLang, setStartLang] = useState(pb.defaultLanguage);
   const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState(false);
   const [ended, setEnded] = useState(false);
@@ -149,8 +152,13 @@ function Rehearse({ pb, api }: { pb: PlaybookLite; api: Api }) {
             <label className="text-sm text-gray-700">Prospect name
               <input value={name} onChange={(e) => setName(e.target.value)} className="mt-1 block rounded-lg border border-gray-300 px-3 py-2 text-sm" />
             </label>
-            <button disabled={busy} onClick={() => call({ lead: { name } })} className="rounded-lg bg-[#4f6f52] px-4 py-2 text-sm font-medium text-white disabled:opacity-50">Start rehearsal call</button>
-            <p className="w-full text-xs text-gray-500">You play the prospect by typing. Same brain as real calls, no phone minutes used.</p>
+            <label className="text-sm text-gray-700">Starts in
+              <select value={startLang} onChange={(e) => setStartLang(e.target.value)} className="mt-1 block rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm">
+                {pb.languages.map((l) => <option key={l.code} value={l.code}>{l.name}</option>)}
+              </select>
+            </label>
+            <button disabled={busy} onClick={() => call({ lead: { name, language: startLang } })} className="rounded-lg bg-[#4f6f52] px-4 py-2 text-sm font-medium text-white disabled:opacity-50">Start rehearsal call</button>
+            <p className="w-full text-xs text-gray-500">You play the prospect by typing, in any of the playbook&apos;s languages. Switch language mid-call and the bot follows. Same brain as real calls, no phone minutes used.</p>
           </div>
         ) : (
           <>
@@ -159,7 +167,7 @@ function Rehearse({ pb, api }: { pb: PlaybookLite; api: Api }) {
                 <div key={i} className={`flex ${t.role === 'bot' ? '' : 'justify-end'}`}>
                   <div className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm ${t.role === 'bot' ? 'bg-white text-gray-900 shadow-sm' : 'bg-[#4f6f52] text-white'}`}>
                     <div className="mb-0.5 text-[10px] font-semibold uppercase opacity-60">{t.role === 'bot' ? pb.agentName : 'Prospect'}</div>
-                    {t.text}
+                    <div dir="auto">{t.text}</div>
                   </div>
                 </div>
               ))}
@@ -168,7 +176,7 @@ function Rehearse({ pb, api }: { pb: PlaybookLite; api: Api }) {
             </div>
             {!ended ? (
               <form onSubmit={send} className="mt-3 flex gap-2">
-                <input value={msg} onChange={(e) => setMsg(e.target.value)} placeholder="Reply as the prospect…" className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm" autoFocus />
+                <input dir="auto" value={msg} onChange={(e) => setMsg(e.target.value)} placeholder="Reply as the prospect…" className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm" autoFocus />
                 <button disabled={busy} className="rounded-lg bg-[#4f6f52] px-4 text-sm font-medium text-white disabled:opacity-50">Send</button>
               </form>
             ) : null}
@@ -190,6 +198,12 @@ function Rehearse({ pb, api }: { pb: PlaybookLite; api: Api }) {
           <div className="mt-1 text-3xl font-semibold text-gray-900">{result ? result.score : '–'}</div>
           {result?.disqualifiedReason && <p className="text-xs text-gray-600">{result.disqualifiedReason}</p>}
         </div>
+        {state?.language && (
+          <div className="flex items-center justify-between">
+            <span className="font-semibold text-gray-900">Speaking</span>
+            <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-800">{pb.languages.find((l) => l.code === state.language)?.name || state.language}</span>
+          </div>
+        )}
         <div>
           <div className="font-semibold text-gray-900">Captured</div>
           <ul className="mt-1 space-y-1">
@@ -221,8 +235,9 @@ function parseLeads(text: string) {
     .map((c) => {
       const phone = c.find((x) => /^\+?[\d\s-]{8,}$/.test(x)) || '';
       const email = c.find((x) => x.includes('@'));
-      const name = c.find((x) => x !== phone && x !== email) || '';
-      return { name, phone, email, source: 'console' };
+      const language = c.find((x) => /^[a-z]{2,3}(-[A-Za-z]{2,4})?$/.test(x));
+      const name = c.find((x) => x !== phone && x !== email && x !== language) || '';
+      return { name, phone, email, language, source: 'console' };
     });
 }
 
@@ -245,8 +260,8 @@ function Dial({ pb, api }: { pb: PlaybookLite; api: Api }) {
 
   return (
     <div>
-      <label className="text-sm font-medium text-gray-800">Leads, one per line: <span className="font-normal text-gray-600">name, phone in +country format, email (optional)</span></label>
-      <textarea value={text} onChange={(e) => setText(e.target.value)} rows={7} placeholder={'Priya Sharma, +919876543210\nAhmed Khan, +971501234567, ahmed@example.com'} className="mt-2 w-full rounded-lg border border-gray-300 p-3 font-mono text-sm" />
+      <label className="text-sm font-medium text-gray-800">Leads, one per line: <span className="font-normal text-gray-600">name, phone in +country format, email and language code (both optional, e.g. hi-IN)</span></label>
+      <textarea value={text} onChange={(e) => setText(e.target.value)} rows={7} placeholder={'Priya Sharma, +919876543210, hi-IN\nAhmed Khan, +971501234567, ahmed@example.com, ar-AE'} className="mt-2 w-full rounded-lg border border-gray-300 p-3 font-mono text-sm" />
       <div className="mt-2 flex flex-wrap items-center gap-4 text-sm text-gray-700">
         <label className="flex items-center gap-2"><input type="checkbox" checked={record} onChange={(e) => setRecord(e.target.checked)} /> Record calls</label>
         <label className="flex items-center gap-2"><input type="checkbox" checked={ignoreHours} onChange={(e) => setIgnoreHours(e.target.checked)} /> Ignore calling hours (testing)</label>
@@ -305,6 +320,7 @@ function Leads({ api }: { api: Api }) {
               {l.optOut && <span className="text-xs text-red-700">opted out</span>}
               <span className="ml-auto text-xs text-gray-500">{l.lastCallAt ? new Date(l.lastCallAt).toLocaleString() : ''}</span>
             </div>
+            {l.language && <span className="text-xs text-gray-500">Spoke: {l.language}</span>}
             {l.summary && <p className="mt-1 text-sm text-gray-700">{l.summary}</p>}
             {l.nextStep && <p className="mt-1 text-sm text-gray-700"><span className="font-medium">Next:</span> {l.nextStep}{l.callbackAt ? ` (callback: ${l.callbackAt})` : ''}</p>}
             {l.answers && Object.keys(l.answers).length > 0 && (

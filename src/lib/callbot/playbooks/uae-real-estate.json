@@ -3,6 +3,7 @@
   "name": "UAE property: buyer and investor enquiries",
   "company": "Example Properties",
   "agentName": "Sara",
+  "persona": "Sara: early thirties, calm and polished, has lived in Dubai for years and knows the communities well. Confident but never pushy.",
   "product": "A Dubai real estate brokerage helping local residents and overseas investors buy ready and off-plan property across Dubai, Sharjah and Ajman.",
   "valueProps": [
     "Shortlist of ready and off-plan units matched to budget and area",
@@ -21,9 +22,21 @@
       "required": true,
       "weight": 1,
       "options": [
-        { "value": "end_user", "label": "to live in", "points": 1 },
-        { "value": "investor", "label": "investment / rental income", "points": 1 },
-        { "value": "renting", "label": "actually wants to rent, not buy", "points": 0 }
+        {
+          "value": "end_user",
+          "label": "to live in",
+          "points": 1
+        },
+        {
+          "value": "investor",
+          "label": "investment / rental income",
+          "points": 1
+        },
+        {
+          "value": "renting",
+          "label": "actually wants to rent, not buy",
+          "points": 0
+        }
       ]
     },
     {
@@ -56,10 +69,26 @@
       "required": true,
       "weight": 3,
       "options": [
-        { "value": "now", "label": "this month", "points": 1 },
-        { "value": "1-3_months", "label": "within three months", "points": 0.8 },
-        { "value": "3-6_months", "label": "three to six months", "points": 0.5 },
-        { "value": "browsing", "label": "just browsing", "points": 0.1 }
+        {
+          "value": "now",
+          "label": "this month",
+          "points": 1
+        },
+        {
+          "value": "1-3_months",
+          "label": "within three months",
+          "points": 0.8
+        },
+        {
+          "value": "3-6_months",
+          "label": "three to six months",
+          "points": 0.5
+        },
+        {
+          "value": "browsing",
+          "label": "just browsing",
+          "points": 0.1
+        }
       ]
     },
     {
@@ -69,10 +98,26 @@
       "required": false,
       "weight": 2,
       "options": [
-        { "value": "cash", "label": "cash", "points": 1 },
-        { "value": "mortgage_preapproved", "label": "mortgage, already pre-approved", "points": 0.9 },
-        { "value": "mortgage_not_started", "label": "mortgage, not applied yet", "points": 0.5 },
-        { "value": "unsure", "label": "not sure", "points": 0.3 }
+        {
+          "value": "cash",
+          "label": "cash",
+          "points": 1
+        },
+        {
+          "value": "mortgage_preapproved",
+          "label": "mortgage, already pre-approved",
+          "points": 0.9
+        },
+        {
+          "value": "mortgage_not_started",
+          "label": "mortgage, not applied yet",
+          "points": 0.5
+        },
+        {
+          "value": "unsure",
+          "label": "not sure",
+          "points": 0.3
+        }
       ]
     },
     {
@@ -82,25 +127,147 @@
       "required": false,
       "weight": 0,
       "options": [
-        { "value": "uae_resident", "label": "lives in the UAE", "points": 1 },
-        { "value": "overseas", "label": "lives abroad / NRI", "points": 1 }
+        {
+          "value": "uae_resident",
+          "label": "lives in the UAE",
+          "points": 1
+        },
+        {
+          "value": "overseas",
+          "label": "lives abroad / NRI",
+          "points": 1
+        }
       ]
     }
   ],
   "disqualifiers": [
-    { "field": "intent", "values": ["renting"], "reason": "Looking to rent, not buy" }
+    {
+      "field": "intent",
+      "values": [
+        "renting"
+      ],
+      "reason": "Looking to rent, not buy"
+    }
   ],
   "objections": {
     "Just send me listings": "Of course. So I send the right ones, can I just confirm your budget and preferred area?",
     "I'm working with another agent": "No problem. If you'd like a second opinion on off-plan options, I can have a consultant share a short list with no obligation.",
     "Prices are too high right now": "Understood. Some developers are offering post-handover payment plans, which our consultant can walk you through."
   },
-  "tiers": { "hot": 70, "warm": 45 },
-  "voice": { "name": "Polly.Joanna-Neural", "language": "en-US" },
-  "callingHours": { "timezone": "Asia/Dubai", "start": "09:00", "end": "20:00", "days": [1, 2, 3, 4, 5, 6] },
+  "tiers": {
+    "hot": 70,
+    "warm": 45
+  },
+  "callingHours": {
+    "timezone": "Asia/Dubai",
+    "start": "09:00",
+    "end": "20:00",
+    "days": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+    ]
+  },
   "maxTurns": 14,
   "rules": [
     "Do not promise returns, rental yields or visa outcomes; say a consultant will confirm.",
     "Do not mention specific unit prices or availability."
+  ],
+  "defaultLanguage": "en-US",
+  "languages": [
+    {
+      "code": "en-US",
+      "name": "English",
+      "ttsProvider": "ElevenLabs",
+      "transcriptionProvider": "Deepgram",
+      "speechModel": "nova-3-general",
+      "transcriptionLanguage": "multi",
+      "sayVoice": "Google.en-US-Chirp3-HD-Aoede",
+      "fillers": [
+        "Mm, okay.",
+        "Right.",
+        "Got it."
+      ],
+      "style": "Friendly, international English; many callers are non-native speakers, so keep words simple."
+    },
+    {
+      "code": "ar-AE",
+      "name": "Arabic",
+      "ttsProvider": "ElevenLabs",
+      "transcriptionProvider": "Google",
+      "speechModel": "telephony",
+      "sayVoice": "Google.ar-XA-Chirp3-HD-Aoede",
+      "fillers": [
+        "طيب.",
+        "تمام."
+      ],
+      "style": "Gulf-friendly Modern Standard Arabic, polite and warm. Write in Arabic script; property terms like 'off-plan' can stay in English."
+    },
+    {
+      "code": "hi-IN",
+      "name": "Hindi",
+      "ttsProvider": "ElevenLabs",
+      "transcriptionProvider": "Deepgram",
+      "speechModel": "nova-3-general",
+      "transcriptionLanguage": "multi",
+      "sayVoice": "Google.hi-IN-Chirp3-HD-Aoede",
+      "fillers": [
+        "Hmm, achha.",
+        "Theek hai."
+      ],
+      "style": "Everyday Hindi/Hinglish for Indian expats and NRI investors. Write in Devanagari."
+    },
+    {
+      "code": "ur-IN",
+      "name": "Urdu",
+      "ttsProvider": "Google",
+      "voice": "ur-IN-Chirp3-HD-Aoede",
+      "transcriptionProvider": "Google",
+      "speechModel": "telephony",
+      "sayVoice": "Google.ur-IN-Chirp3-HD-Aoede",
+      "fillers": [
+        "Ji, theek hai."
+      ],
+      "style": "Polite conversational Urdu. Write in Urdu script."
+    },
+    {
+      "code": "ru-RU",
+      "name": "Russian",
+      "ttsProvider": "ElevenLabs",
+      "transcriptionProvider": "Deepgram",
+      "speechModel": "nova-3-general",
+      "sayVoice": "Google.ru-RU-Chirp3-HD-Aoede",
+      "fillers": [
+        "Так, понятно."
+      ],
+      "style": "Polite conversational Russian (use 'вы')."
+    },
+    {
+      "code": "zh-CN",
+      "name": "Mandarin Chinese",
+      "ttsProvider": "ElevenLabs",
+      "transcriptionProvider": "Google",
+      "speechModel": "telephony",
+      "sayVoice": "Google.cmn-CN-Chirp3-HD-Aoede",
+      "fillers": [
+        "嗯，好的。"
+      ],
+      "style": "Polite spoken Mandarin, simplified characters."
+    },
+    {
+      "code": "fr-FR",
+      "name": "French",
+      "ttsProvider": "ElevenLabs",
+      "transcriptionProvider": "Deepgram",
+      "speechModel": "nova-3-general",
+      "sayVoice": "Google.fr-FR-Chirp3-HD-Aoede",
+      "fillers": [
+        "D'accord."
+      ],
+      "style": "Polite spoken French (vous)."
+    }
   ]
 }

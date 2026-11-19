@@ -12,7 +12,7 @@ export const maxDuration = 300;
 
 /**
  * Start outbound qualification calls.
- * POST { playbookId, leads: [{ name, phone: "+9198...", email?, source?, known?, notes? }], record?, ignoreCallingHours? }
+ * POST { playbookId, leads: [{ name, phone: "+9198...", language?: "hi-IN", email?, source?, known?, notes? }], record?, ignoreCallingHours? }
  * Header: x-callbot-key
  */
 export async function POST(req: Request) {
@@ -45,7 +45,7 @@ export async function POST(req: Request) {
     }
     const ref = randomUUID();
     try {
-      await saveCall(newCallState(pb, ref, lead, 'outbound'));
+      await saveCall(newCallState(pb, ref, lead, 'outbound', process.env.CALLBOT_RELAY_URL ? 'relay' : 'gather'));
       const q = `?ref=${ref}`;
       const { sid } = await createOutboundCall({
         to: lead.phone,

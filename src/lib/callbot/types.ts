@@ -30,6 +30,32 @@ export interface QualificationField {
   hint?: string;
 }
 
+/**
+ * Voice + speech-recognition setup for one language. Provider/voice/model
+ * values are passed straight to Twilio ConversationRelay, so any voice Twilio
+ * supports can be used without code changes.
+ */
+export interface VoiceLanguage {
+  /** BCP-47 code, e.g. "hi-IN", "ar-AE". */
+  code: string;
+  /** Human name the model sees, e.g. "Hindi". */
+  name: string;
+  ttsProvider?: 'ElevenLabs' | 'Google' | 'Amazon';
+  /** Provider voice id. ElevenLabs format: "<voiceId>-<model>-<speed>_<stability>_<similarity>". */
+  voice?: string;
+  transcriptionProvider?: 'Deepgram' | 'Google';
+  /** Override the recognition language, e.g. "multi" for Deepgram's mixed English/Hindi. */
+  transcriptionLanguage?: string;
+  /** e.g. "nova-3-general" (Deepgram) or "telephony" (Google). */
+  speechModel?: string;
+  /** Voice for the basic <Gather>/<Say> fallback mode, e.g. "Google.hi-IN-Neural2-A". */
+  sayVoice?: string;
+  /** Short natural sounds used if a reply takes a moment, e.g. "Hmm, okay…". */
+  fillers?: string[];
+  /** Extra guidance for this language, e.g. "Mix in English words as Indians naturally do". */
+  style?: string;
+}
+
 export interface Disqualifier {
   /** Field key and the values that immediately disqualify the lead. */
   field: string;
@@ -53,6 +79,8 @@ export interface Playbook {
   opening: string;
   /** Read once at the start, before anything else (recording/AI disclosure). */
   disclosure: string;
+  /** Optional opening + disclosure written for other languages, keyed by code. Otherwise the model writes it. */
+  openingByLanguage?: Record<string, string>;
   fields: QualificationField[];
   disqualifiers?: Disqualifier[];
   /** Objection → approved response. */
@@ -61,12 +89,12 @@ export interface Playbook {
   tiers: { hot: number; warm: number };
   /** Optional human to hand hot leads to (E.164). Overridden by CALLBOT_TRANSFER_NUMBER. */
   transferNumber?: string;
-  voice: {
-    /** Twilio <Say> voice, e.g. "Polly.Kajal-Neural". */
-    name: string;
-    /** BCP-47, e.g. "en-IN". Used for both speech recognition and TTS. */
-    language: string;
-  };
+  /** How the agent sounds and behaves as a person, e.g. "warm, upbeat, from Bengaluru". */
+  persona?: string;
+  /** Language the call opens in (a code from `languages`). Leads can override with `language`. */
+  defaultLanguage: string;
+  /** Languages the bot may switch to mid-call. The first matching code wins. */
+  languages: VoiceLanguage[];
   /** Local calling window for outbound calls. */
   callingHours?: { timezone: string; start: string; end: string; days?: number[] };
   /** Hard cap on back-and-forth turns before the bot wraps up. */
@@ -77,6 +105,8 @@ export interface Playbook {
 
 export interface LeadInput {
   name?: string;
+  /** Preferred language code, if known (e.g. from a form). */
+  language?: string;
   phone: string;
   email?: string;
   source?: string;
@@ -101,6 +131,16 @@ export interface CallState {
   leadId: string;
   lead: LeadInput;
   direction: 'outbound' | 'inbound' | 'simulated';
+  /** relay = streaming ConversationRelay, gather = basic Twilio speech webhooks. */
+  channel?: 'relay' | 'gather' | 'simulated';
+  /** Set once the relay WebSocket has connected; the relay then owns finalisation. */
+  relayConnected?: boolean;
+  /** Current spoken language code. */
+  language: string;
+  /** Claude conversation history, append-only (thinking blocks kept as returned). */
+  messages: unknown[];
+  /** Caller words from turns that were cut off before the model finished; sent with the next turn. */
+  pendingCaller?: string[];
   status: 'in_progress' | 'completed' | 'failed' | 'no_answer';
   transcript: TranscriptTurn[];
   captured: Record<string, string | number | boolean>;

@@ -1,7 +1,7 @@
 import { createHash } from 'crypto';
 import { getAdminDb } from '@/lib/firebase-admin';
 import type { CallState, LeadInput, LeadResult } from './types';
-import type { CallSummary } from './brain';
+import type { CallSummary } from './agent';
 
 // Firestore layout (server-only; client access is denied by firestore.rules):
 //   callbot_calls/{callSid}  full call state + transcript
@@ -61,6 +61,7 @@ export async function upsertLead(
       lastCallSid: state.callSid,
       lastCallAt: state.endedAt || new Date().toISOString(),
       direction: state.direction,
+      language: state.language,
     }),
     { merge: true },
   );
@@ -78,6 +79,7 @@ export async function recordPendingLead(lead: LeadInput, playbookId: string, cal
         phone: lead.phone,
         email: lead.email,
         source: lead.source,
+        language: lead.language,
         lastCallSid: callSid,
         lastDialedAt: new Date().toISOString(),
       }),

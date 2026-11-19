@@ -1,16 +1,21 @@
 import { randomUUID } from 'crypto';
 import { getPlaybook } from '@/lib/callbot/playbook';
 import { getCall, saveCall } from '@/lib/callbot/store';
-import { newCallState, openingLine } from '@/lib/callbot/session';
-import { readTwilioRequest, sayAndGather, twiml, twimlResponse } from '@/lib/callbot/twilio';
+import { modelOpening, newCallState, recordGreeting, scriptedGreeting } from '@/lib/callbot/session';
+import { conversationRelayTwiml, readTwilioRequest, sayAndGather, twiml, twimlResponse } from '@/lib/callbot/twilio';
 
 export const dynamic = 'force-dynamic';
+export const maxDuration = 30;
 
 /**
  * Twilio "call answered" webhook.
  * - Outbound calls arrive with ?ref=<our call id> (state was saved before dialing).
- * - Inbound calls: point your Twilio number's Voice webhook at
+ * - Inbound calls: set your Twilio number's Voice webhook to
  *   /api/callbot/voice?playbook=<playbook-id>
+ *
+ * With CALLBOT_RELAY_URL set, the call runs in streaming mode (ConversationRelay:
+ * natural voices, barge-in, mid-call language switching). Without it, a basic
+ * <Gather>/<Say> turn-by-turn mode is used.
  */
 export async function POST(req: Request) {
   const parsed = await readTwilioRequest(req);
@@ -23,20 +28,41 @@ export async function POST(req: Request) {
     return twimlResponse(twiml('<Hangup/>'));
   }
 
+  const relayUrl = process.env.CALLBOT_RELAY_URL;
   const ref = url.searchParams.get('ref');
   let state = ref ? await getCall(ref) : null;
-
   if (!state) {
     // Inbound: the prospect called us, so a do-not-call entry doesn't apply.
-    const caller = p.From || 'unknown';
     const pb = getPlaybook(url.searchParams.get('playbook'));
-    state = newCallState(pb, ref || p.CallSid || randomUUID(), { phone: caller, source: 'inbound' }, 'inbound');
+    state = newCallState(
+      pb,
+      ref || p.CallSid || randomUUID(),
+      { phone: p.From || 'unknown', source: 'inbound' },
+      'inbound',
+      relayUrl ? 'relay' : 'gather',
+    );
   }
-
   const pb = getPlaybook(state.playbookId);
   state.twilioSid = p.CallSid || state.twilioSid;
-  const text = openingLine(pb, state);
-  await saveCall(state);
+  state.channel = relayUrl ? 'relay' : 'gather';
 
-  return twimlResponse(sayAndGather(pb, text, `/api/callbot/turn?ref=${encodeURIComponent(state.callSid)}`));
+  const greeting = scriptedGreeting(pb, state);
+
+  if (relayUrl) {
+    if (greeting) recordGreeting(state, greeting);
+    await saveCall(state);
+    return twimlResponse(
+      conversationRelayTwiml(pb, state, {
+        relayUrl,
+        greeting,
+        actionPath: `/api/callbot/handoff?ref=${encodeURIComponent(state.callSid)}`,
+      }),
+    );
+  }
+
+  let text = greeting;
+  if (text) recordGreeting(state, text);
+  else text = (await modelOpening(pb, state)).text;
+  await saveCall(state);
+  return twimlResponse(sayAndGather(pb, state.language, text, `/api/callbot/turn?ref=${encodeURIComponent(state.callSid)}`));
 }

@@ -27,6 +27,8 @@ export async function POST(req: Request) {
   const ref = new URL(req.url).searchParams.get('ref') || p.CallSid;
   const state = ref ? await getCall(ref) : null;
   if (!state || state.status !== 'in_progress') return new Response(null, { status: 204 });
+  // Streaming calls are scored by the relay when its WebSocket closes.
+  if (state.relayConnected) return new Response(null, { status: 204 });
 
   const pb = getPlaybook(state.playbookId);
   // Answered by a machine or never answered: no conversation happened.

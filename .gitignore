@@ -38,3 +38,4 @@ next-env.d.ts
 !/public/renders/.gitkeep
 /public/exports/*
 !/public/exports/.gitkeep
+callbot-relay/dist/

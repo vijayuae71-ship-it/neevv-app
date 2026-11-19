@@ -1,99 +1,150 @@
 # Sales & lead-qualification calling bot
 
-A phone bot that calls (or answers) prospects, has a natural sales conversation,
-collects qualification answers, scores the lead hot / warm / cold / disqualified,
-and writes a summary and next step for the sales team.
+A phone bot that calls (or answers) prospects in their own language, holds a
+natural sales conversation, collects qualification answers, scores the lead
+hot / warm / cold / disqualified, and writes an English summary and next step
+for the sales team.
 
-- Telephony: Twilio Programmable Voice (speech-to-text via `<Gather input="speech">`, text-to-speech via `<Say>` with Amazon Polly neural voices).
-- Conversation: Claude (`CALLBOT_MODEL`, default `claude-opus-5-5` at `low` effort for phone-speed replies), returning structured JSON each turn.
-- Scoring: deterministic, from weights in the playbook, so scores are explainable and consistent. The model only extracts answers.
-- Storage: Firestore (`callbot_calls`, `callbot_leads`, `callbot_dnc`), server-side only.
+## How it sounds human
 
-## Playbooks: reuse it for any product
+| What | How |
+|---|---|
+| Natural voice | Twilio ConversationRelay with neural voices: ElevenLabs Flash v2.5 (multilingual) or Google Chirp 3 HD, set per language in the playbook. |
+| Replies start fast | Claude's reply is streamed token by token into text-to-speech, so the caller hears the first words while the rest is still being written. One model request per turn. |
+| Caller can interrupt | Barge-in is on. When the caller talks over the bot, speech stops, the unfinished reply is dropped, and the model is told exactly what the caller heard before cutting in. What they said is never lost. |
+| No dead air | If a reply takes longer than `CALLBOT_FILLER_MS`, the bot sometimes says a short filler ("Hmm, okay.", "Ji, theek hai.") first. After `CALLBOT_IDLE_MS` of silence it gently checks the caller is still there, and after repeated silence it says goodbye. |
+| Talks like a person | Persona per playbook, short spoken sentences, varied acknowledgements, matches the caller's energy, says numbers the way people say them ("forty-five lakh"), guesses through speech-recognition errors instead of asking to repeat. |
+| Honest | It always says it is an AI assistant at the start, and says so if asked. The persona is a name and manner, not a claim to be human. Keep this: India's and the UAE's consumer rules and Twilio's terms expect disclosure, and callers who find out later feel tricked. |
 
-Each sales script is a JSON file in `src/lib/callbot/playbooks/`:
+## Languages
+
+The caller can switch language at any point: speak Hindi, or say "Arabic
+please", and the bot switches its voice, speech recognition and reply language
+mid-call. Leads can also start in a language (`language: "ta-IN"`).
+
+| Playbook | Languages included |
+|---|---|
+| `neevv-homeowner` | English (Indian), Hindi, Tamil, Telugu, Kannada, Malayalam, Marathi, Bengali, Gujarati |
+| `uae-real-estate` | English, Arabic, Hindi, Urdu, Russian, Mandarin, French |
+
+English and Hindi use Deepgram's `multi` recognition, which handles Hinglish
+(mixed Hindi and English in one sentence). Other Indian languages and Arabic use
+Google recognition. Each language's voice, recognition provider and model are
+plain config in the playbook, so you can swap them without code changes.
+
+**Check before going live:** test each language you plan to use with a real
+call, and confirm voice IDs and model names against Twilio's current
+ConversationRelay voice and language lists in the Twilio console. Provider
+coverage changes, and this code couldn't reach Twilio's docs when it was written.
+The default ElevenLabs voice is a placeholder: pick a voice from ElevenLabs'
+library that fits the persona and set `CALLBOT_ELEVENLABS_VOICE` or `voice` per
+language.
+
+## Architecture
+
+```
+                   ┌──────────── Next.js app (Cloud Run) ────────────┐
+ /callbot console ─┤ /api/callbot/calls     dial leads               │
+                   │ /api/callbot/voice     call answered → TwiML    │──┐
+                   │ /api/callbot/handoff   relay ended → hang up / transfer
+                   │ /api/callbot/status    no-answer bookkeeping    │  │
+                   │ /api/callbot/simulate  text rehearsal           │  │
+                   └──────────────────────────────────────────────────┘  │
+                                                                         ▼
+ caller ⇄ Twilio (speech recognition + neural TTS) ⇄ wss ⇄ callbot-relay (Cloud Run)
+                                                              │  streams Claude replies
+                                                              │  barge-in, language switch, fillers
+                                                              └→ Firestore: call state, scored lead
+```
+
+- `src/lib/callbot/agent.ts`: the conversation engine (prompt, streaming, output parsing). Shared by every mode.
+- `src/lib/callbot/session.ts`: call lifecycle. `playbook.ts`: playbooks, languages, scoring. `twilio.ts`: TwiML and signatures. `store.ts`: Firestore.
+- `callbot-relay/server.ts`: the ConversationRelay WebSocket server.
+
+Model output per turn is plain text: an optional `[[hi-IN]]` language tag, the
+spoken reply, then a `<<<{json}>>>` metadata line with captured answers and the
+next action. Only the spoken part reaches the caller. Scoring is deterministic
+from playbook weights; the model only extracts answers.
+
+Without `CALLBOT_RELAY_URL` the app falls back to basic mode (`<Gather>` +
+`<Say>`), which works without the relay service but sounds noticeably more
+robotic: no interruptions, a pause after every turn, and no streaming.
+
+## Playbooks
+
+Each sales script is a JSON file in `src/lib/callbot/playbooks/`. Register new
+ones in `src/lib/callbot/playbook.ts`.
 
 | Field | What it does |
 |---|---|
-| `company`, `agentName`, `product`, `valueProps` | What the bot is allowed to say. It will not make claims outside `valueProps`. |
-| `opening`, `disclosure` | First line of the call. `{name}`, `{agent}`, `{company}` are filled in. The disclosure (AI + recording) is always read. |
-| `callGoal` | What a successful call ends with (demo booked, WhatsApp link, viewing). |
-| `fields[]` | What to learn. `type` is `text`, `number`, `boolean` or `choice`; `weight` sets importance in the score; `options[].points` (0-1) score choice answers; `idealMin` scores numbers; `hint` guides extraction (units, conversions). |
-| `disqualifiers[]` | Answers that make a lead disqualified regardless of score. |
-| `objections` | Approved answers to common pushback. |
-| `tiers` | Score cut-offs for hot and warm. |
-| `voice` | Twilio voice name and language, e.g. `Polly.Kajal-Neural` / `en-IN`. |
-| `callingHours` | Local window outbound calls are allowed in. |
-| `maxTurns`, `rules` | Length cap and any extra do / don't rules. |
-
-Two examples ship: `neevv-homeowner` (homeowners planning to build) and
-`uae-real-estate` (UAE buyer and investor enquiries). To add one, copy a file,
-edit it, and register it in `src/lib/callbot/playbook.ts`.
+| `company`, `agentName`, `persona` | Who the bot is and how it comes across. |
+| `product`, `valueProps` | What it may say. It won't make claims outside `valueProps`. |
+| `opening`, `disclosure` | Scripted first line in `defaultLanguage`, spoken instantly on pickup. `{name}`, `{agent}`, `{company}` are filled in. For other languages, add `openingByLanguage`, or the model writes the opening. |
+| `callGoal` | What a good call ends with. |
+| `fields[]` | What to learn: `type` (`text`, `number`, `boolean`, `choice`), `weight`, `options[].points`, `idealMin`, `hint`. |
+| `disqualifiers[]`, `tiers` | Hard disqualifiers and the hot/warm score cut-offs. |
+| `objections`, `rules` | Suggested answers to pushback and extra do / don't rules. |
+| `defaultLanguage`, `languages[]` | Per language: `code`, `name`, `ttsProvider`, `voice`, `transcriptionProvider`, `speechModel`, `transcriptionLanguage`, `sayVoice` (basic mode), `fillers`, `style`. |
+| `callingHours`, `maxTurns` | Outbound calling window and length cap. |
 
 ## Setup
 
-1. Twilio: buy a voice-capable number. For calls to India, complete Twilio's India
+1. **Twilio**: a voice number. For calls to India, complete Twilio's India
    regulatory bundle; for UAE, check Twilio's current UAE outbound rules first.
-2. Set the env vars listed under "calling bot" in `.env.example` on Cloud Run
-   (`ANTHROPIC_API_KEY`, `CALLBOT_ADMIN_KEY`, `CALLBOT_PUBLIC_URL`, `TWILIO_*`).
-   `CALLBOT_PUBLIC_URL` must be the exact public https origin Twilio calls, or
-   webhook signature checks will fail with 403.
-3. Inbound calls (optional): on the Twilio number set
-   - "A call comes in" → `POST {CALLBOT_PUBLIC_URL}/api/callbot/voice?playbook=neevv-homeowner`
-   - "Call status changes" → `POST {CALLBOT_PUBLIC_URL}/api/callbot/status`
-4. Open `/callbot`, enter the admin key.
+   In the Twilio console, accept ConversationRelay's terms (it uses AI voice
+   providers) if prompted.
+2. **Relay service**: deploy `callbot-relay` as its own Cloud Run service:
+   ```
+   gcloud builds submit --tag gcr.io/$PROJECT/callbot-relay -f callbot-relay/Dockerfile .   # or docker build from repo root
+   gcloud run deploy callbot-relay --image gcr.io/$PROJECT/callbot-relay \
+     --timeout=3600 --min-instances=1 --no-cpu-throttling --session-affinity \
+     --set-env-vars CALLBOT_RELAY_URL=wss://<service-url>/relay,CALLBOT_PUBLIC_URL=https://neevv.in \
+     --set-secrets ANTHROPIC_API_KEY=...,TWILIO_AUTH_TOKEN=...
+   ```
+   `--timeout=3600` lets calls run up to an hour; `--min-instances=1` avoids a
+   cold start when someone picks up. Give its service account Firestore access.
+3. **App env**: on the main app set `ANTHROPIC_API_KEY`, `CALLBOT_ADMIN_KEY`,
+   `CALLBOT_PUBLIC_URL`, `CALLBOT_RELAY_URL` and `TWILIO_*` (see `.env.example`).
+   `CALLBOT_PUBLIC_URL` and `CALLBOT_RELAY_URL` must be the exact public URLs
+   Twilio uses, or signature checks will reject Twilio with 403.
+4. **Inbound calls** (optional): on the Twilio number set
+   "A call comes in" → `POST {CALLBOT_PUBLIC_URL}/api/callbot/voice?playbook=neevv-homeowner`
+   and "Call status changes" → `POST {CALLBOT_PUBLIC_URL}/api/callbot/status`.
+5. Open `/callbot`, enter the admin key, rehearse, then dial.
 
 ## Using it
 
-- **Rehearse**: type as the prospect to test a playbook. Same logic as real calls, no phone minutes.
-- **Call leads**: paste `name, +phone, email` lines and dial. Skips numbers on the do-not-call list and refuses outside calling hours (tick "Ignore calling hours" only for testing).
-- **Leads**: scored leads with summary, captured answers, next step and requested callback time.
+- **Rehearse**: type as the prospect in any supported language and script. Same engine as real calls.
+- **Call leads**: paste `name, +phone, email, language` lines (email and language optional). Skips do-not-call numbers and refuses outside calling hours unless overridden.
+- **Leads**: scored leads with English summary, captured answers, language spoken, next step and callback time.
 
 API (all need header `x-callbot-key`):
 
 ```
-POST /api/callbot/calls     { playbookId, leads: [{ name, phone, email?, source?, known?, notes? }], record?, ignoreCallingHours? }
+POST /api/callbot/calls     { playbookId, leads: [{ name, phone, language?, email?, source?, known?, notes? }], record?, ignoreCallingHours? }
 GET  /api/callbot/leads
 GET  /api/callbot/playbooks
-POST /api/callbot/simulate  { playbookId, lead? } → opening; { state, message } → next turn; { state, end: true, save? } → score + summary
+POST /api/callbot/simulate  { playbookId, lead? } | { state, message } | { state, interrupt, message } | { state, end: true, save? }
 ```
-
-`known` lets you pass answers you already have (for example from a website form)
-so the bot does not ask again. This makes a CRM or form-submit hook easy to add.
-
-## Call flow
-
-```
-calls API ──saves state──► Twilio dials ──answered──► /voice  (disclosure + opening, <Gather>)
-                                                         │
-                        ┌────────────────────────────────┘
-                        ▼
-                     /turn  (speech → Claude → reply + captured answers)  ⟲ until end / transfer / callback
-                        │
-         call ends ──► /status (score + Claude summary → callbot_leads)
-```
-
-Answering machines are detected and hung up on without a pitch. Three silent
-turns in a row end the call. If a prospect says to stop calling, the bot
-confirms, ends the call and adds them to `callbot_dnc`.
 
 ## Compliance: read before dialing real people
 
-- Call only people who gave consent to be contacted (form opt-in, enquiry). Cold
-  calling numbers bought from lists is restricted in India (TRAI telemarketing
-  rules; numbers on the NCPR/DND registry) and the UAE (TDRA rules on
-  telemarketing hours and registered numbers). Check the current rules for your
-  use, as they change.
-- The bot always says it is an AI and that the call may be recorded. Keep that in every playbook.
-- Recording is off by default (`record: true` per batch to turn it on).
+- Call only people who gave consent to be contacted. Cold calling bought lists is
+  restricted in India (TRAI telemarketing rules, NCPR/DND registry) and the UAE
+  (TDRA telemarketing rules). Check the current rules; they change.
+- Keep the AI and recording disclosure in every language's opening.
+- Recording is off by default (`record: true` per batch turns it on).
 
-## Known limits
+## Testing status and limits
 
-- Latency: each turn is speech end → Claude → speech, typically 2-4 s of silence.
-  To cut it, lower effort is already set; next steps would be streaming TTS over
-  Twilio Media Streams or ConversationRelay, which need a WebSocket server rather
-  than Cloud Run request/response.
-- Twilio webhooks time out at 15 s; the Claude call has an 11 s timeout and falls
-  back to "Sorry, could you say that again?".
-- Rate limiting and the call queue are in-request (max 50 leads per request,
-  about one dial per second). For large campaigns, move dialing to Cloud Tasks.
+- Tested here: the full streaming flow through the relay with a simulated Twilio
+  client and a simulated Claude stream (English → Hindi switch mid-call, caller
+  interrupting mid-reply, captured answers, goodbye then hang-up, scoring and
+  summary). Not yet tested: a real phone call, real Claude replies, the relay's
+  Docker image, and the voice/model names against Twilio's live provider lists.
+- Latency is roughly: speech recognition end-of-turn + time to Claude's first
+  token + TTS start. Opus 5.5 at `low` effort is the default; if the first words
+  still feel slow on real calls, try `CALLBOT_MODEL=claude-sonnet-5-5`, and
+  measure before and after.
+- Hang-up timing after the goodbye is estimated from text length.
+- Large campaigns: dialing is in-request (max 50 leads, about one per second); move to Cloud Tasks for scale.

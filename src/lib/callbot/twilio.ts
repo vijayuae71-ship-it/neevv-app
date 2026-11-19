@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from 'crypto';
-import type { Playbook } from './types';
+import type { CallState, Playbook, VoiceLanguage } from './types';
+import { resolveLanguage } from './playbook';
 
 // Minimal Twilio helpers over plain HTTPS: no SDK dependency needed.
 
@@ -31,6 +32,16 @@ export function verifyTwilioSignature(
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
+/** Check X-Twilio-Signature on a request with no body params (e.g. the relay WebSocket upgrade). */
+export function verifySignatureForUrl(fullUrl: string, signature: string | null): boolean {
+  const token = process.env.TWILIO_AUTH_TOKEN;
+  if (!token || !signature) return false;
+  const expected = createHmac('sha1', token).update(Buffer.from(fullUrl, 'utf-8')).digest('base64');
+  const a = Buffer.from(expected);
+  const b = Buffer.from(signature);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
 /** Parse Twilio's form-encoded webhook body and check its signature. */
 export async function readTwilioRequest(
   req: Request,
@@ -51,29 +62,83 @@ export async function readTwilioRequest(
 const esc = (s: string) =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
 
-export function say(pb: Playbook, text: string): string {
-  return `<Say voice="${esc(pb.voice.name)}" language="${esc(pb.voice.language)}">${esc(text)}</Say>`;
+// ---- Streaming mode: Twilio ConversationRelay ----------------------------------
+// Twilio handles speech recognition and neural text-to-speech; our WebSocket
+// server (callbot-relay/) receives the caller's words and streams replies back.
+
+function langAttrs(l: VoiceLanguage, prefix = ''): string {
+  const a: [string, string | undefined][] = [
+    ['ttsProvider', l.ttsProvider],
+    ['voice', l.voice],
+    ['transcriptionProvider', l.transcriptionProvider],
+    ['speechModel', l.speechModel],
+  ];
+  return a
+    .filter(([, v]) => v)
+    .map(([k, v]) => ` ${prefix}${k}="${esc(v!)}"`)
+    .join('');
+}
+
+/**
+ * <Connect><ConversationRelay>. One <Language> per playbook language so the
+ * relay can switch voice + recognition mid-call.
+ */
+export function conversationRelayTwiml(
+  pb: Playbook,
+  state: CallState,
+  opts: { relayUrl: string; greeting?: string; actionPath: string },
+): string {
+  const cur = resolveLanguage(pb, state.language);
+  const stt = cur.transcriptionLanguage || cur.code;
+  const languages = pb.languages
+    .map((l) => resolveLanguage(pb, l.code))
+    .map((l) => `<Language code="${esc(l.code)}"${langAttrs(l)}/>`)
+    .join('');
+  const greeting = opts.greeting
+    ? ` welcomeGreeting="${esc(opts.greeting)}" welcomeGreetingInterruptible="any"`
+    : '';
+  return twiml(
+    `<Connect action="${esc(publicBaseUrl() + opts.actionPath)}">` +
+      `<ConversationRelay url="${esc(opts.relayUrl)}" language="${esc(cur.code)}" ttsLanguage="${esc(cur.code)}" ` +
+      `transcriptionLanguage="${esc(stt)}"${langAttrs(cur)}${greeting} interruptible="any" dtmfDetection="true" ` +
+      `elevenlabsTextNormalization="on">` +
+      languages +
+      `<Parameter name="ref" value="${esc(state.callSid)}"/>` +
+      `</ConversationRelay></Connect>`,
+  );
+}
+
+// ---- Basic mode: <Gather> speech webhooks (fallback when no relay is deployed) ----
+
+export function say(pb: Playbook, code: string, text: string): string {
+  const l = resolveLanguage(pb, code);
+  const voice = l.sayVoice || 'Polly.Joanna-Neural';
+  return `<Say voice="${esc(voice)}" language="${esc(l.code)}">${esc(text)}</Say>`;
 }
 
 /** Speak, then listen for the prospect's reply and post it to the turn webhook. */
-export function sayAndGather(pb: Playbook, text: string, actionPath: string): string {
+export function sayAndGather(pb: Playbook, code: string, text: string, actionPath: string): string {
   const action = esc(publicBaseUrl() + actionPath);
   return twiml(
-    `<Gather input="speech" action="${action}" method="POST" language="${esc(pb.voice.language)}" ` +
+    `<Gather input="speech" action="${action}" method="POST" language="${esc(resolveLanguage(pb, code).code)}" ` +
       `speechTimeout="auto" speechModel="phone_call" enhanced="true" actionOnEmptyResult="true">` +
-      say(pb, text) +
+      say(pb, code, text) +
       `</Gather>` +
-      // Only reached if Gather fails outright; empty speech still goes to the action.
       `<Redirect method="POST">${action}</Redirect>`,
   );
 }
 
-export function sayAndHangup(pb: Playbook, text: string): string {
-  return twiml(say(pb, text) + '<Hangup/>');
+export function sayAndHangup(pb: Playbook, code: string, text: string): string {
+  return twiml((text ? say(pb, code, text) : '') + '<Hangup/>');
 }
 
-export function sayAndDial(pb: Playbook, text: string, number: string): string {
-  return twiml(say(pb, text) + `<Dial timeout="25">${esc(number)}</Dial>` + say(pb, "Sorry, no one could pick up. We'll call you back shortly. Goodbye!") + '<Hangup/>');
+export function dialTwiml(pb: Playbook, code: string, number: string, intro?: string): string {
+  return twiml(
+    (intro ? say(pb, code, intro) : '') +
+      `<Dial timeout="25">${esc(number)}</Dial>` +
+      say(pb, code, "Sorry, no one could pick up just now. We'll call you back shortly. Goodbye!") +
+      '<Hangup/>',
+  );
 }
 
 export function twiml(inner: string): string {

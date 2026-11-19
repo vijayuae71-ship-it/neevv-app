@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { randomUUID } from 'crypto';
 import { requireAdmin } from '@/lib/callbot/admin';
 import { getPlaybook, scoreLead } from '@/lib/callbot/playbook';
-import { finalizeCall, handleProspectTurn, newCallState, openingLine } from '@/lib/callbot/session';
+import { finalizeCall, markInterrupted, modelOpening, newCallState, prospectTurn, recordGreeting, scriptedGreeting } from '@/lib/callbot/session';
 import { upsertLead } from '@/lib/callbot/store';
 import type { CallState, LeadInput } from '@/lib/callbot/types';
 
@@ -10,11 +10,12 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
 /**
- * Text-mode rehearsal of a call, no phone needed. The client keeps the state.
- * POST { playbookId, lead?, state?, message?, end?, save? }
- *  - no state  → starts a call, returns the opening line
- *  - message   → one prospect turn
- *  - end: true → score + summary (save: true also writes the lead to Firestore)
+ * Text-mode rehearsal of a call, no phone needed. Same engine as real calls.
+ * The client keeps the state between requests.
+ * POST { playbookId, lead? }                 → starts a call, returns the opening line
+ * POST { playbookId, state, message }        → one prospect turn
+ * POST { playbookId, state, interrupt: "…" } → caller cut the bot off after hearing "…"
+ * POST { playbookId, state, end: true, save? } → score + summary (save also writes the lead)
  */
 export async function POST(req: Request) {
   const denied = requireAdmin(req);
@@ -26,8 +27,11 @@ export async function POST(req: Request) {
 
   if (!state) {
     const lead: LeadInput = { phone: '+10000000000', name: 'there', source: 'simulator', ...(body.lead || {}) };
-    state = newCallState(pb, 'sim_' + randomUUID(), lead, 'simulated');
-    const say = openingLine(pb, state);
+    state = newCallState(pb, 'sim_' + randomUUID(), lead, 'simulated', 'simulated');
+    const greeting = scriptedGreeting(pb, state);
+    let say = greeting;
+    if (say) recordGreeting(state, say);
+    else say = (await modelOpening(pb, state)).text;
     return NextResponse.json({ state, say, action: 'continue', result: scoreLead(pb, state) });
   }
   state.playbookId = pb.id;
@@ -38,6 +42,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ state, result, summary });
   }
 
-  const turn = await handleProspectTurn(pb, state, String(body.message || ''));
-  return NextResponse.json({ state, say: turn.say, action: turn.action, result: scoreLead(pb, state) });
+  const interruptedAfter = typeof body.interrupt === 'string' ? body.interrupt : undefined;
+  if (interruptedAfter !== undefined) markInterrupted(state, interruptedAfter);
+  const turn = await prospectTurn(pb, state, String(body.message || ''), {}, interruptedAfter);
+  return NextResponse.json({ state, say: turn.text, action: turn.action, result: scoreLead(pb, state) });
 }
